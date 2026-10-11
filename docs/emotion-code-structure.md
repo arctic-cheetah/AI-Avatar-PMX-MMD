@@ -1,10 +1,12 @@
 # Emotion code structure
 
-This is the implementation plan for facial moods in the PMX companion. Local `[happy]`, `[surprised]`, and `[thinking]` previews use the same controller; none is connected to the bridge yet.
+This is the implementation plan for facial moods in the PMX companion. Local `[happy]`, `[surprised]`, `[thinking]`, `[troubled]`, and `[angry]` previews use the same controller; none is connected to the bridge yet.
+
+See the [PMX facial morph catalog](./pmx-morph-catalog.md) for every available model morph and ideas to preview next.
 
 ## Responsibilities
 
-- `renderer/expression-catalog.js` maps semantic mood names to PMX morph names and relative weights. It currently defines `happy` → `笑い`, `surprised` → `びっくり`, and `thinking` → `じと目`. `neutral` is a controller action, not a PMX morph.
+- `renderer/expression-catalog.js` maps semantic mood names to PMX morph names and relative weights. It currently defines `happy` → `笑い`, `surprised` → `びっくり`, `thinking` → `じと目`, `troubled` → `困る`, and `angry` → `怒り` + `怒り目`. `neutral` is a controller action, not a PMX morph.
 - `renderer/expression-controller.js` resolves those names against the loaded model, reports missing morphs, stores one active mood, and eases its morph weights each frame. Selecting another mood fades the old one out.
 - `renderer/main.js` loads and renders the model. Its preview buttons call the controller; future WebSocket messages must call the same `setExpression` method rather than implement a second animation path.
 - `controller/bridge.py` will eventually convert LLM tags into semantic expression events. It should not know PMX names or write morph weights. No bridge-to-renderer transport exists yet.

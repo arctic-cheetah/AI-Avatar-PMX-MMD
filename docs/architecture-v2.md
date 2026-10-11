@@ -54,6 +54,8 @@ Face morphs already in the PMX:
 | Mouth shape | `口角上げ`, `口角下げ`, `口横広げ`, `口横狭め`, `口上`, `口下`   |
 | Mood        | `困る`, `怒り`, `真面目`                                               |
 
+The complete 56-morph inventory, including unused eye, mouth, and brow controls, is in the [PMX facial morph catalog](./pmx-morph-catalog.md).
+
 Hand bones already in the PMX: both wrists (`左手首`, `右手首`) and full finger chains (`左親指０`–`右小指３`).
 
 A dance VMD would move the whole skeleton and fight this pose. Do not download one for the first milestone. If a motion is added later, it should be a short idle or talk clip (`アイドル` / `会話`), not a dance, and it must be retargeted carefully because hair, tail, and coat bones are model-specific.
@@ -69,7 +71,7 @@ A dance VMD would move the whole skeleton and fight this pose. Do not download o
    - `[angry]` → `怒り` + `怒り目`
    - `[troubled]` → `困る`
    - `[neutral]` → clear mood morphs
-   - Local previews: `[happy] · 笑い`, `[surprised] · びっくり`, and `[thinking] · じと目` buttons select one eased mood at a time or return to neutral. Each button stays disabled until the PMX loads and its morph is found. These buttons do not call the bridge or LLM yet.
+   - Local preview buttons exist for happy, surprised, thinking, troubled, and angry. Each selects one eased mood at a time or returns to neutral, and stays disabled until the PMX loads and all its required morphs are found. These buttons do not call the bridge or LLM yet.
 4. Speech sets `あいうえお` from TTS visemes. Until Piper exists, a simple volume envelope may drive `あ`.
 5. Hand tags set a small pose on wrist and finger bones only, eased over about 300 ms:
    - `rest`
@@ -116,7 +118,7 @@ flowchart TD
 ```text
 avatar-yidhari/
   controller/bridge.py     # tags -> events, then WebSocket
-  renderer/                # browser PMX viewer: blink and local happy preview
+  renderer/                # browser PMX viewer: blink and local mood previews
   yidhari-mmd/             # local model pack, do not commit
   docs/architecture.md     # v1 sketch
   docs/architecture-v2.md  # this plan
@@ -136,7 +138,7 @@ avatar-yidhari/
 
 1. Ignore `yidhari-mmd/` in git. Done.
 2. Browser page that loads the PMX and blinks. Done in `renderer/`.
-3. Local `[happy]`, `[surprised]`, and `[thinking]` buttons drive `笑い`, `びっくり`, and `じと目` through one expression controller, switch between moods, then return to neutral. Done; verify visually in the browser.
+3. Local buttons for happy, surprised, thinking, troubled, and angry use one expression controller, switch between moods, then return to neutral. Done; verify visually in the browser.
 4. WebSocket on `127.0.0.1:8765` sends the same expression event from `controller/bridge.py`; test with a fixed sentence before connecting `llama-server`.
 5. Connect `llama-server` output to the bridge, then expand mood tags and the four hand poses.
 6. Add TTS and optional voice conversion; drive mouth movement from the final playback audio.

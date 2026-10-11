@@ -6,4 +6,5 @@
 export const EXPRESSION_CATALOG = {
   happy: { morphs: { "笑い": 1 } },
   surprised: { morphs: { "びっくり": 1 } },
+  thinking: { morphs: { "じと目": 1 } },
 };

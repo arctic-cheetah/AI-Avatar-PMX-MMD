@@ -1,0 +1,1 @@
+"""Yidhari avatar controller."""

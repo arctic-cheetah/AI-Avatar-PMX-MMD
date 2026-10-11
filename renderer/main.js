@@ -53,8 +53,7 @@ controls.maxDistance = 80;
 
 let mesh = null;
 let blinkIndex = -1;
-let blinkWeight = 0;
-let nextBlinkAt = 0;
+let blink = null;
 
 function setStatus(text) {
   statusEl.textContent = text;
@@ -100,26 +99,38 @@ function frameModel(object) {
 }
 
 function scheduleBlink(now) {
-  nextBlinkAt = now + 2.4 + Math.random() * 3.2;
+  blink = {
+    start: now + 2.2 + Math.random() * 3.4,
+    close: 0.07,
+    hold: 0.05,
+    open: 0.11,
+  };
+}
+
+function blinkWeightAt(now) {
+  if (!blink || now < blink.start) {
+    return 0;
+  }
+  const t = now - blink.start;
+  if (t < blink.close) {
+    return t / blink.close;
+  }
+  if (t < blink.close + blink.hold) {
+    return 1;
+  }
+  const opening = t - blink.close - blink.hold;
+  if (opening < blink.open) {
+    return 1 - opening / blink.open;
+  }
+  scheduleBlink(now);
+  return 0;
 }
 
 function updateBlink(now) {
-  if (blinkIndex < 0) {
+  if (blinkIndex < 0 || !mesh) {
     return;
   }
-  if (now >= nextBlinkAt && blinkWeight === 0) {
-    blinkWeight = 0.001;
-  }
-  if (blinkWeight > 0) {
-    const closing = blinkWeight < 1 && now < nextBlinkAt + 0.09;
-    blinkWeight = closing
-      ? Math.min(1, blinkWeight + 0.18)
-      : Math.max(0, blinkWeight - 0.12);
-    mesh.morphTargetInfluences[blinkIndex] = blinkWeight;
-    if (blinkWeight === 0) {
-      scheduleBlink(now);
-    }
-  }
+  mesh.morphTargetInfluences[blinkIndex] = blinkWeightAt(now);
 }
 
 function loadModel() {
@@ -132,11 +143,7 @@ function loadModel() {
       scene.add(mesh);
       frameModel(mesh);
 
-      const names = mesh.geometry?.morphAttributes?.position ?? [];
-      blinkIndex = names.findIndex((attribute) => attribute.name === BLINK_MORPH);
-      if (blinkIndex < 0 && mesh.morphTargetDictionary) {
-        blinkIndex = mesh.morphTargetDictionary[BLINK_MORPH] ?? -1;
-      }
+      blinkIndex = mesh.morphTargetDictionary?.[BLINK_MORPH] ?? -1;
 
       const morphCount = mesh.morphTargetInfluences?.length ?? 0;
       setStatus(`Ready · ${morphCount} morphs`);
@@ -155,12 +162,9 @@ function loadModel() {
   );
 }
 
-const clock = new THREE.Clock();
-
 function animate() {
-  const now = clock.elapsedTime;
   controls.update();
-  updateBlink(now);
+  updateBlink(performance.now() / 1000);
   outline.render(scene, camera);
 }
 

@@ -8,7 +8,7 @@
 //   1. Load yidhari-mmd/伊德海莉.pmx.
 //   2. Frame a bust portrait.
 //   3. Drop the arms out of the PMX T-pose.
-//   4. Blink on a timer and preview the happy face morph.
+//   4. Blink on a timer and preview facial expressions.
 //
 // What it does not own yet:
 //   LLM mood tags, hand poses, lip sync, WebSocket, hair/coat physics.
@@ -31,7 +31,7 @@ const BLINK_MORPH = "まばたき";
 
 const statusEl = document.querySelector("#status");
 const canvas = document.querySelector("#view");
-const happyButton = document.querySelector("#happy-button");
+const expressionButtons = document.querySelectorAll("#expression-controls button[data-expression]");
 
 // Scene, camera, and lights. The portrait camera is replaced once the
 // model loads; the initial position only matters before that.
@@ -249,20 +249,36 @@ function updateBlink(now) {
 }
 
 /**
- * Toggle the local happy preview and expose its state to assistive technology.
+ * Reflect the controller's active mood in the preview buttons.
  * @returns {void}
  */
-function toggleHappy() {
-  if (!expressions) {
-    return;
-  }
-  const next = expressions.activeExpression === "happy" ? "neutral" : "happy";
-  if (expressions.setExpression(next)) {
-    happyButton.setAttribute("aria-pressed", String(next === "happy"));
+function updateExpressionButtons() {
+  for (const button of expressionButtons) {
+    button.setAttribute("aria-pressed", String(
+      expressions?.activeExpression === button.dataset.expression,
+    ));
   }
 }
 
-happyButton.addEventListener("click", toggleHappy);
+/**
+ * Toggle the clicked mood preview through the shared expression controller.
+ * @param {MouseEvent} event Click event from a preview button.
+ * @returns {void}
+ */
+function toggleExpression(event) {
+  if (!expressions) {
+    return;
+  }
+  const name = event.currentTarget.dataset.expression;
+  const next = expressions.activeExpression === name ? "neutral" : name;
+  if (expressions.setExpression(next)) {
+    updateExpressionButtons();
+  }
+}
+
+for (const button of expressionButtons) {
+  button.addEventListener("click", toggleExpression);
+}
 
 /**
  * Add the loaded PMX to the scene and initialize its pose and face controls.
@@ -279,9 +295,16 @@ function onModelLoaded(loaded) {
   restArms(mesh);
 
   const morphCount = mesh.morphTargetInfluences?.length ?? 0;
-  happyButton.disabled = !expressions.isAvailable("happy");
-  setStatus(happyButton.disabled
-    ? `Ready · ${morphCount} morphs · ${expressions.getMissingMorphs("happy").join(", ")} unavailable`
+  const unavailable = [];
+  for (const button of expressionButtons) {
+    const name = button.dataset.expression;
+    button.disabled = !expressions.isAvailable(name);
+    if (button.disabled) {
+      unavailable.push(`${name}: ${expressions.getMissingMorphs(name).join(", ")}`);
+    }
+  }
+  setStatus(unavailable.length > 0
+    ? `Ready · ${morphCount} morphs · unavailable: ${unavailable.join("; ")}`
     : `Ready · ${morphCount} morphs`);
   scheduleBlink(performance.now() / 1000);
 }

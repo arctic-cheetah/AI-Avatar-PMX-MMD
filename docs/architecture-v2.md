@@ -69,7 +69,7 @@ A dance VMD would move the whole skeleton and fight this pose. Do not download o
    - `[angry]` → `怒り` + `怒り目`
    - `[troubled]` → `困る`
    - `[neutral]` → clear mood morphs
-   - First local preview: the renderer's `[happy] · 笑い` button toggles the `笑い` morph on and off with easing. It is disabled until the PMX loads and the morph is found. This button does not call the bridge or LLM yet.
+   - Local previews: `[happy] · 笑い` and `[surprised] · びっくり` buttons select one eased mood at a time or return to neutral. Each button stays disabled until the PMX loads and its morph is found. These buttons do not call the bridge or LLM yet.
 4. Speech sets `あいうえお` from TTS visemes. Until Piper exists, a simple volume envelope may drive `あ`.
 5. Hand tags set a small pose on wrist and finger bones only, eased over about 300 ms:
    - `rest`
@@ -136,7 +136,7 @@ avatar-yidhari/
 
 1. Ignore `yidhari-mmd/` in git. Done.
 2. Browser page that loads the PMX and blinks. Done in `renderer/`.
-3. Local `[happy]` button drives `笑い`, then returns to neutral. Done; verify visually in the browser.
+3. Local `[happy]` and `[surprised]` buttons drive `笑い` and `びっくり` through one expression controller, switch between moods, then return to neutral. Done; verify visually in the browser.
 4. WebSocket on `127.0.0.1:8765` sends the same expression event from `controller/bridge.py`; test with a fixed sentence before connecting `llama-server`.
 5. Connect `llama-server` output to the bridge, then expand mood tags and the four hand poses.
 6. Add TTS and optional voice conversion; drive mouth movement from the final playback audio.

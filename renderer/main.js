@@ -88,7 +88,7 @@ function frameModel(object) {
     ? new THREE.Vector3(head.x, head.y, head.z)
     : new THREE.Vector3(0, 15.0, 0);
   controls.target.copy(lookAt);
-  camera.position.set(lookAt.x, lookAt.y, lookAt.z + 11);
+  camera.position.set(lookAt.x, lookAt.y, lookAt.z + 13);
   camera.near = 0.05;
   camera.far = 400;
   camera.updateProjectionMatrix();
@@ -96,6 +96,36 @@ function frameModel(object) {
   controls.maxDistance = 80;
   controls.update();
   floor.scale.setScalar(Math.max(18, (head ? head.y : 22) * 0.9));
+}
+
+const parentDown = new THREE.Vector3();
+const parentQuat = new THREE.Quaternion();
+
+function hangBone(bone, worldTarget) {
+  const child = bone.children[0];
+  if (!child) {
+    return;
+  }
+  bone.parent?.updateWorldMatrix(true, false);
+  parentDown.copy(worldTarget).normalize();
+  if (bone.parent) {
+    bone.parent.getWorldQuaternion(parentQuat).invert();
+    parentDown.applyQuaternion(parentQuat);
+  }
+  bone.quaternion.setFromUnitVectors(child.position.clone().normalize(), parentDown);
+}
+
+function restArms(object) {
+  object.updateMatrixWorld(true);
+  const left = object.skeleton?.getBoneByName("左腕");
+  const right = object.skeleton?.getBoneByName("右腕");
+  if (left) {
+    hangBone(left, new THREE.Vector3(0.28, -1, 0.16));
+  }
+  if (right) {
+    hangBone(right, new THREE.Vector3(-0.28, -1, 0.16));
+  }
+  object.updateMatrixWorld(true);
 }
 
 function scheduleBlink(now) {
@@ -144,6 +174,7 @@ function loadModel() {
       frameModel(mesh);
 
       blinkIndex = mesh.morphTargetDictionary?.[BLINK_MORPH] ?? -1;
+      restArms(mesh);
 
       const morphCount = mesh.morphTargetInfluences?.length ?? 0;
       setStatus(`Ready · ${morphCount} morphs`);

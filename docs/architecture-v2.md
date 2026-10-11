@@ -44,13 +44,13 @@ The pack at `yidhari-mmd/` is a PMX 2.0 model named Yidhari (`伊德海莉.pmx`)
 
 Face morphs already in the PMX:
 
-| Use | Morph names |
-| --- | --- |
-| Blink | `まばたき`, `ウィンク`, `ウィンク右`, `ウィンク２`, `ウィンク２右` |
-| Eyes | `笑い`, `びっくり`, `じと目`, `怒り目` |
-| Mouth | `あ`, `い`, `う`, `え`, `お`, `にやり` |
-| Mouth shape | `口角上げ`, `口角下げ`, `口横広げ`, `口横狭め`, `口上`, `口下` |
-| Mood | `困る`, `怒り`, `真面目` |
+| Use         | Morph names                                                                  |
+| ----------- | ---------------------------------------------------------------------------- |
+| Blink       | `まばたき`, `ウィンク`, `ウィンク右`, `ウィンク２`, `ウィンク２右` |
+| Eyes        | `笑い`, `びっくり`, `じと目`, `怒り目`                               |
+| Mouth       | `あ`, `い`, `う`, `え`, `お`, `にやり`                           |
+| Mouth shape | `口角上げ`, `口角下げ`, `口横広げ`, `口横狭め`, `口上`, `口下`   |
+| Mood        | `困る`, `怒り`, `真面目`                                               |
 
 Hand bones already in the PMX: both wrists (`左手首`, `右手首`) and full finger chains (`左親指０`–`右小指３`).
 
@@ -112,10 +112,8 @@ avatar-yidhari/
 
 ## Build order
 
-Wait for the signal before writing renderer code.
-
-1. Ignore `yidhari-mmd/` in git.
-2. Browser page that loads the PMX and blinks.
+1. Ignore `yidhari-mmd/` in git. Done.
+2. Browser page that loads the PMX and blinks. Started in `renderer/`.
 3. WebSocket on `127.0.0.1:8765`.
 4. Mood tags and the four hand poses.
 5. Piper visemes after the face is moving.

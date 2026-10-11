@@ -1,0 +1,8 @@
+/**
+ * Semantic mood names and their PMX morph weights.
+ * Each entry describes one exclusive mood; neutral is handled by the controller.
+ * @type {Record<string, { morphs: Record<string, number> }>}
+ */
+export const EXPRESSION_CATALOG = {
+  happy: { morphs: { "笑い": 1 } },
+};

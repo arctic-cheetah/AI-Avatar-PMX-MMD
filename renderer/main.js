@@ -8,10 +8,10 @@
 //   1. Load yidhari-mmd/伊德海莉.pmx.
 //   2. Frame a bust portrait.
 //   3. Drop the arms out of the PMX T-pose.
-//   4. Blink on a timer.
+//   4. Blink on a timer and preview the happy face morph.
 //
 // What it does not own yet:
-//   mood tags, hand poses, lip sync, WebSocket, hair/coat physics.
+//   LLM mood tags, hand poses, lip sync, WebSocket, hair/coat physics.
 //
 // Extension points:
 //   restArms()  — add elbow, wrist, or finger rotations here.
@@ -22,6 +22,8 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { MMDLoader } from "three/addons/loaders/MMDLoader.js";
 import { OutlineEffect } from "three/addons/effects/OutlineEffect.js";
+import { EXPRESSION_CATALOG } from "./expression-catalog.js";
+import { ExpressionController } from "./expression-controller.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
 const MODEL_URL = "/yidhari-mmd/伊德海莉.pmx";
@@ -29,6 +31,7 @@ const BLINK_MORPH = "まばたき";
 
 const statusEl = document.querySelector("#status");
 const canvas = document.querySelector("#view");
+const happyButton = document.querySelector("#happy-button");
 
 // Scene, camera, and lights. The portrait camera is replaced once the
 // model loads; the initial position only matters before that.
@@ -79,14 +82,26 @@ controls.maxDistance = 80;
 /** @type {THREE.SkinnedMesh | null} */
 let mesh = null;
 let blinkIndex = -1;
+/** @type {ExpressionController | null} */
+let expressions = null;
+let previousFrame = performance.now();
 /** @type {{ start: number, close: number, hold: number, open: number } | null} */
 let blink = null;
 
+/**
+ * Show a short loading or readiness message below the canvas.
+ * @param {string} text Message to display.
+ * @returns {void}
+ */
 function setStatus(text) {
   statusEl.textContent = text;
 }
 
-// Keep the canvas matched to the window. OutlineEffect has its own size.
+/**
+ * Match the camera and both renderers to the browser viewport.
+ * OutlineEffect maintains its own size, separate from WebGLRenderer.
+ * @returns {void}
+ */
 function resize() {
   const width = window.innerWidth;
   const height = window.innerHeight;
@@ -96,7 +111,12 @@ function resize() {
   outline.setSize(width, height);
 }
 
-// World position of a named PMX bone. Returns null if the rig lacks it.
+/**
+ * Find a named PMX bone and return its current world-space position.
+ * @param {THREE.SkinnedMesh} object Loaded PMX mesh.
+ * @param {string} name Bone name in the PMX rig.
+ * @returns {THREE.Vector3 | null} Bone position, or null if absent.
+ */
 function boneWorld(object, name) {
   const bone = object.skeleton?.getBoneByName(name);
   if (!bone) {
@@ -106,8 +126,12 @@ function boneWorld(object, name) {
   return bone.getWorldPosition(new THREE.Vector3());
 }
 
-// Plant the model on y=0 and aim at the head for the bust portrait.
-// Distance is in PMX units. 13 keeps the face, necklace, and shoulders.
+/**
+ * Plant the PMX on y=0 and frame a bust portrait around its head.
+ * The camera distance of 13 PMX units includes the face and shoulders.
+ * @param {THREE.SkinnedMesh} object Loaded PMX mesh.
+ * @returns {void}
+ */
 function frameModel(object) {
   object.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(object);
@@ -132,8 +156,13 @@ function frameModel(object) {
 const parentDown = new THREE.Vector3();
 const parentQuat = new THREE.Quaternion();
 
-// Point a bone's first child toward a world-space direction.
-// Used to hang the upper arms without a VMD clip.
+/**
+ * Rotate a bone so its first child points along a world-space direction.
+ * Used to lower the arms without playing a VMD animation.
+ * @param {THREE.Bone} bone Bone to rotate.
+ * @param {THREE.Vector3} worldTarget Desired direction in world space.
+ * @returns {void}
+ */
 function hangBone(bone, worldTarget) {
   const child = bone.children[0];
   if (!child) {
@@ -148,9 +177,12 @@ function hangBone(bone, worldTarget) {
   bone.quaternion.setFromUnitVectors(child.position.clone().normalize(), parentDown);
 }
 
-// Replace the PMX T-pose with arms at the sides.
-// The vectors are world directions: mostly down, a little out, a little forward.
-// Elbows and fingers still use the bind pose.
+/**
+ * Lower both upper arms from the T-pose while leaving elbows and fingers bound.
+ * The target directions point mostly down, slightly outward and forward.
+ * @param {THREE.SkinnedMesh} object Loaded PMX mesh.
+ * @returns {void}
+ */
 function restArms(object) {
   object.updateMatrixWorld(true);
   const left = object.skeleton?.getBoneByName("左腕");
@@ -164,8 +196,12 @@ function restArms(object) {
   object.updateMatrixWorld(true);
 }
 
-// Queue the next blink. `now` must be performance.now() / 1000.
-// Do not use THREE.Clock here; that clock was not advancing.
+/**
+ * Schedule the next idle blink after a short random delay.
+ * Uses the same monotonic clock as the animation loop.
+ * @param {number} now Current performance time in seconds.
+ * @returns {void}
+ */
 function scheduleBlink(now) {
   blink = {
     start: now + 2.2 + Math.random() * 3.4,
@@ -175,7 +211,12 @@ function scheduleBlink(now) {
   };
 }
 
-// 0 = eyes open, 1 = まばたき fully closed. Reschedules after the open.
+/**
+ * Calculate the blink morph weight, scheduling another blink after reopening.
+ * A weight of 0 is open; 1 is fully closed.
+ * @param {number} now Current performance time in seconds.
+ * @returns {number} Blink morph weight between 0 and 1.
+ */
 function blinkWeightAt(now) {
   if (!blink || now < blink.start) {
     return 0;
@@ -195,6 +236,11 @@ function blinkWeightAt(now) {
   return 0;
 }
 
+/**
+ * Apply the current blink weight if the PMX provides the blink morph.
+ * @param {number} now Current performance time in seconds.
+ * @returns {void}
+ */
 function updateBlink(now) {
   if (blinkIndex < 0 || !mesh) {
     return;
@@ -202,39 +248,87 @@ function updateBlink(now) {
   mesh.morphTargetInfluences[blinkIndex] = blinkWeightAt(now);
 }
 
+/**
+ * Toggle the local happy preview and expose its state to assistive technology.
+ * @returns {void}
+ */
+function toggleHappy() {
+  if (!expressions) {
+    return;
+  }
+  const next = expressions.activeExpression === "happy" ? "neutral" : "happy";
+  if (expressions.setExpression(next)) {
+    happyButton.setAttribute("aria-pressed", String(next === "happy"));
+  }
+}
+
+happyButton.addEventListener("click", toggleHappy);
+
+/**
+ * Add the loaded PMX to the scene and initialize its pose and face controls.
+ * @param {THREE.SkinnedMesh} loaded Mesh supplied by MMDLoader.
+ * @returns {void}
+ */
+function onModelLoaded(loaded) {
+  mesh = loaded;
+  scene.add(mesh);
+  frameModel(mesh);
+
+  blinkIndex = mesh.morphTargetDictionary?.[BLINK_MORPH] ?? -1;
+  expressions = new ExpressionController(mesh, EXPRESSION_CATALOG);
+  restArms(mesh);
+
+  const morphCount = mesh.morphTargetInfluences?.length ?? 0;
+  happyButton.disabled = !expressions.isAvailable("happy");
+  setStatus(happyButton.disabled
+    ? `Ready · ${morphCount} morphs · ${expressions.getMissingMorphs("happy").join(", ")} unavailable`
+    : `Ready · ${morphCount} morphs`);
+  scheduleBlink(performance.now() / 1000);
+}
+
+/**
+ * Report the percentage downloaded when the PMX response has a known size.
+ * @param {ProgressEvent} event Loader progress event.
+ * @returns {void}
+ */
+function onModelProgress(event) {
+  if (event.lengthComputable) {
+    const pct = Math.round((event.loaded / event.total) * 100);
+    setStatus(`Loading PMX… ${pct}%`);
+  }
+}
+
+/**
+ * Log a PMX loading failure and show a useful message in the page.
+ * @param {unknown} error Loader error.
+ * @returns {void}
+ */
+function onModelError(error) {
+  console.error(error);
+  setStatus("Could not load the PMX. Is serve.py running?");
+}
+
+/**
+ * Start loading the local PMX and register its completion callbacks.
+ * @returns {void}
+ */
 function loadModel() {
   setStatus("Loading PMX…");
   const loader = new MMDLoader();
-  loader.load(
-    MODEL_URL,
-    (loaded) => {
-      mesh = loaded;
-      scene.add(mesh);
-      frameModel(mesh);
-
-      blinkIndex = mesh.morphTargetDictionary?.[BLINK_MORPH] ?? -1;
-      restArms(mesh);
-
-      const morphCount = mesh.morphTargetInfluences?.length ?? 0;
-      setStatus(`Ready · ${morphCount} morphs`);
-      scheduleBlink(performance.now() / 1000);
-    },
-    (event) => {
-      if (event.lengthComputable) {
-        const pct = Math.round((event.loaded / event.total) * 100);
-        setStatus(`Loading PMX… ${pct}%`);
-      }
-    },
-    (error) => {
-      console.error(error);
-      setStatus("Could not load the PMX. Is serve.py running?");
-    },
-  );
+  loader.load(MODEL_URL, onModelLoaded, onModelProgress, onModelError);
 }
 
+/**
+ * Update controls and face morphs, then render the current frame.
+ * @returns {void}
+ */
 function animate() {
+  const now = performance.now();
+  const delta = Math.min((now - previousFrame) / 1000, 0.1);
+  previousFrame = now;
   controls.update();
-  updateBlink(performance.now() / 1000);
+  updateBlink(now / 1000);
+  expressions?.update(delta);
   outline.render(scene, camera);
 }
 

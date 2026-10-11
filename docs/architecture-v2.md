@@ -38,6 +38,8 @@ screen / OBS
 
 The renderer is its own browser process. LLM decode stays on Vulkan. Animation must not stall token generation.
 
+Audio is a later, separate path: LLM text → TTS → optional w-okada VCClient voice conversion → playback. VCClient converts audio rather than generating speech from text. Lip sync should follow the audio actually played, after any conversion latency.
+
 ## Why PMX, and why not a VMD yet
 
 The pack at `yidhari-mmd/` is a PMX 2.0 model named Yidhari (`伊德海莉.pmx`), plus `武器.pmx`, textures, and toons. It has no motion file. That is fine.
@@ -67,6 +69,7 @@ A dance VMD would move the whole skeleton and fight this pose. Do not download o
    - `[angry]` → `怒り` + `怒り目`
    - `[troubled]` → `困る`
    - `[neutral]` → clear mood morphs
+   - First local preview: the renderer's `[happy] · 笑い` button toggles the `笑い` morph on and off with easing. It is disabled until the PMX loads and the morph is found. This button does not call the bridge or LLM yet.
 4. Speech sets `あいうえお` from TTS visemes. Until Piper exists, a simple volume envelope may drive `あ`.
 5. Hand tags set a small pose on wrist and finger bones only, eased over about 300 ms:
    - `rest`
@@ -89,12 +92,31 @@ The bridge already parses tags. v2 extends that into JSON for the page:
 
 Viseme names map to PMX morphs: `aa` → `あ`, `ih` → `い`, `uu` → `う`, `eh` → `え`, `oh` → `お`.
 
+See [Emotion code structure](./emotion-code-structure.md) for the catalog/controller design that keeps mood names separate from PMX morph names.
+
+## Code and file dependencies
+
+Solid arrows show the current loading, import, and runtime update paths. The dashed WebSocket arrow is planned, not implemented.
+
+```mermaid
+flowchart TD
+    html["renderer/index.html"] -->|loads module| main["renderer/main.js"]
+    main -->|imports| catalog["renderer/expression-catalog.js"]
+    main -->|imports and calls| controller["renderer/expression-controller.js"]
+    main -->|loads| pmx["yidhari-mmd/伊德海莉.pmx"]
+    pmx -->|parsed into| mesh["Loaded PMX mesh"]
+    main -->|blink updates| mesh
+    catalog -->|definitions passed by main| controller
+    controller -->|mood morph weights| mesh
+    bridge["controller/bridge.py"] -.->|planned WebSocket events| main
+```
+
 ## Layout
 
 ```text
 avatar-yidhari/
   controller/bridge.py     # tags -> events, then WebSocket
-  renderer/                # static browser page, not started yet
+  renderer/                # browser PMX viewer: blink and local happy preview
   yidhari-mmd/             # local model pack, do not commit
   docs/architecture.md     # v1 sketch
   docs/architecture-v2.md  # this plan
@@ -113,10 +135,11 @@ avatar-yidhari/
 ## Build order
 
 1. Ignore `yidhari-mmd/` in git. Done.
-2. Browser page that loads the PMX and blinks. Started in `renderer/`.
-3. WebSocket on `127.0.0.1:8765`.
-4. Mood tags and the four hand poses.
-5. Piper visemes after the face is moving.
+2. Browser page that loads the PMX and blinks. Done in `renderer/`.
+3. Local `[happy]` button drives `笑い`, then returns to neutral. Done; verify visually in the browser.
+4. WebSocket on `127.0.0.1:8765` sends the same expression event from `controller/bridge.py`; test with a fixed sentence before connecting `llama-server`.
+5. Connect `llama-server` output to the bridge, then expand mood tags and the four hand poses.
+6. Add TTS and optional voice conversion; drive mouth movement from the final playback audio.
 
 ## Out of scope for now
 

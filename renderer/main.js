@@ -13,7 +13,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x141018);
 
 const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 200);
-camera.position.set(0, 12, 18);
+camera.position.set(0, 12, 500);
 
 const renderer = new THREE.WebGLRenderer({
   canvas,
@@ -86,10 +86,10 @@ function frameModel(object) {
 
   const head = boneWorld(object, "頭");
   const lookAt = head
-    ? new THREE.Vector3(head.x, head.y - 1.7, head.z)
-    : new THREE.Vector3(0, 13.5, 0);
+    ? new THREE.Vector3(head.x, head.y, head.z)
+    : new THREE.Vector3(0, 15.0, 0);
   controls.target.copy(lookAt);
-  camera.position.set(lookAt.x, lookAt.y + 0.05, lookAt.z + 12.2);
+  camera.position.set(lookAt.x, lookAt.y, lookAt.z + 11);
   camera.near = 0.05;
   camera.far = 400;
   camera.updateProjectionMatrix();

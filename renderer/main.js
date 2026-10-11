@@ -1,14 +1,37 @@
+// Yidhari's browser body.
+//
+// serve.py must be running. Open http://127.0.0.1:8770/renderer/
+// Do not open this file directly: the PMX and textures are served from
+// the workspace root, next to this folder.
+//
+// What this file owns:
+//   1. Load yidhari-mmd/伊德海莉.pmx.
+//   2. Frame a bust portrait.
+//   3. Drop the arms out of the PMX T-pose.
+//   4. Blink on a timer.
+//
+// What it does not own yet:
+//   mood tags, hand poses, lip sync, WebSocket, hair/coat physics.
+//
+// Extension points:
+//   restArms()  — add elbow, wrist, or finger rotations here.
+//   updateBlink — copy this pattern for other morph weights.
+//   animate()   — keep per-frame work here, not in the loader callback.
+
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { MMDLoader } from "three/addons/loaders/MMDLoader.js";
 import { OutlineEffect } from "three/addons/effects/OutlineEffect.js";
 
+// Served by renderer/serve.py from the workspace root. Do not rename the PMX.
 const MODEL_URL = "/yidhari-mmd/伊德海莉.pmx";
 const BLINK_MORPH = "まばたき";
 
 const statusEl = document.querySelector("#status");
 const canvas = document.querySelector("#view");
 
+// Scene, camera, and lights. The portrait camera is replaced once the
+// model loads; the initial position only matters before that.
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x141018);
 
@@ -23,6 +46,7 @@ const renderer = new THREE.WebGLRenderer({
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 
+// MMD toon outlines. This is separate from the WebGL renderer.
 const outline = new OutlineEffect(renderer);
 
 scene.add(new THREE.AmbientLight(0xffffff, 2.2));
@@ -33,6 +57,7 @@ const fill = new THREE.DirectionalLight(0x9eb6ff, 0.7);
 fill.position.set(-6, 4, -2);
 scene.add(fill);
 
+// Unit circle, scaled to the model after load.
 const floor = new THREE.Mesh(
   new THREE.CircleGeometry(1, 64),
   new THREE.MeshStandardMaterial({
@@ -51,14 +76,17 @@ controls.enableDamping = true;
 controls.minDistance = 3;
 controls.maxDistance = 80;
 
+/** @type {THREE.SkinnedMesh | null} */
 let mesh = null;
 let blinkIndex = -1;
+/** @type {{ start: number, close: number, hold: number, open: number } | null} */
 let blink = null;
 
 function setStatus(text) {
   statusEl.textContent = text;
 }
 
+// Keep the canvas matched to the window. OutlineEffect has its own size.
 function resize() {
   const width = window.innerWidth;
   const height = window.innerHeight;
@@ -68,6 +96,7 @@ function resize() {
   outline.setSize(width, height);
 }
 
+// World position of a named PMX bone. Returns null if the rig lacks it.
 function boneWorld(object, name) {
   const bone = object.skeleton?.getBoneByName(name);
   if (!bone) {
@@ -77,6 +106,8 @@ function boneWorld(object, name) {
   return bone.getWorldPosition(new THREE.Vector3());
 }
 
+// Plant the model on y=0 and aim at the head for the bust portrait.
+// Distance is in PMX units. 13 keeps the face, necklace, and shoulders.
 function frameModel(object) {
   object.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(object);
@@ -101,6 +132,8 @@ function frameModel(object) {
 const parentDown = new THREE.Vector3();
 const parentQuat = new THREE.Quaternion();
 
+// Point a bone's first child toward a world-space direction.
+// Used to hang the upper arms without a VMD clip.
 function hangBone(bone, worldTarget) {
   const child = bone.children[0];
   if (!child) {
@@ -115,6 +148,9 @@ function hangBone(bone, worldTarget) {
   bone.quaternion.setFromUnitVectors(child.position.clone().normalize(), parentDown);
 }
 
+// Replace the PMX T-pose with arms at the sides.
+// The vectors are world directions: mostly down, a little out, a little forward.
+// Elbows and fingers still use the bind pose.
 function restArms(object) {
   object.updateMatrixWorld(true);
   const left = object.skeleton?.getBoneByName("左腕");
@@ -128,6 +164,8 @@ function restArms(object) {
   object.updateMatrixWorld(true);
 }
 
+// Queue the next blink. `now` must be performance.now() / 1000.
+// Do not use THREE.Clock here; that clock was not advancing.
 function scheduleBlink(now) {
   blink = {
     start: now + 2.2 + Math.random() * 3.4,
@@ -137,6 +175,7 @@ function scheduleBlink(now) {
   };
 }
 
+// 0 = eyes open, 1 = まばたき fully closed. Reschedules after the open.
 function blinkWeightAt(now) {
   if (!blink || now < blink.start) {
     return 0;

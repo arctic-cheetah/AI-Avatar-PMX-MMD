@@ -1,0 +1,8 @@
+{
+  "name": "avatar-yidhari",
+  "private": true,
+  "description": "Editor dependencies for the Yidhari renderer. The page itself still loads Three.js from the CDN.",
+  "dependencies": {
+    "three": "0.170.0"
+  }
+}

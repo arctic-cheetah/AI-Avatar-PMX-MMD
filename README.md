@@ -40,3 +40,13 @@ python3 renderer/serve.py
 ```
 
 Then open `http://127.0.0.1:8770/renderer/`. Do not open the HTML file directly. The PMX is served from the workspace root.
+
+## Editor
+
+The page loads Three.js from a CDN. For VS Code hover and completion, install the matching local package:
+
+```bash
+npm install
+```
+
+`jsconfig.json` points the JavaScript language service at `renderer/`. `node_modules/` is gitignored.

@@ -4,3 +4,8 @@ __pycache__/
 .DS_Store
 models/
 assets/private/
+yidhari-mmd/
+node_modules/
+.*
+.xgrok/
+.grok/

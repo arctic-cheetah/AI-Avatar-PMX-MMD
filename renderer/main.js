@@ -292,6 +292,7 @@ function onModelLoaded(loaded) {
 
   blinkIndex = mesh.morphTargetDictionary?.[BLINK_MORPH] ?? -1;
   expressions = new ExpressionController(mesh, EXPRESSION_CATALOG);
+  expressions.startLoop(3);
   restArms(mesh);
 
   const morphCount = mesh.morphTargetInfluences?.length ?? 0;
@@ -352,6 +353,7 @@ function animate() {
   controls.update();
   updateBlink(now / 1000);
   expressions?.update(delta);
+  updateExpressionButtons();
   outline.render(scene, camera);
 }
 

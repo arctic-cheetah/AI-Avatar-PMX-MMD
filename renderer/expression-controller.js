@@ -15,6 +15,11 @@ export class ExpressionController {
     this.missingMorphs = new Map();
     this.weights = new Map();
     this.targets = new Map();
+    this.looping = false;
+    this.loopTimer = 0;
+    this.loopInterval = 3;
+    this.loopQueue = [];
+    this.loopPosition = 0;
 
     for (const [name, definition] of Object.entries(catalog)) {
       const missing = Object.keys(definition.morphs).filter(
@@ -56,6 +61,7 @@ export class ExpressionController {
   /**
    * Select one mood, fading all other catalogued mood morphs to zero.
    * Neutral clears the mood channel without touching blink or speech.
+   * Manual selection stops any running loop.
    * @param {string} name Semantic expression name, or neutral.
    * @param {number} [weight=1] Mood intensity from 0 to 1.
    * @returns {boolean} Whether the expression was accepted.
@@ -64,7 +70,48 @@ export class ExpressionController {
     if (!this.isAvailable(name) || !Number.isFinite(weight)) {
       return false;
     }
+    this.stopLoop();
+    this.applyExpression(name, weight);
+    return true;
+  }
 
+  /**
+   * Cycle through every available expression, holding each for a fixed time.
+   * Neutral is not included; pass an interval of 0 or less to stop instead.
+   * @param {number} [intervalSeconds=3] Seconds each expression is held.
+   * @returns {boolean} Whether the loop was started.
+   */
+  startLoop(intervalSeconds = 3) {
+    if (!Number.isFinite(intervalSeconds) || intervalSeconds <= 0) {
+      return false;
+    }
+    this.loopQueue = Object.keys(this.catalog).filter((name) => this.isAvailable(name));
+    if (this.loopQueue.length === 0) {
+      return false;
+    }
+    this.looping = true;
+    this.loopInterval = intervalSeconds;
+    this.loopTimer = intervalSeconds;
+    this.loopPosition = 0;
+    this.applyExpression(this.loopQueue[0]);
+    return true;
+  }
+
+  /**
+   * Stop the expression loop. The currently shown expression stays active.
+   * @returns {void}
+   */
+  stopLoop() {
+    this.looping = false;
+  }
+
+  /**
+   * Apply one mood without touching loop state; internal shared path.
+   * @param {string} name Semantic expression name, or neutral.
+   * @param {number} [weight=1] Mood intensity from 0 to 1.
+   * @returns {void}
+   */
+  applyExpression(name, weight = 1) {
     for (const index of this.targets.keys()) {
       this.targets.set(index, 0);
     }
@@ -76,16 +123,24 @@ export class ExpressionController {
       }
     }
     this.activeExpression = name;
-    return true;
   }
 
   /**
    * Ease owned morphs toward their targets for the current animation frame.
+   * When looping, advance to the next expression once the hold time elapses.
    * @param {number} delta Seconds elapsed since the previous frame.
    * @returns {void}
    */
   update(delta) {
     const blend = 1 - Math.exp(-10 * Math.max(0, delta));
+    if (this.looping) {
+      this.loopTimer -= Math.max(0, delta);
+      if (this.loopTimer <= 0) {
+        this.loopPosition = (this.loopPosition + 1) % this.loopQueue.length;
+        this.loopTimer += this.loopInterval;
+        this.applyExpression(this.loopQueue[this.loopPosition]);
+      }
+    }
     for (const [index, current] of this.weights) {
       const target = this.targets.get(index);
       const next = current + (target - current) * blend;

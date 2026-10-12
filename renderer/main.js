@@ -28,10 +28,14 @@ import { ExpressionController } from "./expression-controller.js";
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
 const MODEL_URL = "/yidhari-mmd/伊德海莉.pmx";
 const BLINK_MORPH = "まばたき";
+const WINK_MORPHS = { left: "ウィンク", right: "ウィンク右" };
+const WINK_EASE_RATE = 12;
 
 const statusEl = document.querySelector("#status");
 const canvas = document.querySelector("#view");
 const expressionButtons = document.querySelectorAll("#expression-controls button[data-expression]");
+const winkButtons = document.querySelectorAll("#wink-controls button[data-wink]");
+const loopButton = document.querySelector("#loop-button");
 
 // Scene, camera, and lights. The portrait camera is replaced once the
 // model loads; the initial position only matters before that.
@@ -82,6 +86,11 @@ controls.maxDistance = 80;
 /** @type {THREE.SkinnedMesh | null} */
 let mesh = null;
 let blinkIndex = -1;
+/** @type {{ left: { index: number, weight: number, target: number }, right: { index: number, weight: number, target: number } }} */
+const winks = {
+  left: { index: -1, weight: 0, target: 0 },
+  right: { index: -1, weight: 0, target: 0 },
+};
 /** @type {ExpressionController | null} */
 let expressions = null;
 let previousFrame = performance.now();
@@ -249,6 +258,55 @@ function updateBlink(now) {
 }
 
 /**
+ * Ease each wink morph toward its target. Winks are an independent channel,
+ * like the blink: they layer on top of the mood morphs instead of replacing
+ * them, so a wink survives the 3-second expression loop.
+ * @param {number} delta Seconds elapsed since the previous frame.
+ * @returns {void}
+ */
+function updateWinks(delta) {
+  if (!mesh) {
+    return;
+  }
+  const blend = 1 - Math.exp(-WINK_EASE_RATE * Math.max(0, delta));
+  for (const wink of Object.values(winks)) {
+    if (wink.index < 0) {
+      continue;
+    }
+    wink.weight += (wink.target - wink.weight) * blend;
+    mesh.morphTargetInfluences[wink.index] = wink.weight;
+  }
+}
+
+/**
+ * Reflect each wink channel's target in its preview button.
+ * @returns {void}
+ */
+function updateWinkButtons() {
+  for (const button of winkButtons) {
+    button.setAttribute("aria-pressed", String(winks[button.dataset.wink].target > 0));
+  }
+}
+
+/**
+ * Toggle one wink channel on or off from its preview button.
+ * @param {MouseEvent} event Click event from a wink button.
+ * @returns {void}
+ */
+function toggleWink(event) {
+  const wink = winks[event.currentTarget.dataset.wink];
+  if (!wink || wink.index < 0) {
+    return;
+  }
+  wink.target = wink.target > 0 ? 0 : 1;
+  updateWinkButtons();
+}
+
+for (const button of winkButtons) {
+  button.addEventListener("click", toggleWink);
+}
+
+/**
  * Reflect the controller's active mood in the preview buttons.
  * @returns {void}
  */
@@ -259,6 +317,33 @@ function updateExpressionButtons() {
     ));
   }
 }
+
+/**
+ * Reflect the controller's loop state in the loop toggle button.
+ * @returns {void}
+ */
+function updateLoopButton() {
+  loopButton.setAttribute("aria-pressed", String(expressions?.looping ?? false));
+  loopButton.textContent = expressions?.looping ? "⏸ loop" : "▶ loop";
+}
+
+/**
+ * Start or stop the expression loop from its toggle button.
+ * @returns {void}
+ */
+function toggleLoop() {
+  if (!expressions) {
+    return;
+  }
+  if (expressions.looping) {
+    expressions.stopLoop();
+  } else {
+    expressions.startLoop(3);
+  }
+  updateLoopButton();
+}
+
+loopButton.addEventListener("click", toggleLoop);
 
 /**
  * Toggle the clicked mood preview through the shared expression controller.
@@ -291,6 +376,13 @@ function onModelLoaded(loaded) {
   frameModel(mesh);
 
   blinkIndex = mesh.morphTargetDictionary?.[BLINK_MORPH] ?? -1;
+  for (const [side, morph] of Object.entries(WINK_MORPHS)) {
+    winks[side].index = mesh.morphTargetDictionary?.[morph] ?? -1;
+  }
+  for (const button of winkButtons) {
+    button.disabled = winks[button.dataset.wink].index < 0;
+  }
+  loopButton.disabled = false;
   expressions = new ExpressionController(mesh, EXPRESSION_CATALOG);
   expressions.startLoop(3);
   restArms(mesh);
@@ -352,8 +444,10 @@ function animate() {
   previousFrame = now;
   controls.update();
   updateBlink(now / 1000);
+  updateWinks(delta);
   expressions?.update(delta);
   updateExpressionButtons();
+  updateLoopButton();
   outline.render(scene, camera);
 }
 

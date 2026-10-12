@@ -15,13 +15,15 @@ The renderer currently previews seven semantic moods through `renderer/expressio
 | `[sad-combined]` | `悲しむ` + `真面目` + `口角下げ` | kanashimu + majime + koukaku sage | Experimental local preview |
 | `[neutral]`   | None; fades mood morphs to zero | -                      | Controller action              |
 | Idle blink      | `まばたき`                    | mabataki               | Automatic, independent of mood |
+| `[wink-left]`   | `ウィンク`                    | uinku                  | Toggle, independent channel    |
+| `[wink-right]`  | `ウィンク右`                  | uinku migi             | Toggle, independent channel    |
 
 ## Eye panel — 15 morphs
 
 | PMX morph      | Pronunciation (Romaji) | English label in PMX  | Current use     |
 | -------------- | ---------------------- | --------------------- | --------------- |
-| `ウィンク`   | uinku                  | `Fac_Eye_L_Wink`    | Unmapped        |
-| `ウィンク右` | uinku migi             | `Fac_Eye_R_Wink`    | Unmapped        |
+| `ウィンク`   | uinku                  | `Fac_Eye_L_Wink`    | `[wink-left]`   |
+| `ウィンク右` | uinku migi             | `Fac_Eye_R_Wink`    | `[wink-right]`  |
 | `びっくり`   | bikkuri                | `Fac_Eye_L_Open`    | `[surprised]` |
 | `びっくり左` | bikkuri hidari         | `Fac_Eye_L_Open`    | Unmapped        |
 | `びっくり右` | bikkuri migi           | `Fac_Eye_R_Open`    | Unmapped        |

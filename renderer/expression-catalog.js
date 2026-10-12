@@ -8,7 +8,7 @@ export const EXPRESSION_CATALOG = {
   surprised: { morphs: { "びっくり": 1 } },
   thinking: { morphs: { "じと目": 1 } },
   troubled: { morphs: { "困る": 1 } },
-  angry: { morphs: { "怒り": 1, "怒り目": 1 } },
+  angry: { morphs: { "怒り": 1, "怒り目": 1, "口角下げ": 1 } },
   sad: { morphs: { "悲しむ": 1 } },
   "sad-combined": { morphs: { "悲しむ": 1, "真面目": 1, "口角下げ": 1 } },
 };

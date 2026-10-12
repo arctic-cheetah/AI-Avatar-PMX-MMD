@@ -64,14 +64,16 @@ A dance VMD would move the whole skeleton and fight this pose. Do not download o
 
 1. Load `yidhari-mmd/伊德海莉.pmx` from its current folder. Do not move or rename it. Texture paths are relative to the PMX.
 2. Idle: timer-driven `まばたき`. Body stays bound. Physics keeps hair and cloth alive.
-3. Mood tags set one eye or brow morph, eased in and out:
+3. Mood presets set eye, brow, or experimental mouth morphs, eased in and out:
    - `[happy]` → `笑い`
    - `[surprised]` → `びっくり`
    - `[thinking]` → `じと目`
    - `[angry]` → `怒り` + `怒り目`
    - `[troubled]` → `困る`
+   - `[sad]` → `悲しむ` (eye-only preview)
+   - `[sad-combined]` → `悲しむ` + `真面目` + `口角下げ` (experimental preview)
    - `[neutral]` → clear mood morphs
-   - Local preview buttons exist for happy, surprised, thinking, troubled, and angry. Each selects one eased mood at a time or returns to neutral, and stays disabled until the PMX loads and all its required morphs are found. These buttons do not call the bridge or LLM yet.
+   - Local preview buttons exist for these seven named moods. Each selects one eased mood at a time or returns to neutral, and stays disabled until the PMX loads and all its required morphs are found. These buttons do not call the bridge or LLM yet.
 4. Speech sets `あいうえお` from TTS visemes. Until Piper exists, a simple volume envelope may drive `あ`.
 5. Hand tags set a small pose on wrist and finger bones only, eased over about 300 ms:
    - `rest`
@@ -138,7 +140,7 @@ avatar-yidhari/
 
 1. Ignore `yidhari-mmd/` in git. Done.
 2. Browser page that loads the PMX and blinks. Done in `renderer/`.
-3. Local buttons for happy, surprised, thinking, troubled, and angry use one expression controller, switch between moods, then return to neutral. Done; verify visually in the browser.
+3. Local buttons for five initial moods and two sad variants use one expression controller, switch between moods, then return to neutral. Done; compare the sad variants visually in the browser.
 4. WebSocket on `127.0.0.1:8765` sends the same expression event from `controller/bridge.py`; test with a fixed sentence before connecting `llama-server`.
 5. Connect `llama-server` output to the bridge, then expand mood tags and the four hand poses.
 6. Add TTS and optional voice conversion; drive mouth movement from the final playback audio.

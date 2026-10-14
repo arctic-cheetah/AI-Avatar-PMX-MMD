@@ -1,0 +1,401 @@
+{
+  "neutral": {
+    "description": "Return to a calm resting expression.",
+    "morphs": {}
+  },
+  "happy": {
+    "description": "Express everyday happiness or friendly appreciation.",
+    "morphs": {
+      "笑い": 1
+    }
+  },
+  "surprised": {
+    "description": "React to something unexpected.",
+    "morphs": {
+      "びっくり": 1
+    }
+  },
+  "thinking": {
+    "description": "Pause to consider an idea or work through a question.",
+    "morphs": {
+      "じと目": 1
+    }
+  },
+  "troubled": {
+    "description": "Express concern about a difficult situation.",
+    "morphs": {
+      "困る": 1
+    }
+  },
+  "angry": {
+    "description": "Express clear anger or disapproval.",
+    "morphs": {
+      "怒り": 1,
+      "怒り目": 1,
+      "口角下げ": 1
+    }
+  },
+  "super-angry": {
+    "description": "Express unusually intense anger; use sparingly.",
+    "morphs": {
+      "怒り": 1,
+      "怒り目": 1,
+      "口角下げ": 1,
+      "まばたき": 0.3
+    }
+  },
+  "sad": {
+    "description": "Express quiet sadness.",
+    "morphs": {
+      "悲しむ": 1
+    }
+  },
+  "sad-v2": {
+    "description": "Express more pronounced sadness with brows and mouth.",
+    "morphs": {
+      "悲しむ": 1,
+      "真面目": 1,
+      "口角下げ": 1,
+      "困る": 1
+    }
+  },
+  "sad-sceptical": {
+    "description": "Express sadness mixed with doubt.",
+    "morphs": {
+      "悲しむ": 1,
+      "真面目": 1,
+      "口角下げ": 1,
+      "困る": 1,
+      "にやり２": 1
+    }
+  },
+  "disappointed": {
+    "description": "React to an unmet expectation or letdown.",
+    "morphs": {
+      "悲しむ": 1,
+      "真面目": 1,
+      "口角下げ": 1,
+      "困る": 1,
+      "じと目": 1
+    }
+  },
+  "wtf-dude": {
+    "description": "React with informal, exasperated disbelief; use sparingly.",
+    "morphs": {
+      "悲しむ": 1,
+      "真面目": 1,
+      "口角下げ": 1,
+      "困る": 1,
+      "じと目": 1,
+      "口横狭め": 1,
+      "怒り": 0.2
+    }
+  },
+  "cry": {
+    "description": "Express tearful distress; this preset does not generate tears.",
+    "morphs": {
+      "笑い": 0.25,
+      "じと目": 0.25,
+      "悲しむ": 1,
+      "あ": 0.15,
+      "口角下げ": 1,
+      "真面目": 0.4,
+      "困る": 1,
+      "下左": 0.3,
+      "下右": 0.3
+    }
+  },
+  "joyful": {
+    "description": "Express warm, exuberant happiness.",
+    "morphs": {
+      "笑い": 1,
+      "にこり": 1,
+      "口角上げ": 0.8
+    }
+  },
+  "soft-smile": {
+    "description": "Offer gentle reassurance or a friendly greeting.",
+    "morphs": {
+      "にこり": 0.8,
+      "口角上げ": 0.5
+    }
+  },
+  "grin": {
+    "description": "Express broad amusement or delight.",
+    "morphs": {
+      "笑い": 0.6,
+      "ワ２": 0.8,
+      "口角上げ": 0.6
+    }
+  },
+  "smug": {
+    "description": "Express playful self-satisfaction.",
+    "morphs": {
+      "にやり": 1,
+      "じと目": 0.6,
+      "上右": 0.5
+    }
+  },
+  "mischievous": {
+    "description": "Accompany light teasing or a playful idea.",
+    "morphs": {
+      "にやり２": 1,
+      "笑い": 0.5,
+      "にこり右": 0.5
+    }
+  },
+  "shocked": {
+    "description": "React to a major unexpected revelation.",
+    "morphs": {
+      "びっくり": 1,
+      "□": 0.9,
+      "上": 1
+    }
+  },
+  "gasp": {
+    "description": "Express a sudden sharp surprise.",
+    "morphs": {
+      "びっくり": 1,
+      "ワ": 0.7,
+      "上": 0.7
+    }
+  },
+  "worried": {
+    "description": "Express concern about an uncertain outcome.",
+    "morphs": {
+      "困る": 1,
+      "真面目": 0.7,
+      "口角下げ": 0.5,
+      "口横広げ": 0.15
+    }
+  },
+  "embarrassed": {
+    "description": "React to an awkward moment or minor mistake.",
+    "morphs": {
+      "困る": 0.8,
+      "笑い": 0.4,
+      "口横狭め": 0.5,
+      "あ": 0.15
+    }
+  },
+  "annoyed": {
+    "description": "Express mild irritation.",
+    "morphs": {
+      "怒り目": 0.7,
+      "怒り": 0.4,
+      "口角下げ": 0.7,
+      "じと目": 0.3
+    }
+  },
+  "sulky": {
+    "description": "Express lingering, subdued displeasure.",
+    "morphs": {
+      "怒り": 0.5,
+      "口角下げ": 1,
+      "口横狭め": 0.6,
+      "悲しむ": 0.4
+    }
+  },
+  "serious": {
+    "description": "Discuss something that calls for focused attention.",
+    "morphs": {
+      "真面目": 1,
+      "怒り目２": 0.4,
+      "前": 0.4
+    }
+  },
+  "frown": {
+    "description": "Express disapproval or dissatisfaction.",
+    "morphs": {
+      "下": 1,
+      "口角下げ": 1,
+      "前": 0.5
+    }
+  },
+  "sleepy": {
+    "description": "Express tiredness or drowsiness.",
+    "morphs": {
+      "じと目": 1,
+      "下": 0.4
+    }
+  },
+  "tender": {
+    "description": "Offer affection, care, or gentle comfort.",
+    "morphs": {
+      "にこり": 1,
+      "口角上げ": 0.35,
+      "下眼上": 0.35
+    }
+  },
+  "relieved": {
+    "description": "React when a worry or difficulty has passed.",
+    "morphs": {
+      "笑い": 0.45,
+      "にこり": 0.75,
+      "口角上げ": 0.4,
+      "じと目": 0.2
+    }
+  },
+  "excited": {
+    "description": "Express eager enthusiasm or anticipation.",
+    "morphs": {
+      "びっくり": 0.55,
+      "笑い": 0.85,
+      "ワ２": 0.5,
+      "上": 0.7,
+      "にこり": 0.55
+    }
+  },
+  "lovestruck": {
+    "description": "Express romantic affection when appropriate to the conversation.",
+    "morphs": {
+      "笑い": 0.7,
+      "にこり": 1,
+      "口角上げ": 0.55,
+      "下眼上": 0.45,
+      "あ": 0.1
+    }
+  },
+  "cocky": {
+    "description": "Express playful, exaggerated confidence.",
+    "morphs": {
+      "にやり２": 1,
+      "上右": 0.75,
+      "じと目": 0.3,
+      "口角上げ": 0.35
+    }
+  },
+  "skeptical": {
+    "description": "Question a claim or express doubt.",
+    "morphs": {
+      "上左": 0.85,
+      "じと目": 0.45,
+      "にやり": 0.45,
+      "口角下げ": 0.2
+    }
+  },
+  "confused": {
+    "description": "Express uncertainty or difficulty understanding.",
+    "morphs": {
+      "上左": 0.7,
+      "下右": 0.55,
+      "困る": 0.45,
+      "あ": 0.2,
+      "口横狭め": 0.3
+    }
+  },
+  "suspicious": {
+    "description": "Express doubt about a motive or explanation.",
+    "morphs": {
+      "じと目": 0.85,
+      "怒り目": 0.3,
+      "にやり": 0.4,
+      "前左": 0.5
+    }
+  },
+  "nervous": {
+    "description": "Express apprehension about what may happen.",
+    "morphs": {
+      "困る": 0.9,
+      "口横狭め": 0.55,
+      "あ": 0.2,
+      "上左": 0.35,
+      "下右": 0.25
+    }
+  },
+  "shy": {
+    "description": "Express hesitant warmth or social bashfulness.",
+    "morphs": {
+      "困る": 0.65,
+      "じと目": 0.5,
+      "口横狭め": 0.6,
+      "にこり": 0.3,
+      "口角下げ": 0.15
+    }
+  },
+  "flustered": {
+    "description": "React with momentary awkwardness or overwhelm.",
+    "morphs": {
+      "困る": 1,
+      "びっくり": 0.4,
+      "口横狭め": 0.4,
+      "あ": 0.25,
+      "上": 0.35
+    }
+  },
+  "scared": {
+    "description": "Express fear or alarm.",
+    "morphs": {
+      "びっくり": 1,
+      "困る": 0.8,
+      "悲しむ": 0.4,
+      "ワ": 0.5,
+      "上": 0.65
+    }
+  },
+  "disgusted": {
+    "description": "Express strong aversion or revulsion.",
+    "morphs": {
+      "怒り目": 0.45,
+      "眼角下": 0.55,
+      "口角下げ": 0.85,
+      "口横狭め": 0.7,
+      "下": 0.4
+    }
+  },
+  "pleading": {
+    "description": "Make an earnest, emotionally vulnerable appeal.",
+    "morphs": {
+      "悲しむ": 0.85,
+      "困る": 1,
+      "上": 0.4,
+      "口角下げ": 0.35,
+      "あ": 0.12
+    }
+  },
+  "determined": {
+    "description": "Express resolve to follow through.",
+    "morphs": {
+      "怒り目": 0.5,
+      "真面目": 0.85,
+      "前": 0.65,
+      "口横狭め": 0.4
+    }
+  },
+  "yelling": {
+    "description": "Express a forceful outburst visually; does not change audio volume.",
+    "morphs": {
+      "怒り": 0.85,
+      "怒り目": 0.8,
+      "□": 1,
+      "上": 0.4,
+      "前": 0.35
+    }
+  },
+  "pout": {
+    "description": "Express playful displeasure.",
+    "morphs": {
+      "口角下げ": 1,
+      "口横狭め": 0.85,
+      "怒り": 0.3,
+      "じと目": 0.35
+    }
+  },
+  "unimpressed": {
+    "description": "React with flat dissatisfaction or lack of enthusiasm.",
+    "morphs": {
+      "じと目": 1,
+      "口角下げ": 0.6,
+      "怒り目２": 0.35
+    }
+  },
+  "hopeful": {
+    "description": "Express optimism about a possible outcome.",
+    "morphs": {
+      "上": 0.65,
+      "にこり": 0.5,
+      "口角上げ": 0.4,
+      "びっくり": 0.2
+    }
+  }
+}

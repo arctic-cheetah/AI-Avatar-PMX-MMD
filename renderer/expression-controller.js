@@ -18,6 +18,7 @@ export class ExpressionController {
     this.looping = false;
     this.loopTimer = 0;
     this.loopInterval = 3;
+    this.loopWeight = 1;
     this.loopQueue = [];
     this.loopPosition = 0;
 
@@ -77,12 +78,13 @@ export class ExpressionController {
 
   /**
    * Cycle through every available expression, holding each for a fixed time.
-   * Neutral is not included; pass an interval of 0 or less to stop instead.
+   * Includes each available catalog entry. Non-positive intervals are rejected.
    * @param {number} [intervalSeconds=3] Seconds each expression is held.
+   * @param {number} [weight=1] Intensity for every loop step.
    * @returns {boolean} Whether the loop was started.
    */
-  startLoop(intervalSeconds = 3) {
-    if (!Number.isFinite(intervalSeconds) || intervalSeconds <= 0) {
+  startLoop(intervalSeconds = 3, weight = 1) {
+    if (!Number.isFinite(intervalSeconds) || intervalSeconds <= 0 || !Number.isFinite(weight)) {
       return false;
     }
     this.loopQueue = Object.keys(this.catalog).filter((name) => this.isAvailable(name));
@@ -93,12 +95,23 @@ export class ExpressionController {
     this.loopInterval = intervalSeconds;
     this.loopTimer = intervalSeconds;
     this.loopPosition = 0;
-    this.applyExpression(this.loopQueue[0]);
+    this.loopWeight = weight;
+    this.applyExpression(this.loopQueue[0], weight);
     return true;
   }
 
-  /**
-   * Stop the expression loop. The currently shown expression stays active.
+  /** Rescale the active mood and loop without stopping either.
+   * @param {number} weight Intensity from 0 to 1.
+   * @returns {boolean} Whether the value was accepted.
+   */
+  setIntensity(weight) {
+    if (!Number.isFinite(weight)) return false;
+    this.loopWeight = weight;
+    this.applyExpression(this.activeExpression, weight);
+    return true;
+  }
+
+  /** Stop cycling while retaining the current expression.
    * @returns {void}
    */
   stopLoop() {
@@ -138,7 +151,7 @@ export class ExpressionController {
       if (this.loopTimer <= 0) {
         this.loopPosition = (this.loopPosition + 1) % this.loopQueue.length;
         this.loopTimer += this.loopInterval;
-        this.applyExpression(this.loopQueue[this.loopPosition]);
+        this.applyExpression(this.loopQueue[this.loopPosition], this.loopWeight);
       }
     }
     for (const [index, current] of this.weights) {

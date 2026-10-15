@@ -9,6 +9,7 @@
 //   2. Frame a bust portrait.
 //   3. Drop the arms out of the PMX T-pose.
 //   4. Blink on a timer and preview facial expressions.
+//   5. Audition every PMX morph on a manual layer (see morph-audition.js).
 //
 // What it does not own yet:
 //   LLM mood tags, hand poses, lip sync, WebSocket, hair/coat physics.
@@ -22,20 +23,50 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { MMDLoader } from "three/addons/loaders/MMDLoader.js";
 import { OutlineEffect } from "three/addons/effects/OutlineEffect.js";
-import { EXPRESSION_CATALOG } from "./expression-catalog.js";
+import { loadExpressionCatalog } from "./expression-catalog.js";
 import { ExpressionController } from "./expression-controller.js";
+import { MorphAudition, buildMorphInventory } from "./morph-audition.js";
+import { AuditionPanel } from "./audition-panel.js";
+import { connectBridge } from "./bridge-client.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
 const MODEL_URL = "/yidhari-mmd/伊德海莉.pmx";
 const BLINK_MORPH = "まばたき";
 const WINK_MORPHS = { left: "ウィンク", right: "ウィンク右" };
 const WINK_EASE_RATE = 12;
+// Camera distances in PMX units from the head bone.
+const FRAMING = { bust: 13, face: 8 };
 
 const statusEl = document.querySelector("#status");
+const EXPRESSION_CATALOG = await loadExpressionCatalog().catch((error) => {
+  statusEl.textContent = "Could not load expressions.json. Check the catalog and reload.";
+  throw error;
+});
 const canvas = document.querySelector("#view");
-const expressionButtons = document.querySelectorAll("#expression-controls button[data-expression]");
+const expressionControls = document.querySelector("#expression-controls");
 const winkButtons = document.querySelectorAll("#wink-controls button[data-wink]");
 const loopButton = document.querySelector("#loop-button");
+const editPresetButton = document.querySelector("#edit-preset-button");
+const intensityInput = document.querySelector("#intensity");
+const intensityOutput = document.querySelector("#intensity-value");
+const blinkToggle = document.querySelector("#blink-toggle");
+const frameButtons = {
+  face: document.querySelector("#frame-face-button"),
+  bust: document.querySelector("#frame-bust-button"),
+};
+
+// One preview button per catalog mood, so new catalog entries appear here.
+const expressionButtons = Object.entries(EXPRESSION_CATALOG).map(([name, definition]) => {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.dataset.expression = name;
+  button.title = definition.description;
+  button.setAttribute("aria-pressed", "false");
+  button.disabled = true;
+  button.textContent = `[${name}] · ${Object.keys(definition.morphs).join(" + ")}`;
+  expressionControls.append(button);
+  return button;
+});
 
 // Scene, camera, and lights. The portrait camera is replaced once the
 // model loads; the initial position only matters before that.
@@ -93,6 +124,12 @@ const winks = {
 };
 /** @type {ExpressionController | null} */
 let expressions = null;
+/** @type {MorphAudition | null} */
+let audition = null;
+/** @type {AuditionPanel | null} */
+let auditionPanel = null;
+/** @type {THREE.Vector3 | null} Head position used by the camera framings. */
+let headTarget = null;
 let previousFrame = performance.now();
 /** @type {{ start: number, close: number, hold: number, open: number } | null} */
 let blink = null;
@@ -107,13 +144,14 @@ function setStatus(text) {
 }
 
 /**
- * Match the camera and both renderers to the browser viewport.
+ * Match the camera and both renderers to the canvas, which shares the
+ * window with the test bench panel.
  * OutlineEffect maintains its own size, separate from WebGLRenderer.
  * @returns {void}
  */
 function resize() {
-  const width = window.innerWidth;
-  const height = window.innerHeight;
+  const width = Math.max(1, canvas.clientWidth);
+  const height = Math.max(1, canvas.clientHeight);
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
   renderer.setSize(width, height, false);
@@ -137,7 +175,7 @@ function boneWorld(object, name) {
 
 /**
  * Plant the PMX on y=0 and frame a bust portrait around its head.
- * The camera distance of 13 PMX units includes the face and shoulders.
+ * The bust distance of 13 PMX units includes the face and shoulders.
  * @param {THREE.SkinnedMesh} object Loaded PMX mesh.
  * @returns {void}
  */
@@ -148,18 +186,39 @@ function frameModel(object) {
   object.updateMatrixWorld(true);
 
   const head = boneWorld(object, "頭");
-  const lookAt = head
+  headTarget = head
     ? new THREE.Vector3(head.x, head.y, head.z)
     : new THREE.Vector3(0, 15.0, 0);
-  controls.target.copy(lookAt);
-  camera.position.set(lookAt.x, lookAt.y, lookAt.z + 13);
   camera.near = 0.05;
   camera.far = 400;
   camera.updateProjectionMatrix();
-  controls.minDistance = 3;
+  controls.minDistance = 2;
   controls.maxDistance = 80;
-  controls.update();
+  frameCamera("bust");
   floor.scale.setScalar(Math.max(18, (head ? head.y : 22) * 0.9));
+}
+
+/**
+ * Point the camera straight at the head from a preset distance.
+ * The head bone sits near the jaw, so the face framing aims slightly higher.
+ * @param {"face" | "bust"} framing Preset from FRAMING.
+ * @returns {void}
+ */
+function frameCamera(framing) {
+  if (!headTarget) {
+    return;
+  }
+  const lookAt = headTarget.clone();
+  if (framing === "face") {
+    lookAt.y += headTarget.y * 0.02;
+  }
+  controls.target.copy(lookAt);
+  camera.position.set(lookAt.x, lookAt.y, lookAt.z + FRAMING[framing]);
+  controls.update();
+}
+
+for (const [framing, button] of Object.entries(frameButtons)) {
+  button.addEventListener("click", () => frameCamera(framing));
 }
 
 const parentDown = new THREE.Vector3();
@@ -254,7 +313,8 @@ function updateBlink(now) {
   if (blinkIndex < 0 || !mesh) {
     return;
   }
-  mesh.morphTargetInfluences[blinkIndex] = blinkWeightAt(now);
+  const weight = blinkWeightAt(now);
+  mesh.morphTargetInfluences[blinkIndex] = blinkToggle.checked ? weight : 0;
 }
 
 /**
@@ -316,6 +376,7 @@ function updateExpressionButtons() {
       expressions?.activeExpression === button.dataset.expression,
     ));
   }
+  editPresetButton.disabled = !expressions || expressions.activeExpression === "neutral";
 }
 
 /**
@@ -338,7 +399,8 @@ function toggleLoop() {
   if (expressions.looping) {
     expressions.stopLoop();
   } else {
-    expressions.startLoop(3);
+    audition?.stopSweep();
+    expressions.startLoop(3, Number(intensityInput.value));
   }
   updateLoopButton();
 }
@@ -347,6 +409,7 @@ loopButton.addEventListener("click", toggleLoop);
 
 /**
  * Toggle the clicked mood preview through the shared expression controller.
+ * Stops a morph sweep, but keeps manual sliders so they can layer on the mood.
  * @param {MouseEvent} event Click event from a preview button.
  * @returns {void}
  */
@@ -356,7 +419,8 @@ function toggleExpression(event) {
   }
   const name = event.currentTarget.dataset.expression;
   const next = expressions.activeExpression === name ? "neutral" : name;
-  if (expressions.setExpression(next)) {
+  if (expressions.setExpression(next, Number(intensityInput.value))) {
+    audition?.stopSweep();
     updateExpressionButtons();
   }
 }
@@ -366,11 +430,65 @@ for (const button of expressionButtons) {
 }
 
 /**
- * Add the loaded PMX to the scene and initialize its pose and face controls.
- * @param {THREE.SkinnedMesh} loaded Mesh supplied by MMDLoader.
+ * Rescale the active mood, or the loop, to the intensity slider.
  * @returns {void}
  */
-function onModelLoaded(loaded) {
+function changeIntensity() {
+  const weight = Number(intensityInput.value);
+  intensityOutput.value = weight.toFixed(2);
+  expressions?.setIntensity(weight);
+}
+
+intensityInput.addEventListener("input", changeIntensity);
+
+/**
+ * Copy the active mood, at the current intensity, into the manual sliders and
+ * clear the mood so the combination can be tuned morph by morph.
+ * @returns {void}
+ */
+function editPresetInSliders() {
+  if (!expressions || !audition || expressions.activeExpression === "neutral") {
+    return;
+  }
+  const intensity = Number(intensityInput.value);
+  const morphs = {};
+  for (const [morph, weight] of Object.entries(EXPRESSION_CATALOG[expressions.activeExpression].morphs)) {
+    morphs[morph] = weight * intensity;
+  }
+  audition.clear();
+  audition.setWeights(morphs);
+  expressions.setExpression("neutral");
+}
+
+editPresetButton.addEventListener("click", editPresetInSliders);
+
+/**
+ * List which mood presets and independent channels drive each morph,
+ * so overlaps are visible next to the audition sliders.
+ * @returns {Map<string, string[]>} Users by PMX morph name.
+ */
+function buildMorphUsage() {
+  const usage = new Map();
+  const add = (morph, user) => usage.set(morph, [...(usage.get(morph) ?? []), user]);
+  for (const [name, definition] of Object.entries(EXPRESSION_CATALOG)) {
+    for (const morph of Object.keys(definition.morphs)) {
+      add(morph, name);
+    }
+  }
+  add(BLINK_MORPH, "blink");
+  for (const [side, morph] of Object.entries(WINK_MORPHS)) {
+    add(morph, `wink-${side}`);
+  }
+  return usage;
+}
+
+/**
+ * Add the loaded PMX to the scene and initialize its pose and face controls.
+ * @param {THREE.SkinnedMesh} loaded Mesh supplied by MMDLoader.
+ * @param {{ morphs: { name: string, englishName: string, panel: number }[] }} data Parsed PMX.
+ * @returns {void}
+ */
+function onModelLoaded(loaded, data) {
   mesh = loaded;
   scene.add(mesh);
   frameModel(mesh);
@@ -382,9 +500,39 @@ function onModelLoaded(loaded) {
   for (const button of winkButtons) {
     button.disabled = winks[button.dataset.wink].index < 0;
   }
-  loopButton.disabled = false;
+  for (const control of [loopButton, editPresetButton, intensityInput, blinkToggle,
+    frameButtons.face, frameButtons.bust]) {
+    control.disabled = false;
+  }
+  blinkToggle.disabled = blinkIndex < 0;
   expressions = new ExpressionController(mesh, EXPRESSION_CATALOG);
-  expressions.startLoop(3);
+  expressions.startLoop(3, Number(intensityInput.value));
+  audition = new MorphAudition(mesh, buildMorphInventory(data, mesh));
+  // Local preview hook for the morph test bench. Not part of the mood API.
+  globalThis.__yidhariPreview = {
+    expressions,
+    audition,
+    frameCamera,
+    /**
+     * Hold one morph combination still, above the mood loop, for visual checks.
+     * @param {Record<string, number>} morphs PMX morph names and weights.
+     * @returns {void}
+     */
+    hold(morphs) {
+      expressions.stopLoop();
+      expressions.setExpression("neutral");
+      audition.clear();
+      audition.setWeights(morphs);
+      blinkToggle.checked = false;
+      frameCamera("face");
+      globalThis.__yidhariHold = morphs;
+    },
+  };
+  auditionPanel = new AuditionPanel(audition, {
+    usage: buildMorphUsage(),
+    onManualEdit: () => expressions.stopLoop(),
+    onTakeover: () => expressions.setExpression("neutral"),
+  });
   restArms(mesh);
 
   const morphCount = mesh.morphTargetInfluences?.length ?? 0;
@@ -400,6 +548,28 @@ function onModelLoaded(loaded) {
     ? `Ready · ${morphCount} morphs · unavailable: ${unavailable.join("; ")}`
     : `Ready · ${morphCount} morphs`);
   scheduleBlink(performance.now() / 1000);
+  const transcript = document.querySelector('#bridge-transcript');
+  connectBridge({
+    catalog: EXPRESSION_CATALOG,
+    onStart: () => {
+      for (const section of document.querySelectorAll('#panel > section:not(:first-child)')) section.inert = true;
+      expressions.stopLoop();
+      audition.stopSweep();
+      audition.clear();
+      globalThis.__yidhariHold = null;
+      for (const wink of Object.values(winks)) wink.target = 0;
+      transcript.textContent = '';
+    },
+    onFinish: () => {
+      for (const section of document.querySelectorAll('#panel > section:not(:first-child)')) section.inert = false;
+    },
+    onExpression: (name, weight) => {
+      if (!expressions.setExpression(name, weight)) console.warn('Unavailable expression', name);
+      intensityInput.value = String(weight);
+      intensityOutput.value = weight.toFixed(2);
+    },
+    onText: (text) => { transcript.textContent = (transcript.textContent + text).slice(-50000); },
+  });
 }
 
 /**
@@ -426,16 +596,30 @@ function onModelError(error) {
 
 /**
  * Start loading the local PMX and register its completion callbacks.
+ * This is MMDLoader.load split in two, so the parsed PMX (morph panels and
+ * English labels) stays available to the audition panel after the build.
  * @returns {void}
  */
 function loadModel() {
   setStatus("Loading PMX…");
   const loader = new MMDLoader();
-  loader.load(MODEL_URL, onModelLoaded, onModelProgress, onModelError);
+  const resourcePath = THREE.LoaderUtils.extractUrlBase(MODEL_URL);
+  loader.loadPMX(MODEL_URL, (data) => {
+    try {
+      const built = loader.meshBuilder
+        .setCrossOrigin(loader.crossOrigin)
+        .build(data, resourcePath, onModelProgress, onModelError);
+      onModelLoaded(built, data);
+    } catch (error) {
+      onModelError(error);
+    }
+  }, onModelProgress, onModelError);
 }
 
 /**
  * Update controls and face morphs, then render the current frame.
+ * Every morph starts the frame at zero; each channel writes its own morphs
+ * and the audition layer adds on top last.
  * @returns {void}
  */
 function animate() {
@@ -443,15 +627,25 @@ function animate() {
   const delta = Math.min((now - previousFrame) / 1000, 0.1);
   previousFrame = now;
   controls.update();
+  mesh?.morphTargetInfluences?.fill(0);
   updateBlink(now / 1000);
   updateWinks(delta);
   expressions?.update(delta);
+  audition?.update(delta);
+  audition?.apply();
+  // A held preview wins the frame so a visual check is not overwritten by the mood loop.
+  if (globalThis.__yidhariHold && mesh) {
+    mesh.morphTargetInfluences.fill(0);
+    audition.setWeights(globalThis.__yidhariHold);
+    audition.apply();
+  }
   updateExpressionButtons();
   updateLoopButton();
+  auditionPanel?.refresh();
   outline.render(scene, camera);
 }
 
 resize();
-window.addEventListener("resize", resize);
+new ResizeObserver(resize).observe(canvas);
 renderer.setAnimationLoop(animate);
 loadModel();

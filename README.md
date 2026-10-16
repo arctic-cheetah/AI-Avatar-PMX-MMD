@@ -33,7 +33,7 @@ avatar-yidhari/
 
 ## Status
 
-The first renderer page loads `yidhari-mmd/伊德海莉.pmx` and blinks. The model pack stays local and is gitignored.
+The renderer page loads `yidhari-mmd/伊德海莉.pmx`, blinks, and doubles as a facial morph test bench: mood presets from the catalog, wink and blink channels, and a slider for every PMX morph. The model pack stays local and is gitignored.
 
 ```bash
 python3 renderer/serve.py

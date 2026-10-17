@@ -8,15 +8,22 @@ Runs under Applio's own Python environment, never the avatar's:
 Only the standard library and Applio's own packages may be imported here.
 
 Protocol: one JSON object per line. After loading and a warm-up conversion it
-writes {"ready": true, ...}. Each request {"id", "text", "source", "output"}
-gets one reply {"id", "ok", ...} in request order. Applio's own prints go to
-stderr so stdout carries only protocol lines.
+writes {"ready": true, ...}. Each request {"id", "run", "text", "source",
+"output"} gets one reply {"id", "ok", ...}. {"cancel": "<run>"} drops that run's
+requests that have not started RVC yet (reply: ok false, cancelled true).
+Applio's own prints go to stderr so stdout carries only protocol lines.
+
+Requests are pipelined: Edge TTS for later sentences runs while RVC converts an
+earlier one. RVC runs on one thread, strictly in request order, so replies come
+back in order unless a request fails or is cancelled.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 import math
 import os
 import struct
@@ -26,6 +33,88 @@ import time
 import wave
 
 EDGE_ATTEMPTS = 3
+EDGE_CONCURRENCY = 2  # more parallel Edge requests make HTTP 429 likelier
+
+
+class Pipeline:
+    """Run Edge ahead of RVC while keeping RVC serial and in request order.
+
+    ``edge(text, path)`` is a coroutine returning retries used; ``convert(source,
+    output)`` is a blocking call run on one dedicated thread. ``reply`` receives
+    each result dict. Standard library only, so it can be tested without Applio.
+    """
+
+    def __init__(self, edge, convert, reply, edge_concurrency: int = EDGE_CONCURRENCY):
+        self.edge, self.convert, self.reply = edge, convert, reply
+        self.edge_slots = asyncio.Semaphore(edge_concurrency)
+        self.rvc_thread = ThreadPoolExecutor(max_workers=1, thread_name_prefix='rvc')
+        self.cancelled_runs: set[str] = set()
+        self.previous: asyncio.Task | None = None
+        self.tasks: set[asyncio.Task] = set()
+
+    def submit(self, request: dict) -> None:
+        task = asyncio.create_task(self._process(request, self.previous))
+        self.previous = task
+        self.tasks.add(task)
+        task.add_done_callback(self.tasks.discard)
+
+    def cancel(self, run: str) -> None:
+        self.cancelled_runs.add(run)
+
+    def _cancelled(self, request: dict) -> bool:
+        return request.get('run') is not None and request['run'] in self.cancelled_runs
+
+    async def _process(self, request: dict, previous: asyncio.Task | None) -> None:
+        request_id = request.get('id')
+        try:
+            if self._cancelled(request):
+                self.reply({'id': request_id, 'ok': False, 'cancelled': True})
+                return
+            started = time.perf_counter()
+            async with self.edge_slots:
+                retries = await self.edge(request['text'], request['source'])
+            edge_seconds = time.perf_counter() - started
+            # RVC strictly in request order: wait for the previous request to finish.
+            if previous is not None:
+                await asyncio.wait([previous])
+            if self._cancelled(request):
+                self.reply({'id': request_id, 'ok': False, 'cancelled': True})
+                return
+            started = time.perf_counter()
+            await asyncio.get_running_loop().run_in_executor(
+                self.rvc_thread, self.convert, request['source'], request['output'])
+            self.reply({'id': request_id, 'ok': True, 'edgeSeconds': round(edge_seconds, 2),
+                        'edgeRetries': retries, 'rvcSeconds': round(time.perf_counter() - started, 2)})
+        except Exception as error:
+            self.reply({'id': request_id, 'ok': False, 'error': f'{type(error).__name__}: {error}'[:800]})
+
+    async def drain(self) -> None:
+        if self.tasks:
+            await asyncio.wait(set(self.tasks))
+        self.rvc_thread.shutdown(wait=True)
+
+
+async def serve_lines(lines: asyncio.Queue, pipeline: Pipeline, reply) -> None:
+    """Dispatch protocol lines until end of input (None)."""
+    while (line := await lines.get()) is not None:
+        try:
+            message = json.loads(line)
+            if not isinstance(message, dict):
+                raise ValueError('request must be an object')
+            if 'cancel' in message:
+                pipeline.cancel(str(message['cancel']))
+            else:
+                pipeline.submit(message)
+        except Exception as error:
+            reply({'id': None, 'ok': False, 'error': f'{type(error).__name__}: {error}'[:800]})
+    await pipeline.drain()
+
+
+def read_stdin(loop: asyncio.AbstractEventLoop, lines: asyncio.Queue) -> None:
+    """Thread: forward stdin lines to the event loop, then None at end of input."""
+    for line in sys.stdin:
+        loop.call_soon_threadsafe(lines.put_nowait, line)
+    loop.call_soon_threadsafe(lines.put_nowait, None)
 
 
 def protocol_stream():
@@ -51,6 +140,9 @@ def write_tone(path: str, seconds: float = 1.0, rate: int = 16000) -> None:
 class Worker:
     def __init__(self, settings: dict):
         sys.path.insert(0, os.getcwd())
+        if settings.get('rvc_threads'):
+            import torch
+            torch.set_num_threads(int(settings['rvc_threads']))
         import edge_tts
         from rvc.lib.tools.edge_tts_patch import apply_edge_tts_fix
         from rvc.infer.infer import VoiceConverter
@@ -91,15 +183,6 @@ class Worker:
                 await asyncio.sleep(1 + attempt)
         raise AssertionError('unreachable')
 
-    def handle(self, request: dict) -> dict:
-        started = time.perf_counter()
-        retries = asyncio.run(self.edge(request['text'], request['source']))
-        edge_seconds = time.perf_counter() - started
-        started = time.perf_counter()
-        self.convert(request['source'], request['output'])
-        return {'edgeSeconds': round(edge_seconds, 2), 'edgeRetries': retries,
-                'rvcSeconds': round(time.perf_counter() - started, 2)}
-
 
 def main() -> None:
     replies = protocol_stream()
@@ -110,14 +193,11 @@ def main() -> None:
     load_seconds = time.perf_counter() - started
     reply({'ready': True, 'loadSeconds': round(load_seconds, 2),
            'warmSeconds': round(worker.warm_up(), 2)})
-    for line in sys.stdin:
-        request = {}
-        try:
-            request = json.loads(line)
-            reply({'id': request['id'], 'ok': True, **worker.handle(request)})
-        except Exception as error:
-            reply({'id': request.get('id') if isinstance(request, dict) else None,
-                   'ok': False, 'error': f'{type(error).__name__}: {error}'[:800]})
+    async def run() -> None:
+        lines: asyncio.Queue = asyncio.Queue()
+        threading.Thread(target=read_stdin, args=(asyncio.get_running_loop(), lines), daemon=True).start()
+        await serve_lines(lines, Pipeline(worker.edge, worker.convert, reply), reply)
+    asyncio.run(run())
 
 
 if __name__ == '__main__':

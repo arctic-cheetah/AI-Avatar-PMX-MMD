@@ -1,9 +1,10 @@
 """Turn streamed LLM text into spoken, lip-synced clips.
 
 Each completed sentence is synthesised by a persistent Applio worker
-(Edge TTS -> RVC, model kept loaded; see applio_worker.py), aligned with
-Rhubarb, and announced to the renderer as a clip ID. Sentences are processed
-one at a time, in order.
+(Edge TTS -> RVC, model kept loaded; see applio_worker.py), trimmed of silence
+and tail breaths (speech_trim.py), aligned with Rhubarb, and announced to the
+renderer as a clip ID. The worker pipelines Edge ahead of RVC; the bridge keeps
+a few sentences in flight and announces them in order.
 
 Clips are written to ``assets/private/speech/live/`` (gitignored). Only the
 generated ID crosses the WebSocket; the renderer builds the URL itself.
@@ -21,6 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from controller.speech_align import align
+from controller.speech_trim import trim_clip
 
 ROOT = Path(__file__).resolve().parents[1]
 LIVE_DIR = ROOT / 'assets' / 'private' / 'speech' / 'live'
@@ -50,13 +52,15 @@ class ApplioSettings:
     embedder: str = 'contentvec'
     sid: int = 0
     recognizer: str = 'phonetic'
+    rvc_threads: int = 0  # PyTorch CPU threads for RVC; 0 keeps PyTorch's default
 
     def worker_config(self) -> dict:
         """Settings in the form applio_worker.py expects."""
         return {'pth': str(self.pth), 'index': str(self.index), 'voice': self.voice,
                 'rate': self.rate, 'pitch': self.pitch, 'index_rate': self.index_rate,
                 'volume_envelope': self.volume_envelope, 'protect': self.protect,
-                'f0_method': self.f0_method, 'embedder': self.embedder, 'sid': self.sid}
+                'f0_method': self.f0_method, 'embedder': self.embedder, 'sid': self.sid,
+                'rvc_threads': self.rvc_threads}
 
     def check(self) -> None:
         """Fail early, before the first sentence, if Applio is not where expected."""
@@ -140,7 +144,8 @@ class ApplioWorker:
     """Bridge-side handle on applio_worker.py: started once, kept warm, restarted if it dies.
 
     Replies are matched to requests by ID, so a cancelled request's late reply
-    is simply dropped. The worker serves requests one at a time, in order.
+    is simply dropped. Requests carry a run ID so a cancelled reply's queued
+    sentences can be dropped by the worker (see applio_worker.py).
     """
 
     def __init__(self, settings: ApplioSettings, command: list[str] | None = None,
@@ -197,19 +202,25 @@ class ApplioWorker:
                 future.set_exception(RuntimeError(f'Applio worker exited; see {self.log_path}'))
         pending.clear()
 
-    async def request(self, text: str, source: Path, output: Path) -> dict:
+    async def request(self, text: str, source: Path, output: Path, run: str | None = None) -> dict:
         """Synthesise ``text`` with Edge TTS into ``source``, convert into ``output``."""
         await self.start()
         request_id = secrets.token_hex(8)
         future = asyncio.get_running_loop().create_future()
         self.pending[request_id] = future
-        line = json.dumps({'id': request_id, 'text': text, 'source': str(source), 'output': str(output)})
+        line = json.dumps({'id': request_id, 'run': run, 'text': text,
+                           'source': str(source), 'output': str(output)})
         self.process.stdin.write(line.encode() + b'\n')
         await self.process.stdin.drain()
         message = await future
         if not message.get('ok'):
             raise RuntimeError(f"Applio worker: {message.get('error')}")
         return message
+
+    def cancel(self, run: str) -> None:
+        """Ask the worker to drop this run's sentences that have not started RVC."""
+        if self.alive():
+            self.process.stdin.write(json.dumps({'cancel': run}).encode() + b'\n')
 
     async def close(self) -> None:
         """Stop the worker: end its input, then kill it if it does not exit."""
@@ -226,7 +237,7 @@ class ApplioWorker:
             self.reader = None
 
 
-async def synthesise(segment: Segment, worker: ApplioWorker,
+async def synthesise(segment: Segment, worker: ApplioWorker, run: str | None = None,
                      directory: Path = LIVE_DIR) -> tuple[str, dict]:
     """Create ``<id>.wav`` and ``<id>.visemes.json``; return the ID and stage timings."""
     directory.mkdir(parents=True, exist_ok=True)
@@ -236,7 +247,10 @@ async def synthesise(segment: Segment, worker: ApplioWorker,
     wav = directory / f'{clip_id}.wav'
     text_path.write_text(segment.text + '\n', encoding='utf-8')
     try:
-        reply = await worker.request(segment.text, source, wav)
+        reply = await worker.request(segment.text, source, wav, run)
+        # Trim before aligning so the lip-sync timings match the audio that plays.
+        trim = await asyncio.to_thread(trim_clip, source, wav, segment.text)
+        source.unlink(missing_ok=True)
         track = await asyncio.to_thread(align, wav, text_path, worker.settings.recognizer)
         (directory / f'{clip_id}.visemes.json').write_text(
             json.dumps(track, ensure_ascii=False) + '\n', encoding='utf-8')
@@ -248,4 +262,4 @@ async def synthesise(segment: Segment, worker: ApplioWorker,
         source.unlink(missing_ok=True)
     return clip_id, {'edgeSeconds': reply['edgeSeconds'], 'edgeRetries': reply['edgeRetries'],
                      'rvcSeconds': reply['rvcSeconds'], 'alignSeconds': track['alignSeconds'],
-                     'audioSeconds': track['duration']}
+                     'untrimmedSeconds': trim['beforeSeconds'], 'audioSeconds': track['duration']}

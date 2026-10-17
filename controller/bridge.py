@@ -7,6 +7,7 @@ import json
 import logging
 import math
 import re
+import secrets
 import sys
 import time
 from pathlib import Path
@@ -20,6 +21,7 @@ ORIGIN = 'http://127.0.0.1:8770'
 DEMO = '[soft-smile:0.6] Good morning. [thinking:0.5] Let me think about that. [neutral]'
 TAG = re.compile(r'([a-z][a-z0-9-]*)(?::([+-]?(?:\d+(?:\.\d*)?|\.\d+)))?')
 THINKING, THINKING_WEIGHT = 'thinking', 0.6
+MAX_IN_FLIGHT = 3  # sentences being synthesised or aligned at once
 LOG = logging.getLogger(__name__)
 
 
@@ -151,24 +153,57 @@ async def demo_chunks():
         await asyncio.sleep(2 if not chunk.startswith('[') and ']' not in chunk else .05)
 
 
-async def speak_segments(queue, send, worker):
-    """Synthesise queued sentences in order and announce each clip by ID."""
+async def speak_segments(queue, send, worker, run=None):
+    """Synthesise queued sentences with up to MAX_IN_FLIGHT in progress; announce in order.
+
+    A failed sentence is skipped with a notice and never blocks later ones. On
+    cancellation the remaining work is cancelled and the worker drops the run.
+    """
     from controller.speech import synthesise
     started = time.perf_counter()
-    first = True
-    while (segment := await queue.get()) is not None:
+    slots = asyncio.Semaphore(MAX_IN_FLIGHT)
+    ordered = asyncio.Queue()
+    async def submit():
         try:
-            clip_id, timings = await synthesise(segment, worker)
-        except Exception:
-            LOG.exception('Speech failed for: %s', segment.text)
-            await send({'type': 'notice', 'text': 'Speech failed for one sentence; see bridge terminal.'})
-            continue
-        if first:
-            timings['firstClipSeconds'] = round(time.perf_counter() - started, 2)
-            first = False
-        LOG.info('Speech %s %s: %s', clip_id, timings, segment.text)
-        await send({'type': 'speak', 'id': clip_id, 'expression': segment.expression,
-                    'weight': segment.weight, 'text': segment.text})
+            while (segment := await queue.get()) is not None:
+                await slots.acquire()
+                ordered.put_nowait((segment, asyncio.create_task(synthesise(segment, worker, run))))
+        finally:
+            # Always end the ordered stream, so a submit failure surfaces instead of hanging.
+            ordered.put_nowait(None)
+    submitter = asyncio.create_task(submit())
+    first = True
+    try:
+        while (item := await ordered.get()) is not None:
+            segment, task = item
+            try:
+                clip_id, timings = await task
+            except Exception:
+                LOG.exception('Speech failed for: %s', segment.text)
+                await send({'type': 'notice', 'text': 'Speech failed for one sentence; see bridge terminal.'})
+                continue
+            finally:
+                slots.release()
+            if first:
+                timings['firstClipSeconds'] = round(time.perf_counter() - started, 2)
+                first = False
+            LOG.info('Speech %s %s: %s', clip_id, timings, segment.text)
+            await send({'type': 'speak', 'id': clip_id, 'expression': segment.expression,
+                        'weight': segment.weight, 'text': segment.text})
+        await submitter
+    except asyncio.CancelledError:
+        if run is not None and hasattr(worker, 'cancel'):
+            worker.cancel(run)
+        raise
+    finally:
+        submitter.cancel()
+        leftovers = [submitter]
+        while not ordered.empty():
+            item = ordered.get_nowait()
+            if item is not None:
+                item[1].cancel()
+                leftovers.append(item[1])
+        await asyncio.gather(*leftovers, return_exceptions=True)
 
 
 async def handle_connection(socket, args, catalog):
@@ -196,7 +231,8 @@ async def handle_connection(socket, args, catalog):
                 from controller.speech import Segmenter, clear_live_clips
                 clear_live_clips()
                 segmenter, queue = Segmenter(), asyncio.Queue()
-                speaker = asyncio.create_task(speak_segments(queue, send, worker))
+                run = secrets.token_hex(8)
+                speaker = asyncio.create_task(speak_segments(queue, send, worker, run))
             async for chunk in chunks:
                 if thinking and worker is None:
                     # Text-only: the answer has started, so drop the thinking face.

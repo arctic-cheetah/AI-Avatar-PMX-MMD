@@ -10,9 +10,10 @@
 //   3. Drop the arms out of the PMX T-pose.
 //   4. Blink on a timer and preview facial expressions.
 //   5. Audition every PMX morph on a manual layer (see morph-audition.js).
+//   6. Play the saved speech sample with lip sync (see speech-player.js).
 //
 // What it does not own yet:
-//   LLM mood tags, hand poses, lip sync, WebSocket, hair/coat physics.
+//   Live LLM speech, hand poses, hair/coat physics.
 //
 // Extension points:
 //   restArms()  — add elbow, wrist, or finger rotations here.
@@ -28,9 +29,15 @@ import { ExpressionController } from "./expression-controller.js";
 import { MorphAudition, buildMorphInventory } from "./morph-audition.js";
 import { AuditionPanel } from "./audition-panel.js";
 import { connectBridge } from "./bridge-client.js";
+import { SpeechPlayer, loadSpeechShapes } from "./speech-player.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
 const MODEL_URL = "/yidhari-mmd/伊德海莉.pmx";
+// Gitignored. Create the track with controller/speech_align.py.
+const SPEECH_SAMPLE = {
+  audio: "/assets/private/speech/sample-01.wav",
+  track: "/assets/private/speech/sample-01.visemes.json",
+};
 const BLINK_MORPH = "まばたき";
 const WINK_MORPHS = { left: "ウィンク", right: "ウィンク右" };
 const WINK_EASE_RATE = 12;
@@ -42,7 +49,13 @@ const EXPRESSION_CATALOG = await loadExpressionCatalog().catch((error) => {
   statusEl.textContent = "Could not load expressions.json. Check the catalog and reload.";
   throw error;
 });
+const SPEECH_SHAPES = await loadSpeechShapes().catch((error) => {
+  statusEl.textContent = "Could not load speech-shapes.json. Check the catalog and reload.";
+  throw error;
+});
 const canvas = document.querySelector("#view");
+const speechButton = document.querySelector("#speech-button");
+const speechStatus = document.querySelector("#speech-status");
 const expressionControls = document.querySelector("#expression-controls");
 const winkButtons = document.querySelectorAll("#wink-controls button[data-wink]");
 const loopButton = document.querySelector("#loop-button");
@@ -128,6 +141,10 @@ let expressions = null;
 let audition = null;
 /** @type {AuditionPanel | null} */
 let auditionPanel = null;
+/** @type {SpeechPlayer | null} */
+let speech = null;
+/** @type {Promise<import("./speech-player.js").SpeechClip> | null} */
+let speechClip = null;
 /** @type {THREE.Vector3 | null} Head position used by the camera framings. */
 let headTarget = null;
 let previousFrame = performance.now();
@@ -463,6 +480,41 @@ function editPresetInSliders() {
 editPresetButton.addEventListener("click", editPresetInSliders);
 
 /**
+ * Play or stop the saved speech sample. The mood stays as selected, but the
+ * loop and sweep stop so the comparison is fixed for the whole sentence.
+ * @returns {Promise<void>}
+ */
+async function toggleSpeech() {
+  if (!speech) {
+    return;
+  }
+  if (speech.playing) {
+    speech.stop();
+    return;
+  }
+  expressions.stopLoop();
+  audition.stopSweep();
+  globalThis.__yidhariHold = null;
+  speechButton.disabled = true;
+  speechStatus.textContent = "Loading sample…";
+  try {
+    speechClip ??= speech.load(SPEECH_SAMPLE.audio, SPEECH_SAMPLE.track);
+    const clip = await speechClip;
+    await speech.play(clip);
+    speechButton.textContent = "■ Stop";
+    speechStatus.textContent = `Speaking in ${expressions.activeExpression}: ${clip.transcript ?? ""}`;
+  } catch (error) {
+    speechClip = null;
+    console.error(error);
+    speechStatus.textContent = error instanceof Error ? error.message : "Could not play the sample.";
+  } finally {
+    speechButton.disabled = false;
+  }
+}
+
+speechButton.addEventListener("click", toggleSpeech);
+
+/**
  * List which mood presets and independent channels drive each morph,
  * so overlaps are visible next to the audition sliders.
  * @returns {Map<string, string[]>} Users by PMX morph name.
@@ -508,10 +560,20 @@ function onModelLoaded(loaded, data) {
   expressions = new ExpressionController(mesh, EXPRESSION_CATALOG);
   expressions.startLoop(3, Number(intensityInput.value));
   audition = new MorphAudition(mesh, buildMorphInventory(data, mesh));
+  speech = new SpeechPlayer(mesh, SPEECH_SHAPES);
+  speech.onEnded = () => {
+    speechButton.textContent = "▶ Play sample";
+    speechStatus.textContent = "Finished.";
+  };
+  speechButton.disabled = false;
+  if (speech.missingMorphs.length > 0) {
+    speechStatus.textContent = `Missing speech morphs: ${speech.missingMorphs.join(", ")}`;
+  }
   // Local preview hook for the morph test bench. Not part of the mood API.
   globalThis.__yidhariPreview = {
     expressions,
     audition,
+    speech,
     frameCamera,
     /**
      * Hold one morph combination still, above the mood loop, for visual checks.
@@ -554,6 +616,7 @@ function onModelLoaded(loaded, data) {
     onStart: () => {
       for (const section of document.querySelectorAll('#panel > section:not(:first-child)')) section.inert = true;
       expressions.stopLoop();
+      speech.stop();
       audition.stopSweep();
       audition.clear();
       globalThis.__yidhariHold = null;
@@ -618,8 +681,8 @@ function loadModel() {
 
 /**
  * Update controls and face morphs, then render the current frame.
- * Every morph starts the frame at zero; each channel writes its own morphs
- * and the audition layer adds on top last.
+ * Every morph starts the frame at zero; each channel writes its own morphs,
+ * speech blends over the mood's mouth, and the audition layer adds on top last.
  * @returns {void}
  */
 function animate() {
@@ -629,6 +692,7 @@ function animate() {
   controls.update();
   mesh?.morphTargetInfluences?.fill(0);
   expressions?.update(delta);
+  speech?.update(delta);
   updateBlink(now / 1000);
   updateWinks(delta);
   audition?.update(delta);

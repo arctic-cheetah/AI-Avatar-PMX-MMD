@@ -186,6 +186,278 @@ function resize() {
   outline.setSize(width, height);
 }
 
+const PANEL_WIDTH_KEY = "yidhari.panelWidth";
+const PANEL_MIN = 280;
+const PANEL_STAGE_MIN = 280;
+
+/**
+ * Drag the divider between the portrait and the settings panel.
+ * Width is a CSS variable on the wide layout; below 720px the same
+ * control sets the panel's row height. The canvas ResizeObserver
+ * already follows either change.
+ * @returns {void}
+ */
+function installPanelResizer() {
+  const handle = document.querySelector("#panel-resizer");
+  const panel = document.querySelector("#panel");
+  if (!(handle instanceof HTMLElement) || !(panel instanceof HTMLElement)) return;
+
+  const stackedQuery = window.matchMedia("(max-width: 720px)");
+  const stacked = () => stackedQuery.matches;
+
+  const syncOrientation = () => {
+    handle.setAttribute("aria-orientation", stacked() ? "horizontal" : "vertical");
+  };
+
+  const limits = () => {
+    if (stacked()) {
+      const max = Math.max(160, window.innerHeight - PANEL_STAGE_MIN - 6);
+      return { min: 160, max };
+    }
+    const max = Math.max(PANEL_MIN, window.innerWidth - PANEL_STAGE_MIN - 6);
+    return { min: PANEL_MIN, max };
+  };
+
+  const apply = (size) => {
+    const { min, max } = limits();
+    const next = Math.round(Math.min(max, Math.max(min, size)));
+    if (stacked()) {
+      document.body.style.gridTemplateRows = `minmax(0, 1fr) 6px ${next}px`;
+      document.body.style.removeProperty("--panel-width");
+    } else {
+      document.body.style.removeProperty("grid-template-rows");
+      document.body.style.setProperty("--panel-width", `${next}px`);
+    }
+    handle.setAttribute("aria-valuenow", String(next));
+    handle.setAttribute("aria-valuemin", String(min));
+    handle.setAttribute("aria-valuemax", String(max));
+    syncOrientation();
+    return next;
+  };
+
+  syncOrientation();
+
+  try {
+    const saved = Number(localStorage.getItem(PANEL_WIDTH_KEY));
+    if (Number.isFinite(saved) && saved > 0) apply(saved);
+  } catch {
+    // Storage can be blocked; the CSS default width still applies.
+  }
+
+  const persist = (size) => {
+    try {
+      localStorage.setItem(PANEL_WIDTH_KEY, String(size));
+    } catch {
+      // Remembering the width is a convenience, not required to resize.
+    }
+  };
+
+  /** @param {number} client */
+  const sizeFromPointer = (client) => stacked()
+    ? window.innerHeight - client - handle.offsetHeight / 2
+    : window.innerWidth - client - handle.offsetWidth / 2;
+
+  handle.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    handle.setPointerCapture(event.pointerId);
+    document.body.classList.add("panel-resizing");
+    const move = (ev) => {
+      apply(sizeFromPointer(stacked() ? ev.clientY : ev.clientX));
+    };
+    const stop = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", stop);
+      handle.removeEventListener("pointercancel", stop);
+      document.body.classList.remove("panel-resizing");
+      persist(Number(handle.getAttribute("aria-valuenow")));
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", stop);
+    handle.addEventListener("pointercancel", stop);
+  });
+
+  handle.addEventListener("keydown", (event) => {
+    const step = event.shiftKey ? 48 : 16;
+    const box = panel.getBoundingClientRect();
+    const current = stacked() ? box.height : box.width;
+    // Toward the stage grows the panel; toward the outer edge shrinks it.
+    const grow = stacked() ? event.key === "ArrowUp" : event.key === "ArrowLeft";
+    const shrink = stacked() ? event.key === "ArrowDown" : event.key === "ArrowRight";
+    if (grow || shrink) {
+      event.preventDefault();
+      persist(apply(current + (grow ? step : -step)));
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      persist(apply(stacked() ? limits().max : limits().min));
+    } else if (event.key === "End") {
+      event.preventDefault();
+      persist(apply(stacked() ? limits().min : limits().max));
+    }
+  });
+
+  stackedQuery.addEventListener("change", () => {
+    const saved = Number(handle.getAttribute("aria-valuenow"));
+    if (Number.isFinite(saved)) apply(saved);
+    else syncOrientation();
+  });
+  window.addEventListener("resize", () => {
+    const saved = Number(handle.getAttribute("aria-valuenow"));
+    if (Number.isFinite(saved)) apply(saved);
+  });
+}
+
+const CHAT_HEIGHT_KEY = "yidhari.chatHeight";
+const CHAT_FLOAT_KEY = "yidhari.chatFloat";
+const CHAT_MIN_HEIGHT = 96;
+
+/**
+ * Let the side chat grow from its bottom edge, and float over the portrait.
+ * Height and float position are remembered in this browser.
+ * @returns {void}
+ */
+function installChatBox() {
+  const box = document.querySelector("#chat-box");
+  const log = document.querySelector("#chat-log");
+  const resizer = document.querySelector("#chat-resizer");
+  const drag = document.querySelector("#chat-drag");
+  const floatButton = document.querySelector("#chat-float");
+  if (!(box instanceof HTMLElement) || !(log instanceof HTMLElement) ||
+      !(resizer instanceof HTMLElement) || !(drag instanceof HTMLElement) ||
+      !(floatButton instanceof HTMLButtonElement)) return;
+
+  const heightLimits = () => {
+    const floating = box.classList.contains("floating");
+    const max = floating
+      ? Math.max(CHAT_MIN_HEIGHT, window.innerHeight - 48)
+      : Math.max(CHAT_MIN_HEIGHT, window.innerHeight - 220);
+    return { min: CHAT_MIN_HEIGHT, max };
+  };
+
+  const applyHeight = (size) => {
+    const { min, max } = heightLimits();
+    const next = Math.round(Math.min(max, Math.max(min, size)));
+    box.style.setProperty("--chat-height", `${next}px`);
+    resizer.setAttribute("aria-valuenow", String(next));
+    resizer.setAttribute("aria-valuemin", String(min));
+    resizer.setAttribute("aria-valuemax", String(max));
+    return next;
+  };
+
+  const remember = (key, value) => {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      // Remembering the chat layout is a convenience.
+    }
+  };
+
+  try {
+    const savedHeight = Number(localStorage.getItem(CHAT_HEIGHT_KEY));
+    if (Number.isFinite(savedHeight) && savedHeight > 0) applyHeight(savedHeight);
+  } catch {
+    // Storage can be blocked; the CSS default height still applies.
+  }
+
+  resizer.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    resizer.setPointerCapture(event.pointerId);
+    const originY = event.clientY;
+    const origin = log.getBoundingClientRect().height;
+    document.body.classList.add("chat-resizing");
+    const move = (ev) => applyHeight(origin + ev.clientY - originY);
+    const stop = () => {
+      resizer.removeEventListener("pointermove", move);
+      resizer.removeEventListener("pointerup", stop);
+      resizer.removeEventListener("pointercancel", stop);
+      document.body.classList.remove("chat-resizing");
+      remember(CHAT_HEIGHT_KEY, resizer.getAttribute("aria-valuenow") ?? "");
+    };
+    resizer.addEventListener("pointermove", move);
+    resizer.addEventListener("pointerup", stop);
+    resizer.addEventListener("pointercancel", stop);
+  });
+
+  resizer.addEventListener("keydown", (event) => {
+    const step = event.shiftKey ? 48 : 16;
+    const current = log.getBoundingClientRect().height;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      remember(CHAT_HEIGHT_KEY, String(applyHeight(current + step)));
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      remember(CHAT_HEIGHT_KEY, String(applyHeight(current - step)));
+    }
+  });
+
+  const placeFloating = (x, y) => {
+    const width = box.offsetWidth;
+    const height = box.offsetHeight;
+    const nextX = Math.round(Math.min(window.innerWidth - width - 8, Math.max(8, x)));
+    const nextY = Math.round(Math.min(window.innerHeight - height - 8, Math.max(8, y)));
+    box.style.left = `${nextX}px`;
+    box.style.top = `${nextY}px`;
+    return { x: nextX, y: nextY };
+  };
+
+  const setFloating = (floating, point) => {
+    box.classList.toggle("floating", floating);
+    floatButton.setAttribute("aria-pressed", String(floating));
+    floatButton.textContent = floating ? "Dock" : "Float";
+    drag.hidden = !floating;
+    if (floating) {
+      const start = point ?? { x: 24, y: 72 };
+      const placed = placeFloating(start.x, start.y);
+      remember(CHAT_FLOAT_KEY, JSON.stringify({ floating: true, ...placed }));
+    } else {
+      box.style.removeProperty("left");
+      box.style.removeProperty("top");
+      remember(CHAT_FLOAT_KEY, JSON.stringify({ floating: false }));
+    }
+    applyHeight(log.getBoundingClientRect().height);
+  };
+
+  try {
+    const saved = JSON.parse(localStorage.getItem(CHAT_FLOAT_KEY) ?? "null");
+    if (saved?.floating === true) {
+      setFloating(true, {
+        x: Number(saved.x) || 24,
+        y: Number(saved.y) || 72,
+      });
+    }
+  } catch {
+    // A bad saved position just leaves the chat docked.
+  }
+
+  floatButton.addEventListener("click", () => {
+    const floating = !box.classList.contains("floating");
+    setFloating(floating, floating ? { x: 24, y: 72 } : undefined);
+  });
+
+  drag.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || !box.classList.contains("floating")) return;
+    event.preventDefault();
+    drag.setPointerCapture(event.pointerId);
+    const originX = event.clientX - box.getBoundingClientRect().left;
+    const originY = event.clientY - box.getBoundingClientRect().top;
+    document.body.classList.add("chat-dragging");
+    const move = (ev) => placeFloating(ev.clientX - originX, ev.clientY - originY);
+    const stop = (ev) => {
+      drag.removeEventListener("pointermove", move);
+      drag.removeEventListener("pointerup", stop);
+      drag.removeEventListener("pointercancel", stop);
+      document.body.classList.remove("chat-dragging");
+      const placed = placeFloating(ev.clientX - originX, ev.clientY - originY);
+      remember(CHAT_FLOAT_KEY, JSON.stringify({ floating: true, ...placed }));
+    };
+    drag.addEventListener("pointermove", move);
+    drag.addEventListener("pointerup", stop);
+    drag.addEventListener("pointercancel", stop);
+  });
+}
+
 /**
  * Find a named PMX bone and return its current world-space position.
  * @param {THREE.SkinnedMesh} object Loaded PMX mesh.
@@ -830,5 +1102,7 @@ function animate() {
 
 resize();
 new ResizeObserver(resize).observe(canvas);
+installPanelResizer();
+installChatBox();
 renderer.setAnimationLoop(animate);
 loadModel();

@@ -22,11 +22,21 @@
     <p id="status" role="status">Starting…</p>
     <p id="hint">Drag to orbit · scroll to zoom</p>
   </main>
+  <button id="panel-resizer" type="button" role="separator" aria-orientation="vertical"
+          aria-label="Resize settings panel" aria-controls="panel"
+          aria-valuemin="280" aria-valuemax="720" aria-valuenow="390"></button>
   <aside id="panel" aria-label="Facial morph test bench">
     <section aria-labelledby="bridge-heading">
       <h2 id="bridge-heading">Chat</h2>
       <p class="note">Use the bar above the portrait to talk; replies stream here. Add --speech to the bridge for voice and lip sync.</p>
-      <div id="chat-log" role="log" aria-label="Conversation" aria-live="polite"></div>
+      <div id="chat-box">
+        <div id="chat-box-bar">
+          <button id="chat-drag" type="button" aria-label="Drag chat box" hidden>Chat</button>
+          <button id="chat-float" type="button" aria-pressed="false" title="Float the chat over the portrait">Float</button>
+        </div>
+        <div id="chat-log" role="log" aria-label="Conversation" aria-live="polite"></div>
+        <button id="chat-resizer" type="button" aria-label="Resize chat box"></button>
+      </div>
       <button id="bridge-start" type="button" disabled>Start default response</button>
       <p id="bridge-status" role="status">Waiting for model…</p>
       <p id="bridge-transcript" hidden></p>

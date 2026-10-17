@@ -7,7 +7,13 @@ import json
 import logging
 import math
 import re
+import sys
+import time
 from pathlib import Path
+
+if not __package__:
+    # Support `python controller/bridge.py` as well as `python -m controller.bridge`.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 CATALOG = Path(__file__).resolve().parents[1] / 'renderer' / 'expressions.json'
 ORIGIN = 'http://127.0.0.1:8770'
@@ -139,21 +145,60 @@ async def demo_chunks():
         await asyncio.sleep(2 if not chunk.startswith('[') and ']' not in chunk else .05)
 
 
+async def speak_segments(queue, send, settings):
+    """Synthesise queued sentences in order and announce each clip by ID."""
+    from controller.speech import synthesise
+    started = time.perf_counter()
+    first = True
+    while (segment := await queue.get()) is not None:
+        try:
+            clip_id, timings = await synthesise(segment, settings)
+        except Exception:
+            LOG.exception('Speech failed for: %s', segment.text)
+            await send({'type': 'notice', 'text': 'Speech failed for one sentence; see bridge terminal.'})
+            continue
+        if first:
+            timings['firstClipSeconds'] = round(time.perf_counter() - started, 2)
+            first = False
+        LOG.info('Speech %s %s: %s', clip_id, timings, segment.text)
+        await send({'type': 'speak', 'id': clip_id, 'expression': segment.expression,
+                    'weight': segment.weight, 'text': segment.text})
+
+
 async def handle_connection(socket, args, catalog):
     from websockets.exceptions import ConnectionClosed
+    settings = getattr(args, 'speech_settings', None)
     async def send(event):
         await socket.send(json.dumps(event, ensure_ascii=False, allow_nan=False))
     async def generate():
         parser = TagParser(catalog)
+        speaker = None
         try:
             await send({'type': 'start'})
             await send({'type': 'expression', 'name': 'neutral', 'weight': 1})
             chunks = demo_chunks() if args.mode == 'demo' else llama_chunks(
                 args.llama_url, args.model, args.prompt, catalog)
+            if settings is not None:
+                from controller.speech import Segmenter, clear_live_clips
+                clear_live_clips()
+                segmenter, queue = Segmenter(), asyncio.Queue()
+                speaker = asyncio.create_task(speak_segments(queue, send, settings))
             async for chunk in chunks:
                 for event in parser.feed(chunk):
-                    await send(event)
+                    if settings is None:
+                        await send(event)
+                        continue
+                    # With speech, moods change when each clip starts playing, not on arrival.
+                    if event['type'] == 'say':
+                        await send(event)
+                    for segment in segmenter.feed(event):
+                        queue.put_nowait(segment)
             parser.finish()
+            if speaker is not None:
+                for segment in segmenter.finish():
+                    queue.put_nowait(segment)
+                queue.put_nowait(None)
+                await speaker
             await send({'type': 'end'})
         except ConnectionClosed:
             pass
@@ -164,6 +209,10 @@ async def handle_connection(socket, args, catalog):
                 await send({'type': 'error', 'text': 'Generation failed; see bridge terminal.'})
             except ConnectionClosed:
                 pass
+        finally:
+            if speaker is not None and not speaker.done():
+                speaker.cancel()
+                await asyncio.gather(speaker, return_exceptions=True)
     task = None
     try:
         async for raw in socket:
@@ -188,10 +237,13 @@ async def handle_connection(socket, args, catalog):
 async def run(args):
     from websockets.asyncio.server import serve
     catalog = load_catalog()
+    if args.speech_settings is not None:
+        args.speech_settings.check()
     async def handler(socket):
         await handle_connection(socket, args, catalog)
     async with serve(handler, '127.0.0.1', args.port, origins=[ORIGIN], max_size=1024, max_queue=4):
-        print(f'Bridge: ws://127.0.0.1:{args.port} ({args.mode}); open {ORIGIN}/renderer/', flush=True)
+        speech = 'speech on' if args.speech_settings is not None else 'text only'
+        print(f'Bridge: ws://127.0.0.1:{args.port} ({args.mode}, {speech}); open {ORIGIN}/renderer/', flush=True)
         await asyncio.Future()
 
 
@@ -202,7 +254,14 @@ def main():
     parser.add_argument('--llama-url', default='http://127.0.0.1:8080')
     parser.add_argument('--model', default=None)
     parser.add_argument('--prompt', default='Say good morning, then think about what we could work on.')
+    parser.add_argument('--speech', action='store_true',
+                        help='Speak each sentence with Applio (Edge TTS + RVC) and lip sync.')
+    parser.add_argument('--pth', type=Path, help='Applio voice model (.pth); default in controller/speech.py.')
     args = parser.parse_args()
+    args.speech_settings = None
+    if args.speech:
+        from controller.speech import ApplioSettings
+        args.speech_settings = ApplioSettings(**({'pth': args.pth} if args.pth else {}))
     logging.basicConfig(level=logging.INFO)
     try:
         asyncio.run(run(args))

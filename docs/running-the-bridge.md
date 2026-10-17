@@ -54,6 +54,25 @@ preserves the last mood on disconnect, avoiding repeated resets during reconnect
 An active generation is cancelled when its browser disconnects. Duplicate starts
 while busy are ignored. No automatic generation occurs on reconnect.
 
+## Speech and lip sync
+
+Add `--speech` to either mode to voice each sentence with Applio (Edge TTS → RVC)
+and lip-sync it with Rhubarb. Needs internet (Edge TTS), `rhubarb` and `ffmpeg` on
+PATH, and Applio installed next to this repository (`../Applio`, with its own
+`.venv`):
+
+```bash
+.venv/bin/python controller/bridge.py --mode llm --speech --prompt "Greet me warmly in two short sentences."
+```
+
+The bridge stops at startup if Applio's `core.py`, Python, voice model or index
+is missing. `--pth /path/to/model.pth` selects another voice model; the other
+Applio settings live in `ApplioSettings` in `controller/speech.py`. Each sentence
+is logged with its TTS+RVC and alignment times. Expect several seconds per
+sentence: Applio restarts and reloads the model on every call. Clips are written
+to `assets/private/speech/live/` and replaced on the next run. The renderer plays
+them in order and applies each mood when its clip starts.
+
 ## Troubleshooting and tests
 
 - **Disconnected:** start the bridge; use the exact renderer Origin above.

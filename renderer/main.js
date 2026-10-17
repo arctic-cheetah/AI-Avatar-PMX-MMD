@@ -38,6 +38,8 @@ const SPEECH_SAMPLE = {
   audio: "/assets/private/speech/sample-01.wav",
   track: "/assets/private/speech/sample-01.visemes.json",
 };
+// Live clips written by the bridge in --speech mode; only IDs arrive over the socket.
+const LIVE_CLIP_DIR = "/assets/private/speech/live/";
 const BLINK_MORPH = "まばたき";
 const WINK_MORPHS = { left: "ウィンク", right: "ウィンク右" };
 const WINK_EASE_RATE = 12;
@@ -145,6 +147,11 @@ let auditionPanel = null;
 let speech = null;
 /** @type {Promise<import("./speech-player.js").SpeechClip> | null} */
 let speechClip = null;
+/** @type {{ clip: Promise<import("./speech-player.js").SpeechClip>, expression: string, weight: number, text: string }[]} */
+const speechQueue = [];
+/** Bumped on every new response or stop, so stale clip loads are discarded. */
+let liveRun = 0;
+let speechStarting = false;
 /** @type {THREE.Vector3 | null} Head position used by the camera framings. */
 let headTarget = null;
 let previousFrame = performance.now();
@@ -489,7 +496,7 @@ async function toggleSpeech() {
     return;
   }
   if (speech.playing) {
-    speech.stop();
+    stopSpeech("Stopped.");
     return;
   }
   expressions.stopLoop();
@@ -513,6 +520,75 @@ async function toggleSpeech() {
 }
 
 speechButton.addEventListener("click", toggleSpeech);
+
+/**
+ * Stop the current clip, drop queued live clips, and reset the speech controls.
+ * @param {string} message Status to show.
+ * @returns {void}
+ */
+function stopSpeech(message) {
+  liveRun += 1;
+  speechQueue.length = 0;
+  speech?.stop();
+  speechButton.textContent = "▶ Play sample";
+  speechStatus.textContent = message;
+}
+
+/**
+ * Apply a mood from the bridge and mirror it in the intensity controls.
+ * @param {string} name Catalog expression.
+ * @param {number} weight Intensity from 0 to 1.
+ * @returns {void}
+ */
+function applyMood(name, weight) {
+  if (!expressions.setExpression(name, weight)) console.warn("Unavailable expression", name);
+  intensityInput.value = String(weight);
+  intensityOutput.value = weight.toFixed(2);
+}
+
+/**
+ * Queue a live clip announced by the bridge. Loading starts now so decoding
+ * overlaps the clip before it; the mood changes when this clip starts.
+ * @param {{ id: string, expression: string, weight: number, text: string }} event Validated speak event.
+ * @returns {void}
+ */
+function enqueueSpeech({ id, expression, weight, text }) {
+  const clip = speech.load(`${LIVE_CLIP_DIR}${id}.wav`, `${LIVE_CLIP_DIR}${id}.visemes.json`);
+  clip.catch(() => {}); // Reported when its turn comes.
+  speechQueue.push({ clip, expression, weight, text });
+  if (!speech.playing && !speechStarting) {
+    playNextSpeech();
+  }
+}
+
+/**
+ * Start the next playable queued clip. A failed clip is skipped, not fatal.
+ * @returns {Promise<void>}
+ */
+async function playNextSpeech() {
+  speechStarting = true;
+  let run = liveRun;
+  while (speechQueue.length > 0) {
+    const next = speechQueue.shift();
+    try {
+      const clip = await next.clip;
+      if (run !== liveRun) {
+        // A new response or a stop arrived while loading; serve the current queue.
+        run = liveRun;
+        continue;
+      }
+      applyMood(next.expression, next.weight);
+      await speech.play(clip);
+      speechButton.textContent = "■ Stop";
+      speechStatus.textContent = `Speaking (${next.expression}): ${next.text}`;
+      break;
+    } catch (error) {
+      console.error(error);
+      speechStatus.textContent = "Skipped a clip that could not be played.";
+    }
+  }
+  speechStarting = false;
+}
 
 /**
  * List which mood presets and independent channels drive each morph,
@@ -562,6 +638,10 @@ function onModelLoaded(loaded, data) {
   audition = new MorphAudition(mesh, buildMorphInventory(data, mesh));
   speech = new SpeechPlayer(mesh, SPEECH_SHAPES);
   speech.onEnded = () => {
+    if (speechQueue.length > 0) {
+      playNextSpeech();
+      return;
+    }
     speechButton.textContent = "▶ Play sample";
     speechStatus.textContent = "Finished.";
   };
@@ -574,6 +654,7 @@ function onModelLoaded(loaded, data) {
     expressions,
     audition,
     speech,
+    speak: enqueueSpeech,
     frameCamera,
     /**
      * Hold one morph combination still, above the mood loop, for visual checks.
@@ -616,7 +697,7 @@ function onModelLoaded(loaded, data) {
     onStart: () => {
       for (const section of document.querySelectorAll('#panel > section:not(:first-child)')) section.inert = true;
       expressions.stopLoop();
-      speech.stop();
+      stopSpeech("");
       audition.stopSweep();
       audition.clear();
       globalThis.__yidhariHold = null;
@@ -626,12 +707,9 @@ function onModelLoaded(loaded, data) {
     onFinish: () => {
       for (const section of document.querySelectorAll('#panel > section:not(:first-child)')) section.inert = false;
     },
-    onExpression: (name, weight) => {
-      if (!expressions.setExpression(name, weight)) console.warn('Unavailable expression', name);
-      intensityInput.value = String(weight);
-      intensityOutput.value = weight.toFixed(2);
-    },
+    onExpression: applyMood,
     onText: (text) => { transcript.textContent = (transcript.textContent + text).slice(-50000); },
+    onSpeak: enqueueSpeech,
   });
 }
 

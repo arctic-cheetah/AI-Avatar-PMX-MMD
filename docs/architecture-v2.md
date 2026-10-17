@@ -28,7 +28,7 @@ User text -> llama-server (Qwen, Vulkan, 127.0.0.1:8080)
                     |
                     +-- Text preview: clean text + expression events
                     |
-                    +-- Planned live speech (sample path proven offline):
+                    +-- Speech (bridge --speech; first version, per sentence):
                         Edge TTS (primary; local TTS later for offline use)
                           -> Applio RVC conversion (Yidhari voice model)
                           -> final WAV + exact transcript
@@ -112,7 +112,8 @@ of scope.
 | Live LLM test                                   | Post-repair backend test passed: qwen3.8-27b streamed soft-smile, thinking, neutral and tag-free text via WebSocket                 |
 | Applio + Edge TTS                               | User-reported working in the Applio UI (10.66 s clip in ~3 s); not yet automated from the bridge                         |
 | Alignment                                       | Rhubarb Lip Sync 1.14.0 via `controller/speech_align.py`, with cue-validation tests                                      |
-| Lip sync                                        | Saved-sample speech test in the renderer; verified in headless Chrome (see notes below). Live LLM speech not implemented |
+| Lip sync                                        | Saved-sample speech test, user-confirmed on screen                                                                       |
+| Live LLM speech                                 | First version with `bridge --speech`: run end to end against qwen3.8-27b; renderer queue verified in headless Chrome     |
 
 ## LLM mood pipeline and events
 
@@ -291,10 +292,88 @@ User-confirmed on 2026-10-17: the saved-sample lip sync looks good on the real d
 - [ ] **Unused mouth morphs.** Evaluate `い２`, `え２`, `お２`, `ワ`, `□`, `口横広げ`/`口横狭め` and the tooth morphs for richer shapes.
 - [ ] **Compositor.** Mood mouth morphs outside the speech catalog (for example `口角下げ` in angry/sad) still add on top during speech; add per-shape attenuation rules while keeping brows and eyes.
 - [ ] **Coarticulation.** Current easing is per shape only; consider blending toward the next cue for fast speech, while keeping closures intact.
-- [ ] **Live pipeline.** Bridge: segment LLM text → Edge TTS → Applio CLI → `speech_align.py` → send audio reference plus viseme track; renderer: bounded segment queue, mood change at playback start, cancel/pause/resume on the audio clock.
+- [ ] **Live pipeline.** First version done (see the end-to-end section below): sentences → Applio CLI → `speech_align.py` → clip ID → renderer queue with mood at clip start. Remaining: bounded queue size, cancel/pause/resume on the audio clock.
 - [ ] **Applio automation.** Verify the Applio 3.6.6 CLI or API, its AMD/Linux backend, and its real-time factor with the LLM running.
 - [ ] **Edge TTS word boundaries.** Call `edge-tts` directly to keep word timings as a cross-check on alignment; confirm the boundary option in the installed version.
 - [ ] **Sample switching.** The speech test hard-codes one clip (`SPEECH_SAMPLE` in `renderer/main.js`); add a picker or URL parameter if more test clips are added.
 - [ ] **Acceptance checks.** Record clips covering closures, diphthongs, fast speech and project names; check landmarks within 50 ms, start/end drift and frame-time percentiles on the real display.
 - [ ] **Local TTS comparison.** Run the planned local TTS vs Edge TTS side-by-side for offline/private use.
 - [ ] **Optional audio-check tool.** Debug-only Whisper transcription plus loudness/clipping report (an MCP tool is acceptable here, not in the timing path).
+
+### End-to-end speech pipeline — first integration test
+
+Goal: get the whole path running first, then fix the gaps below. First version is
+non-streaming: wait for the full LLM reply, split it into sentences with their
+moods, then synthesise, align and play each sentence in order.
+
+```text
+LLM reply ──► sentences + [mood]
+                │  one at a time
+                ▼
+   Applio core.py tts (Edge TTS → RVC) ──► speech_align.py ──► "speak" {clip id, mood}
+                                                                   │
+renderer queue: set mood at clip start ──► audio + lip sync ──► next clip
+```
+
+Verified on 2026-10-17: Applio's `core.py tts` CLI takes text, Edge voice, rate,
+`.pth`, `.index` and output paths; Edge source (10.68 s MP3) and RVC output
+(10.66 s WAV) differ only by MP3 padding, so RVC preserves timing.
+
+**Implemented and run end to end on 2026-10-17.** Start the bridge with
+`--speech` (`.venv/bin/python -m controller.bridge --mode llm --speech`).
+[controller/speech.py](../controller/speech.py) splits parsed text into
+sentences, each carrying the mood active at its start; a mood tag also closes the
+current fragment. A single worker synthesises sentences in order while the LLM is
+still streaming, then the bridge sends
+`{"type":"speak","id":"<16 hex>","expression":…,"weight":…,"text":…}`. In speech
+mode, mood tags are not sent on arrival; each mood travels with its clip and is
+applied when that clip starts. `{"type":"notice"}` reports a failed sentence
+without ending the run. The renderer validates the ID, builds
+`/assets/private/speech/live/<id>.wav` and `.visemes.json`, starts loading each
+clip on arrival, and plays the queue in order. Text-only mode is unchanged.
+
+First run (qwen3.8-27b, prompt asking for three sentences):
+
+| Stage | Measured |
+| --- | --- |
+| First clip ready | 17.9 s after start (LLM ≈ 10.7 s before the first full sentence, then Applio) |
+| Applio TTS + RVC per sentence | 7.2–9.2 s for 2.2–5.4 s of audio (slower than real time) |
+| Rhubarb phonetic alignment | 0.45–0.72 s per sentence |
+| Edge 429 retries | 1 in 3 sentences; recovered on retry |
+| Renderer queue (headless Chrome) | 3 clips back to back, ~60 ms apart once loaded; moods switched at clip start; lips moved on every clip |
+
+In live use, clips arrive ~7 s apart, so short sentences leave ~5 s of silence
+between them until the cold start is removed.
+
+#### Applio TTS settings (from the user's Applio UI)
+
+| Setting | UI value | CLI flag | Note |
+| --- | --- | --- | --- |
+| Voice model | `Yidhari-zzz_75e_14475s.pth` | `--pth-path` | ⚠️ Not on this laptop (screenshot shows Windows paths, so the RTX 4090 build). Temporary default: `75e_21450s`; override with bridge `--pth` |
+| Index file | `Yidhari-zzz.index` | `--index-path` | Present in `logs/Yidhari-zzz/` |
+| Edge voice | `en-US-JennyNeural` | `--tts-voice` | |
+| TTS speed | −15 | `--tts-rate -15` | |
+| Speaker ID | 0 | `--sid 0` | |
+| Pitch | 0 | `--pitch 0` | |
+| Search feature ratio | 0.7 | `--index-rate 0.7` | CLI default is 0.3: pass explicitly |
+| Volume envelope | 1 | `--volume-envelope 1` | |
+| Protect voiceless consonants | 0.5 | `--protect 0.5` | CLI default is 0.33: pass explicitly |
+| Pitch extraction | rmvpe | `--f0-method rmvpe` | |
+| Embedder | contentvec | `--embedder-model contentvec` | Matches `model_info.json` |
+| Split audio, autotune, proposed pitch, clean audio | off | defaults | Clean audio has no CLI flag; off anyway |
+
+#### Known gaps (accepted for the first test, fix later)
+
+- [ ] **Missing checkpoint.** The UI's `75e_14475s` checkpoint is absent locally. Its run used 193 steps/epoch; only `25e_4825s` from that run was ported. Local files come from runs at 31, 145 and 286 steps/epoch. Copy `75e_14475s` from the Windows build, or audition local checkpoints; the bridge uses `75e_21450s` until then.
+- [ ] **Time to first word.** ~10.7 s passed before the LLM's first complete sentence (likely reasoning tokens, which the bridge skips). Check llama-server reasoning settings, or speak an early short phrase.
+- [ ] **Silence between clips.** Clips arrive ~7 s apart. Removing the cold start is the main fix; overlapping TTS for sentence N+1 with RVC for sentence N is a second.
+- [ ] **Cold start per sentence.** Each `core.py tts` call starts a new Python process, spawns `rvc/lib/tools/tts.py`, and reloads the RVC model. Replace with a persistent worker in Applio's own `.venv` that loads the model once.
+- [ ] **CPU-only RVC.** Applio's PyTorch is `2.11.0+cu128` (CUDA build); on this AMD laptop `torch.cuda.is_available()` is false and there is no HIP build. Conversion competes with the LLM for CPU. Evaluate a ROCm PyTorch build in Applio's environment later.
+- [x] **Alignment latency.** Live speech uses `--recognizer phonetic` (0.45–0.72 s per sentence). PocketSphinx (~9 s per 10 s) stays for offline samples.
+- [x] **Sentence streaming.** Sentences are synthesised as soon as they are complete, while the LLM is still generating. Synthesis itself is still one sentence at a time.
+- [x] **Clip delivery.** Clips live under `assets/private/speech/live/`; only a 16-hex-character ID crosses the WebSocket, checked on both sides.
+- [ ] **Clip cleanup.** Clips from the previous run are deleted when a new run starts; the last run's clips stay on disk. Consider deleting after playback.
+- [x] **Text for TTS.** Mood tags, Markdown symbols, emoji and control characters are stripped; fragments without letters or digits are skipped. Text goes to Applio through a file. Not done: merging very short fragments.
+- [ ] **Edge TTS dependency.** HTTP 429 is retried twice with backoff; any other failure skips that sentence with a `notice`. An offline fallback is still missing.
+- [ ] **Errors and cancellation.** A failed sentence is skipped; a new run or a disconnect cancels the worker and kills a running Applio process. Not done: cancelling the reply mid-way from the renderer, and pause/resume.
+- [x] **Timing measurements.** The bridge logs per sentence: TTS+RVC seconds, alignment seconds, audio seconds, and time to first clip. Not logged yet: playback gaps on the renderer side.

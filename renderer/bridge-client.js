@@ -1,5 +1,6 @@
-/** Text-only bridge preview. Audio scheduling is a later milestone. */
-export function connectBridge({ catalog, onStart, onFinish, onExpression, onText }) {
+/** Bridge client: text preview, moods, and (with bridge --speech) spoken clip IDs. */
+const CLIP_ID = /^[0-9a-f]{16}$/;
+export function connectBridge({ catalog, onStart, onFinish, onExpression, onText, onSpeak }) {
   const button = document.querySelector('#bridge-start');
   const status = document.querySelector('#bridge-status');
   let socket;
@@ -28,6 +29,14 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
           case 'say':
             if (typeof event.text !== 'string') throw new Error('Invalid text');
             onText(event.text); break;
+          case 'speak':
+            // Only a generated ID crosses the socket; the renderer builds the clip URL itself.
+            if (typeof event.id !== 'string' || !CLIP_ID.test(event.id) || !Object.hasOwn(catalog, event.expression) ||
+              typeof event.weight !== 'number' || !Number.isFinite(event.weight) || typeof event.text !== 'string') throw new Error('Invalid speak');
+            onSpeak({ id: event.id, expression: event.expression, weight: Math.max(0, Math.min(1, event.weight)), text: event.text }); break;
+          case 'notice':
+            if (typeof event.text !== 'string') throw new Error('Invalid notice');
+            status.textContent = event.text; break;
           case 'end': busy = false; onFinish(); button.disabled = false; status.textContent = 'Complete'; break;
           case 'error':
             if (typeof event.text !== 'string') throw new Error('Invalid error');

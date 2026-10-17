@@ -9,3 +9,6 @@ node_modules/
 .*
 .xgrok/
 .grok/
+AGENTS.md
+CLAUDE.md
+agents.md

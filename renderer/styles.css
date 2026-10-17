@@ -19,7 +19,20 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 input[type='range'] { flex: 1; min-width: 0; accent-color: #bc8fc8; width: 100%; }
 input[type='search'], input[type='text'], textarea { min-width: 0; max-width: 100%; padding: 8px; border: 1px solid #78677f; border-radius: 6px; background: #17121c; color: var(--ink); }
 textarea { width: 100%; }
-#camera-controls { position: absolute; top: 16px; left: 16px; display: flex; gap: 8px; }
+#camera-controls { position: absolute; bottom: 16px; left: 70%; transform: translateX(-50%); display: flex; gap: 8px; }
+#chat-bar { position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 8px; width: min(560px, calc(100% - 32px)); }
+#chat-bar input { flex: 1; min-width: 0; padding: 9px 12px; border: 1px solid #78677f;
+  border-radius: 20px; background: rgba(23, 18, 28, .88); color: var(--ink); }
+#chat-bar button { border-radius: 20px; padding: 9px 16px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+#chat-log { display: flex; flex-direction: column; gap: 8px; max-height: 260px;
+  overflow-y: auto; margin: 10px 0; }
+.chat-line { margin: 0; padding: 8px 10px; border-radius: 10px; max-width: 100%;
+  white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-line .chat-who { display: block; font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+.chat-you { background: #33244a; align-self: flex-end; }
+.chat-yidhari { background: #2a2130; align-self: flex-start; }
 #status, #hint { position: absolute; left: 16px; margin: 0; pointer-events: none; text-shadow: 0 1px 2px #000; }
 #status { bottom: 36px; } #hint { bottom: 14px; color: var(--muted); font-size: 12px; }
 .morph-group { margin: 12px 0; } summary { cursor: pointer; font-weight: 600; }

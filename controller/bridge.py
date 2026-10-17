@@ -19,6 +19,7 @@ CATALOG = Path(__file__).resolve().parents[1] / 'renderer' / 'expressions.json'
 ORIGIN = 'http://127.0.0.1:8770'
 DEMO = '[soft-smile:0.6] Good morning. [thinking:0.5] Let me think about that. [neutral]'
 TAG = re.compile(r'([a-z][a-z0-9-]*)(?::([+-]?(?:\d+(?:\.\d*)?|\.\d+)))?')
+THINKING, THINKING_WEIGHT = 'thinking', 0.6
 LOG = logging.getLogger(__name__)
 
 
@@ -114,7 +115,9 @@ async def sse_data(lines):
         yield '\n'.join(data)
 
 
-async def llama_chunks(base_url, model, prompt, catalog):
+async def llama_chunks(base_url, model, prompt, catalog, on_reasoning=None):
+    """Yield content deltas. Reasoning text is never forwarded; ``on_reasoning``
+    is awaited for each reasoning delta so the avatar can look thoughtful."""
     import httpx
     payload = {'stream': True, 'max_tokens': 1024, 'messages': [
         {'role': 'system', 'content': system_prompt(catalog)},
@@ -132,7 +135,10 @@ async def llama_chunks(base_url, model, prompt, catalog):
                     raise ValueError('Invalid LLM stream or upstream error')
                 choices = event.get('choices', [])
                 if choices:
-                    content = choices[0].get('delta', {}).get('content')
+                    delta = choices[0].get('delta', {})
+                    if on_reasoning is not None and delta.get('reasoning_content'):
+                        await on_reasoning()
+                    content = delta.get('content')
                     if isinstance(content, str) and content:
                         yield content
             raise ValueError('LLM stream ended without [DONE]')
@@ -145,14 +151,14 @@ async def demo_chunks():
         await asyncio.sleep(2 if not chunk.startswith('[') and ']' not in chunk else .05)
 
 
-async def speak_segments(queue, send, settings):
+async def speak_segments(queue, send, worker):
     """Synthesise queued sentences in order and announce each clip by ID."""
     from controller.speech import synthesise
     started = time.perf_counter()
     first = True
     while (segment := await queue.get()) is not None:
         try:
-            clip_id, timings = await synthesise(segment, settings)
+            clip_id, timings = await synthesise(segment, worker)
         except Exception:
             LOG.exception('Speech failed for: %s', segment.text)
             await send({'type': 'notice', 'text': 'Speech failed for one sentence; see bridge terminal.'})
@@ -167,25 +173,37 @@ async def speak_segments(queue, send, settings):
 
 async def handle_connection(socket, args, catalog):
     from websockets.exceptions import ConnectionClosed
-    settings = getattr(args, 'speech_settings', None)
+    worker = getattr(args, 'speech_worker', None)
     async def send(event):
         await socket.send(json.dumps(event, ensure_ascii=False, allow_nan=False))
     async def generate():
         parser = TagParser(catalog)
         speaker = None
+        thinking = False
+        async def on_reasoning():
+            # Show the thinking mood once while the model reasons. With speech it
+            # stays until the first clip applies its own mood.
+            nonlocal thinking
+            if not thinking and THINKING in catalog:
+                thinking = True
+                await send({'type': 'expression', 'name': THINKING, 'weight': THINKING_WEIGHT})
         try:
             await send({'type': 'start'})
             await send({'type': 'expression', 'name': 'neutral', 'weight': 1})
             chunks = demo_chunks() if args.mode == 'demo' else llama_chunks(
-                args.llama_url, args.model, args.prompt, catalog)
-            if settings is not None:
+                args.llama_url, args.model, args.prompt, catalog, on_reasoning)
+            if worker is not None:
                 from controller.speech import Segmenter, clear_live_clips
                 clear_live_clips()
                 segmenter, queue = Segmenter(), asyncio.Queue()
-                speaker = asyncio.create_task(speak_segments(queue, send, settings))
+                speaker = asyncio.create_task(speak_segments(queue, send, worker))
             async for chunk in chunks:
+                if thinking and worker is None:
+                    # Text-only: the answer has started, so drop the thinking face.
+                    thinking = False
+                    await send({'type': 'expression', 'name': 'neutral', 'weight': 1})
                 for event in parser.feed(chunk):
-                    if settings is None:
+                    if worker is None:
                         await send(event)
                         continue
                     # With speech, moods change when each clip starts playing, not on arrival.
@@ -237,14 +255,24 @@ async def handle_connection(socket, args, catalog):
 async def run(args):
     from websockets.asyncio.server import serve
     catalog = load_catalog()
+    args.speech_worker = None
     if args.speech_settings is not None:
+        from controller.speech import ApplioWorker
         args.speech_settings.check()
+        print('Starting Applio worker (loads the voice model once)…', flush=True)
+        args.speech_worker = ApplioWorker(args.speech_settings)
+        ready = await args.speech_worker.start()
+        print(f"Applio worker ready: load {ready['loadSeconds']}s, warm-up {ready['warmSeconds']}s", flush=True)
     async def handler(socket):
         await handle_connection(socket, args, catalog)
-    async with serve(handler, '127.0.0.1', args.port, origins=[ORIGIN], max_size=1024, max_queue=4):
-        speech = 'speech on' if args.speech_settings is not None else 'text only'
-        print(f'Bridge: ws://127.0.0.1:{args.port} ({args.mode}, {speech}); open {ORIGIN}/renderer/', flush=True)
-        await asyncio.Future()
+    try:
+        async with serve(handler, '127.0.0.1', args.port, origins=[ORIGIN], max_size=1024, max_queue=4):
+            speech = 'speech on' if args.speech_worker is not None else 'text only'
+            print(f'Bridge: ws://127.0.0.1:{args.port} ({args.mode}, {speech}); open {ORIGIN}/renderer/', flush=True)
+            await asyncio.Future()
+    finally:
+        if args.speech_worker is not None:
+            await args.speech_worker.close()
 
 
 def main():

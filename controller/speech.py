@@ -1,8 +1,9 @@
 """Turn streamed LLM text into spoken, lip-synced clips.
 
-First integration version: each completed sentence is synthesised with
-Applio (Edge TTS -> RVC), aligned with Rhubarb, and announced to the renderer
-as a clip ID. Sentences are processed one at a time, in order.
+Each completed sentence is synthesised by a persistent Applio worker
+(Edge TTS -> RVC, model kept loaded; see applio_worker.py), aligned with
+Rhubarb, and announced to the renderer as a clip ID. Sentences are processed
+one at a time, in order.
 
 Clips are written to ``assets/private/speech/live/`` (gitignored). Only the
 generated ID crosses the WebSocket; the renderer builds the URL itself.
@@ -15,7 +16,6 @@ import json
 import logging
 import re
 import secrets
-import time
 import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -28,7 +28,8 @@ APPLIO_DIR = ROOT.parent / 'Applio'
 CLIP_ID = re.compile(r'[0-9a-f]{16}')
 # A sentence ends at . ! ? or … (optionally followed by closing quotes) plus whitespace.
 SENTENCE_END = re.compile(r'(?<=[.!?…])["\')\]]*\s+')
-EDGE_ATTEMPTS = 3
+WORKER_SCRIPT = Path(__file__).with_name('applio_worker.py')
+WORKER_LOG = LIVE_DIR.parent / 'applio-worker.log'
 LOG = logging.getLogger(__name__)
 
 
@@ -50,9 +51,16 @@ class ApplioSettings:
     sid: int = 0
     recognizer: str = 'phonetic'
 
+    def worker_config(self) -> dict:
+        """Settings in the form applio_worker.py expects."""
+        return {'pth': str(self.pth), 'index': str(self.index), 'voice': self.voice,
+                'rate': self.rate, 'pitch': self.pitch, 'index_rate': self.index_rate,
+                'volume_envelope': self.volume_envelope, 'protect': self.protect,
+                'f0_method': self.f0_method, 'embedder': self.embedder, 'sid': self.sid}
+
     def check(self) -> None:
         """Fail early, before the first sentence, if Applio is not where expected."""
-        for path in (self.applio_dir / 'core.py', self.applio_dir / '.venv' / 'bin' / 'python',
+        for path in (self.applio_dir / '.venv' / 'bin' / 'python', WORKER_SCRIPT,
                      self.pth, self.index):
             if not path.exists():
                 raise FileNotFoundError(f'Applio file not found: {path}')
@@ -128,7 +136,97 @@ def clear_live_clips(directory: Path = LIVE_DIR) -> None:
             path.unlink()
 
 
-async def synthesise(segment: Segment, settings: ApplioSettings,
+class ApplioWorker:
+    """Bridge-side handle on applio_worker.py: started once, kept warm, restarted if it dies.
+
+    Replies are matched to requests by ID, so a cancelled request's late reply
+    is simply dropped. The worker serves requests one at a time, in order.
+    """
+
+    def __init__(self, settings: ApplioSettings, command: list[str] | None = None,
+                 log_path: Path = WORKER_LOG):
+        self.settings = settings
+        self.command = command or [str(settings.applio_dir / '.venv' / 'bin' / 'python'),
+                                   str(WORKER_SCRIPT), json.dumps(settings.worker_config())]
+        self.log_path = log_path
+        self.process: asyncio.subprocess.Process | None = None
+        self.reader: asyncio.Task | None = None
+        self.pending: dict[str, asyncio.Future] = {}
+        self.starting = asyncio.Lock()
+        self.ready: dict = {}
+
+    def alive(self) -> bool:
+        return (self.process is not None and self.process.returncode is None
+                and self.reader is not None and not self.reader.done())
+
+    async def start(self) -> dict:
+        """Start and warm the worker if it is not running; return its ready message."""
+        async with self.starting:
+            if self.alive():
+                return self.ready
+            await self.close()
+            self.log_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.log_path, 'wb') as log:
+                self.process = await asyncio.create_subprocess_exec(
+                    *self.command, cwd=self.settings.applio_dir, stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE, stderr=log)
+            line = await self.process.stdout.readline()
+            try:
+                message = json.loads(line)
+            except ValueError:
+                message = {}
+            if not isinstance(message, dict) or not message.get('ready'):
+                await self.close()
+                raise RuntimeError(f'Applio worker failed to start; see {self.log_path}')
+            self.ready, self.pending = message, {}
+            self.reader = asyncio.create_task(self._read(self.process, self.pending))
+            return message
+
+    async def _read(self, process: asyncio.subprocess.Process, pending: dict) -> None:
+        while line := await process.stdout.readline():
+            try:
+                message = json.loads(line)
+                future = pending.pop(message.get('id'), None)
+            except (ValueError, AttributeError):
+                LOG.warning('Dropped invalid Applio worker line')
+                continue
+            if future is not None and not future.done():
+                future.set_result(message)
+        for future in pending.values():
+            if not future.done():
+                future.set_exception(RuntimeError(f'Applio worker exited; see {self.log_path}'))
+        pending.clear()
+
+    async def request(self, text: str, source: Path, output: Path) -> dict:
+        """Synthesise ``text`` with Edge TTS into ``source``, convert into ``output``."""
+        await self.start()
+        request_id = secrets.token_hex(8)
+        future = asyncio.get_running_loop().create_future()
+        self.pending[request_id] = future
+        line = json.dumps({'id': request_id, 'text': text, 'source': str(source), 'output': str(output)})
+        self.process.stdin.write(line.encode() + b'\n')
+        await self.process.stdin.drain()
+        message = await future
+        if not message.get('ok'):
+            raise RuntimeError(f"Applio worker: {message.get('error')}")
+        return message
+
+    async def close(self) -> None:
+        """Stop the worker: end its input, then kill it if it does not exit."""
+        process, self.process = self.process, None
+        if process is not None and process.returncode is None:
+            process.stdin.close()
+            try:
+                await asyncio.wait_for(process.wait(), 5)
+            except TimeoutError:
+                process.kill()
+                await process.wait()
+        if self.reader is not None:
+            await asyncio.gather(self.reader, return_exceptions=True)
+            self.reader = None
+
+
+async def synthesise(segment: Segment, worker: ApplioWorker,
                      directory: Path = LIVE_DIR) -> tuple[str, dict]:
     """Create ``<id>.wav`` and ``<id>.visemes.json``; return the ID and stage timings."""
     directory.mkdir(parents=True, exist_ok=True)
@@ -137,30 +235,9 @@ async def synthesise(segment: Segment, settings: ApplioSettings,
     source = directory / f'{clip_id}.src.mp3'
     wav = directory / f'{clip_id}.wav'
     text_path.write_text(segment.text + '\n', encoding='utf-8')
-    command = [
-        str(settings.applio_dir / '.venv' / 'bin' / 'python'), 'core.py', 'tts',
-        f'--tts-file={text_path}', f'--tts-text={segment.text}',
-        f'--tts-voice={settings.voice}', f'--tts-rate={settings.rate}',
-        f'--output-tts-path={source}', f'--output-rvc-path={wav}',
-        f'--pth-path={settings.pth}', f'--index-path={settings.index}',
-        f'--pitch={settings.pitch}', f'--index-rate={settings.index_rate}',
-        f'--volume-envelope={settings.volume_envelope}', f'--protect={settings.protect}',
-        f'--f0-method={settings.f0_method}', f'--embedder-model={settings.embedder}',
-        f'--sid={settings.sid}', '--export-format=WAV',
-    ]
-    started = time.perf_counter()
     try:
-        for attempt in range(1, EDGE_ATTEMPTS + 1):
-            returncode, output = await _run(command, settings.applio_dir)
-            if returncode == 0 and wav.exists():
-                break
-            # Edge TTS intermittently answers 429 (rate limited); it fails fast, so retry.
-            if '429' not in output or attempt == EDGE_ATTEMPTS:
-                raise RuntimeError(f'Applio TTS failed ({returncode}): {output[-800:]}')
-            LOG.warning('Edge TTS rate limited; retry %d/%d', attempt, EDGE_ATTEMPTS - 1)
-            await asyncio.sleep(attempt)
-        tts_seconds = time.perf_counter() - started
-        track = await asyncio.to_thread(align, wav, text_path, settings.recognizer)
+        reply = await worker.request(segment.text, source, wav)
+        track = await asyncio.to_thread(align, wav, text_path, worker.settings.recognizer)
         (directory / f'{clip_id}.visemes.json').write_text(
             json.dumps(track, ensure_ascii=False) + '\n', encoding='utf-8')
     except BaseException:
@@ -169,18 +246,6 @@ async def synthesise(segment: Segment, settings: ApplioSettings,
         raise
     finally:
         source.unlink(missing_ok=True)
-    return clip_id, {'ttsSeconds': round(tts_seconds, 2), 'alignSeconds': track['alignSeconds'],
+    return clip_id, {'edgeSeconds': reply['edgeSeconds'], 'edgeRetries': reply['edgeRetries'],
+                     'rvcSeconds': reply['rvcSeconds'], 'alignSeconds': track['alignSeconds'],
                      'audioSeconds': track['duration']}
-
-
-async def _run(command: list[str], cwd: Path) -> tuple[int, str]:
-    """Run a command, killing it if the caller is cancelled; return code and output."""
-    process = await asyncio.create_subprocess_exec(
-        *command, cwd=cwd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
-    try:
-        stdout, _ = await process.communicate()
-    finally:
-        if process.returncode is None:
-            process.kill()
-            await process.wait()
-    return process.returncode, stdout.decode(errors='replace')

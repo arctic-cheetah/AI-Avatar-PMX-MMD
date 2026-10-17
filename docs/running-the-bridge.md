@@ -65,12 +65,16 @@ PATH, and Applio installed next to this repository (`../Applio`, with its own
 .venv/bin/python controller/bridge.py --mode llm --speech --prompt "Greet me warmly in two short sentences."
 ```
 
-The bridge stops at startup if Applio's `core.py`, Python, voice model or index
-is missing. `--pth /path/to/model.pth` selects another voice model; the other
-Applio settings live in `ApplioSettings` in `controller/speech.py`. Each sentence
-is logged with its TTS+RVC and alignment times. Expect several seconds per
-sentence: Applio restarts and reloads the model on every call. Clips are written
-to `assets/private/speech/live/` and replaced on the next run. The renderer plays
+On startup the bridge launches a persistent Applio worker
+(`controller/applio_worker.py`, run with Applio's own Python) that loads the voice
+model once and warms up (about 4 s) before accepting connections. It stops if
+Applio's Python, the voice model or the index is missing, or if the worker fails
+to start; Applio's own output goes to `assets/private/speech/applio-worker.log`.
+`--pth /path/to/model.pth` selects another voice model; the other Applio settings
+live in `ApplioSettings` in `controller/speech.py`. Each sentence is logged with
+its Edge, RVC and alignment times (about 2–4 s per sentence). While the LLM is
+reasoning, Yidhari shows the `thinking` mood. Clips are written to
+`assets/private/speech/live/` and replaced on the next run. The renderer plays
 them in order and applies each mood when its clip starts.
 
 ## Troubleshooting and tests

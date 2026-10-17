@@ -365,9 +365,9 @@ between them until the cold start is removed.
 #### Known gaps (accepted for the first test, fix later)
 
 - [ ] **Missing checkpoint.** The UI's `75e_14475s` checkpoint is absent locally. Its run used 193 steps/epoch; only `25e_4825s` from that run was ported. Local files come from runs at 31, 145 and 286 steps/epoch. Copy `75e_14475s` from the Windows build, or audition local checkpoints; the bridge uses `75e_21450s` until then.
-- [ ] **Time to first word.** ~10.7 s passed before the LLM's first complete sentence (likely reasoning tokens, which the bridge skips). Check llama-server reasoning settings, or speak an early short phrase.
-- [ ] **Silence between clips.** Clips arrive ~7 s apart. Removing the cold start is the main fix; overlapping TTS for sentence N+1 with RVC for sentence N is a second.
-- [ ] **Cold start per sentence.** Each `core.py tts` call starts a new Python process, spawns `rvc/lib/tools/tts.py`, and reloads the RVC model. Replace with a persistent worker in Applio's own `.venv` that loads the model once.
+- [ ] **Time to first word.** Reasoning time comes before the first sentence and must stay (user decision). Now masked by the `thinking` face; an opt-in cached filler clip is the remaining option.
+- [x] **Silence between clips.** Fixed by the persistent worker: in the measured run every clip was ready before the previous one finished. Phase 2 overlap would add margin.
+- [x] **Cold start per sentence.** Replaced the `core.py tts` call with a persistent worker in Applio's own `.venv` (Phase 1).
 - [ ] **CPU-only RVC.** Applio's PyTorch is `2.11.0+cu128` (CUDA build); on this AMD laptop `torch.cuda.is_available()` is false and there is no HIP build. Conversion competes with the LLM for CPU. Evaluate a ROCm PyTorch build in Applio's environment later.
 - [x] **Alignment latency.** Live speech uses `--recognizer phonetic` (0.45–0.72 s per sentence). PocketSphinx (~9 s per 10 s) stays for offline samples.
 - [x] **Sentence streaming.** Sentences are synthesised as soon as they are complete, while the LLM is still generating. Synthesis itself is still one sentence at a time.
@@ -377,3 +377,81 @@ between them until the cold start is removed.
 - [ ] **Edge TTS dependency.** HTTP 429 is retried twice with backoff; any other failure skips that sentence with a `notice`. An offline fallback is still missing.
 - [ ] **Errors and cancellation.** A failed sentence is skipped; a new run or a disconnect cancels the worker and kills a running Applio process. Not done: cancelling the reply mid-way from the renderer, and pause/resume.
 - [x] **Timing measurements.** The bridge logs per sentence: TTS+RVC seconds, alignment seconds, audio seconds, and time to first clip. Not logged yet: playback gaps on the renderer side.
+
+### TTS latency rework plan — 2026-10-17
+
+User-observed on screen: speech stutters, with long silences between sentences.
+Work happens on branch `rework-tts-pipeline`.
+
+**Profile** (one process, CPU, `75e_21450s`, one run each):
+
+| Stage | Applio CLI per sentence (now) | Persistent process (warm) |
+| --- | --- | --- |
+| Python + torch start-up | ~2–3 s, twice (`core.py` spawns `tts.py`) | Paid once at bridge start |
+| Edge TTS request | 0.9–1.2 s; 3.0 s with a 429 retry | Same (network) |
+| RVC conversion | 3.3 s (reloads model, embedder, rmvpe) | 0.8 s for 2.2 s audio; 1.5 s for 5.4 s audio (RTF ≈ 0.3) |
+| Rhubarb phonetic | 0.5 s | 0.5 s |
+| Per sentence | 7–9 s | ≈ 2.2 s |
+
+Applio's `VoiceConverter` already caches the model and embedder within a process;
+the CLI discards that cache on every call. The splitter breaks at `. ! ? …` and at
+mood tags, not at commas.
+
+**Constraint:** LLM reasoning stays on so answers stay as good as possible. Do not
+disable thinking or cap the reasoning budget to save latency.
+
+1. **Phase 1: persistent Applio worker.** A worker script runs under Applio's own
+   `.venv` for the bridge's lifetime. It loads Edge TTS, the RVC model, embedder
+   and rmvpe once, warms up, then serves JSON-line requests (Edge TTS →
+   `convert_audio`). Edge 429 retries move inside it. Target: ≈ 2 s per sentence.
+2. **Phase 2: overlapping stages.** Run Edge for sentence N+1 while RVC converts
+   sentence N, and align in a background thread. Throughput is then set by the
+   slowest stage (≈ 1 s), shorter than most spoken sentences, so speech should
+   flow after the first clip.
+3. **Phase 3: smarter chunking.** Make the first chunk small (first clause, up to
+   a comma) for an early start; merge later sentences up to ~150–200 characters
+   to cut Edge requests, 429s and joins. Mood tags still force a split.
+4. **Phase 4: hide reasoning time (reasoning stays on).** Start and warm the
+   worker when the bridge starts, so the first sentence pays no cold start. Show
+   the `thinking` mood while reasoning tokens stream, until the first clip plays.
+   Optional later: a short cached filler clip (for example "Hmm…") at the start
+   of reasoning; this adds words the LLM did not say, so make it opt-in.
+5. **Phase 5: later options.** Local TTS (Kokoro-82M or Piper on CPU) to remove
+   network time and 429s; ROCm PyTorch for RVC (fragile on gfx1151 and shares
+   the GPU with the LLM); Edge word boundaries as an alignment cross-check.
+
+Expected after Phases 1–4 (estimates, to be measured): no gap between sentences
+once speaking, and first audio ≈ 2–3 s after the first sentence is complete. Total
+time to first word still includes however long the model reasons.
+
+#### Phase 1 and 4 results — 2026-10-17
+
+Implemented: [controller/applio_worker.py](../controller/applio_worker.py) runs
+under Applio's `.venv` (cwd = Applio), imports only the standard library and
+Applio, keeps the real stdout for JSON-line replies, and sends Applio's prints
+to `assets/private/speech/applio-worker.log`. `ApplioWorker` in
+[controller/speech.py](../controller/speech.py) starts it with the bridge, waits
+for its warm-up, matches replies to requests by ID (a cancelled request's late
+reply is dropped), and restarts it on the next request if it exits. Sentence
+text travels inside JSON, not as a command-line argument. Edge 429 retries
+moved into the worker. Phase 4: the bridge sends `thinking` (0.6) on the first
+reasoning delta. In text-only mode it resets to neutral when the answer starts;
+in speech mode it stays until the first clip applies its own mood. Reasoning is
+still fully on.
+
+End-to-end run (qwen3.8-27b, four-sentence prompt, `75e_21450s`):
+
+| Measure | CLI per sentence (before) | Persistent worker (now) |
+| --- | --- | --- |
+| Worker start-up | none | 1.46 s load + 2.78 s warm-up, once at bridge start |
+| Thinking face | none | 0.46 s after Start |
+| First answer text from LLM | ≈ 10.7 s | 5.3 s (reasoning length varies per run) |
+| First clip ready | 17.9 s | 9.1 s |
+| Edge + RVC + align per sentence | 7–9 s | 2.0–3.7 s (Edge 0.6–1.3, RVC 0.9–1.9, align 0.5–0.7) |
+| Clip ready vs previous clip finished | ~5 s gap | 0.9 s, 0.1 s and 1.9 s early: no gaps after the first clip |
+
+Follow-ups found: the first real conversion still took 1.89 s against ~0.94 s
+for later ones of similar length, so the synthetic-tone warm-up does not warm
+everything (try a short speech-like warm-up). Clip 3 was ready only 0.1 s before
+it was needed, so Phase 2 overlap is still worth doing as a safety margin. Not
+yet checked on the real display.

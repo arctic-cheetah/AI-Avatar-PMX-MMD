@@ -90,13 +90,13 @@ of scope.
 
 ## Current state and historical verification
 
-| Piece | State after this restoration |
-| --- | --- |
-| JSON catalog, expression controller, test bench | Restored in the renderer |
-| Browser WebSocket client and transcript | Restored; waits for backend |
-| Python bridge and llama-server adapter | Prior implementation exists in chat; current disk file is the old scaffold and is outside this docs/renderer restoration |
-| Live LLM test | User reported success before deletion on 2026-10-17; not evidence that the recovered backend works today |
-| Applio, TTS, alignment, lip sync | Planned, not implemented |
+| Piece                                           | State after this restoration                                                                                             |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| JSON catalog, expression controller, test bench | Restored in the renderer                                                                                                 |
+| Browser WebSocket client and transcript         | Restored; waits for backend                                                                                              |
+| Python bridge and llama-server adapter          | Restored: catalog parser, Origin-restricted WebSocket, SSE adapter, local environment and regression tests |
+| Live LLM test                                   | Post-repair backend test passed: qwen3.8-27b streamed soft-smile, thinking, neutral and tag-free text via WebSocket                 |
+| Applio, TTS, alignment, lip sync                | Planned, not implemented                                                                                                 |
 
 ## LLM mood pipeline and events
 
@@ -108,7 +108,7 @@ Example target output:
 [soft-smile:0.6] Good morning. [thinking:0.5] Let me think about that. [neutral]
 ```
 
-The previously implemented protocol, to be restored in the backend, sends:
+The restored backend sends:
 
 ```json
 {"type":"start"}
@@ -118,8 +118,7 @@ The previously implemented protocol, to be restored in the backend, sends:
 ```
 
 `error` carries a text message. Each run begins neutral; successful completion
-keeps the last mood unless a neutral tag was emitted. Errors/disconnects reset
-neutral. The renderer writes transcript text with `textContent`, limits retained
+keeps the last mood unless a neutral tag was emitted. Generation errors reset neutral. The browser preserves the last mood on disconnect. The renderer writes transcript text with `textContent`, limits retained
 text to 50,000 characters, reconnects without automatically repeating a run,
 and clears manual overrides/stops the loop on start. Authoring controls are
 inert while receiving a response.
@@ -131,7 +130,7 @@ oversized (over 128 characters), and unfinished blocks are dropped. Text outside
 tags preserves whitespace. Consequently general Markdown links, bracketed
 citations and code indexing require a different structured-control protocol.
 
-The intended llama-server adapter posts streamed `/v1/chat/completions` requests,
+The restored llama-server adapter posts streamed `/v1/chat/completions` requests,
 uses content deltas rather than reasoning deltas, and generates its system
 prompt from the catalog. The CLI prompt represents a fresh single-turn request,
 not persistent chat history. Text preview changes expression on arrival; final
@@ -214,8 +213,7 @@ other local processes. Do not expose arbitrary file paths or commands to tags.
 ## Build order
 
 1. Preserve the local PMX pack outside git. Keep the renderer working.
-2. Restore the Python bridge separately, then re-run the fixed tagged sentence
-   and live LLM text checks. The browser side is restored here.
+2. Python bridge restored with regression tests. Run the fixed demo and live LLM text checks using [the bridge guide](./running-the-bridge.md). Live backend verification after recovery passed against qwen3.8-27b; visual renderer verification is separate.
 3. Next visual milestone: one saved Applio-voiced sentence with accurate lip sync
    and a matching expression. Calibrate in neutral, then test a few moods.
 4. Automate the verified Applio workflow in its own environment and feed live LLM
@@ -225,3 +223,13 @@ other local processes. Do not expose arbitrary file paths or commands to tags.
 
 The current preview and future experience differ: text arrives immediately now;
 the final experience schedules facial expressions and articulation together.
+
+### TTS and voice-model decision notes — 2026-10-17
+
+- **User-reported experience:** previous university IT demonstrations used Applio's UI for both live speech-to-target-voice conversion after model training and text-to-target-voice generation. The user also reports using sampled Yidhari voice audio with Applio. An NVIDIA RTX 4090 was used in the earlier demos; these results are not benchmarks of the current AMD laptop.
+- **Model role:** treat the existing Applio-trained voice as an RVC conversion model until its files and configuration are inspected. A successful TTS workflow in the UI does not establish that the voice checkpoint itself accepts text: source TTS and voice conversion are separate stages. ONNX (`.onnx`) and PyTorch (`.pth`) describe file formats, not whether a model performs synthesis or conversion. Matching architecture, configuration, and supporting assets are still required.
+- **Preferred experiment:** lightweight local TTS → existing Applio/RVC voice model → final-audio alignment → synchronised playback. Reuse the trained voice if compatible; retraining is not the next milestone. A direct TTS model for the desired voice could remove conversion, but no such model has been identified here.
+- **Local versus online:** favour a fully local path for offline operation and keeping dialogue on the machine, subject to voice quality and measured latency. Keep Edge TTS as a comparison or fallback, not an assumed requirement. Local synthesis avoids network delay but consumes shared compute; online synthesis offloads that stage but still requires local conversion and alignment in this design. Neither route is assumed faster without measurement.
+- **Hardware/runtime:** the MAX+ 395 with 128 GB UMA is a suitable candidate for pretrained speech inference, but capacity does not establish speed or application compatibility. Start by benchmarking a CPU-capable TTS runtime; test AMD GPU acceleration only with a compatible installed backend. Working llama.cpp Vulkan inference does not prove Applio/PyTorch acceleration works. Record actual devices used and do not assume NPU support.
+- **Comparison:** use the same short transcript, target voice, and output settings for local and online source TTS. Compare source pronunciation, converted voice quality, time to first playable audio, total preparation time relative to audio duration, and LLM throughput with the pipeline running. Include alignment in end-to-end timing, distinguish cold model loading from warm inference, and aim for preparation faster than playback after initial buffering.
+- **Current status:** the user is still setting up Applio 3.6.6. Its installed backend, model assets, automation interface, and performance remain unverified. Resume with one saved source recording, converted WAV, and exact transcript once setup is ready; then implement the combined speech-and-expression demo. No installation or runtime changes are implied by these notes.

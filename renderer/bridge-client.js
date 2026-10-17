@@ -8,9 +8,11 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     socket = new WebSocket('ws://127.0.0.1:8765');
     socket.onopen = () => { status.textContent = 'Connected · ready'; button.disabled = false; };
     socket.onclose = () => {
+      // Do not reset the expression here: while the bridge is down this
+      // close/reconnect cycle repeats and would keep forcing neutral.
       busy = false; onFinish(); button.disabled = true;
       status.textContent = 'Disconnected · retrying…';
-      onExpression('neutral', 1);
+      // onExpression('neutral', 1);
       setTimeout(connect, 2000);
     };
     socket.onerror = () => { status.textContent = 'Bridge unavailable'; };

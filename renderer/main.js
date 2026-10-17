@@ -628,9 +628,9 @@ function animate() {
   previousFrame = now;
   controls.update();
   mesh?.morphTargetInfluences?.fill(0);
+  expressions?.update(delta);
   updateBlink(now / 1000);
   updateWinks(delta);
-  expressions?.update(delta);
   audition?.update(delta);
   audition?.apply();
   // A held preview wins the frame so a visual check is not overwritten by the mood loop.

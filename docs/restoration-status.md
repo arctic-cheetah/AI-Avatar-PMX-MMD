@@ -24,13 +24,13 @@ and requirements was saved to the attached SSD:
 - Shared-catalog and bridge usage docs, and the Applio/phoneme-alignment architecture.
   Documentation wording and the text diagram were reconstructed, not exactly recovered.
 
-## Still outside this restoration
+## Backend repair follow-up
 
-The current controller/bridge.py is the early scaffold. The later Python parser,
-WebSocket server, llama-server adapter, dependencies and tests need a separate
-restoration from the preserved conversation. The browser's Start response button
-will remain unavailable without a compatible running backend. Do not mistake the
-historical user-confirmed live test for a new post-restoration validation.
+The backend has now been reconstructed: streaming catalog-based tag parser,
+Origin-restricted localhost WebSocket server, demo, llama-server SSE adapter,
+project-local environment and regression tests. The recovery-era browser client
+was preserved, including its choice to keep the mood on disconnect. Subsequent live verification passed against qwen3.8-27b on port 8080: streamed
+expression events and tag-free text reached the WebSocket client.
 
 No model assets, Git history, or external Applio installation were modified.
 TTS and lip sync were plans before deletion and are still plans now.

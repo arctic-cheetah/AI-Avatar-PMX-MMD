@@ -28,9 +28,10 @@ User text -> llama-server (Qwen, Vulkan, 127.0.0.1:8080)
                     |
                     +-- Text preview: clean text + expression events
                     |
-                    +-- Speech (bridge --speech; first version, per sentence):
-                        Edge TTS (primary; local TTS later for offline use)
-                          -> Applio RVC conversion (Yidhari voice model)
+                    +-- Speech (bridge --speech; per sentence, pipelined):
+                        persistent Applio worker (controller/applio_worker.py):
+                          Edge TTS (primary; ≤ 2 ahead) -> RVC (one thread, in order)
+                          -> controller/speech_trim.py (cut padding and tail breaths)
                           -> final WAV + exact transcript
                           -> controller/speech_align.py (Rhubarb Lip Sync)
                           -> .visemes.json (timed mouth shapes) + segment mood
@@ -453,5 +454,107 @@ End-to-end run (qwen3.8-27b, four-sentence prompt, `75e_21450s`):
 Follow-ups found: the first real conversion still took 1.89 s against ~0.94 s
 for later ones of similar length, so the synthetic-tone warm-up does not warm
 everything (try a short speech-like warm-up). Clip 3 was ready only 0.1 s before
-it was needed, so Phase 2 overlap is still worth doing as a safety margin. Not
-yet checked on the real display.
+it was needed, so Phase 2 overlap is still worth doing as a safety margin.
+User-tested on the real display: much faster and close to normal speech, but
+still slightly slow (to be raised as a GitHub issue).
+
+#### Phase 2 plan, blockers and drawbacks — 2026-10-17
+
+**Why it still sounds slow.** Measured on four live clips (silencedetect, −40 dB):
+every clip has ~0.16–0.18 s of silence before the speech and ~1.0 s after it
+(for example "Hello, friend." is 2.44 s long but speech ends at 1.46 s). Each
+sentence boundary therefore holds ~1.2 s of dead air, against ~0.3–0.5 s in
+natural speech. The Edge rate of −15 % adds to the unhurried feel; that is the
+user's chosen setting and is unchanged. The user also reports that RVC sometimes
+adds a breath-like artifact at the end of a clip.
+
+**2a. Trim clip padding.** After RVC and before alignment (so lip timings match
+the trimmed audio), keep ~0.05 s before speech and ~0.25 s after `. ! ? …` (or
+~0.1 s after a fragment split by a mood tag). Speech bounds are measured on the
+**Edge source**, not the RVC output: the source has clean silence, and RVC keeps
+timing, so trimming the RVC output at the source's bounds also removes breaths
+RVC adds in the silent tail. Expected: ~1.2 s → ~0.3 s between sentences.
+
+**2b. Overlap the stages.**
+
+```text
+Edge (network)   [S1][S2][S3]          ← up to 2 requests in flight
+RVC  (CPU, 1×)       [S1]  [S2]  [S3]  ← strictly one at a time, in request order
+trim+align           [S1]  [S2]  [S3]  ← bridge threads
+send speak           S1 ─► S2 ─► S3    ← always in order
+```
+
+The worker's loop becomes asynchronous: Edge requests run ahead (at most 2 at
+once) while RVC runs in one background thread in request order. The bridge
+keeps at most 3 sentences in flight, sends finished clips strictly in order,
+skips a failed sentence with a `notice` without blocking the rest, and tells the
+worker to drop queued sentences from a cancelled run.
+
+**Blockers:** none.
+
+**Drawbacks and risks:**
+
+1. **Edge 429s:** parallel requests make rate limiting more likely. Mitigation:
+   at most 2 Edge requests at once; retries stay.
+2. **CPU contention:** RVC, Rhubarb and audio decoding now overlap. The LLM runs
+   on the iGPU (Vulkan), so the CPU is mostly free, but the renderer and OS
+   need headroom. Mitigation: a configurable PyTorch thread count for RVC;
+   measure before capping.
+3. **Trimming risk:** soft word endings ("s", "th") could be clipped. Mitigation:
+   bounds from the clean Edge source at −50 dB, a 0.25 s tail after sentence
+   ends, and no trim when no speech is detected. Listen to a few clips.
+4. **Mid-sentence breaths:** only breaths in the trimmed lead/tail are removed;
+   breaths RVC adds inside a sentence's pauses stay.
+5. **Ordering complexity:** clips can finish out of order. Mitigation: ordered
+   sending, with tests for a slow middle clip and a failed middle clip.
+6. **Cancellation waste:** the worker may finish one RVC conversion from an old
+   run after a cancel. Bounded by the in-flight limit.
+7. **MP3 timing offset:** the Edge MP3 and RVC WAV differed by ~20 ms in length
+   (decoder padding), well inside the 0.05 s lead margin.
+8. **Not Phase 2:** first-clip latency (Phase 3), the missing `75e_14475s`
+   checkpoint and the Edge internet dependency remain open.
+
+#### Phase 2 results — 2026-10-17
+
+Implemented:
+[controller/speech_trim.py](../controller/speech_trim.py) (2a: bounds from the
+Edge source at −50 dBFS in 10 ms windows; keep 0.05 s lead, 0.25 s tail after
+`. ! ? …`, 0.1 s after a mood-split fragment; ≈ 30 ms per clip). In
+[controller/applio_worker.py](../controller/applio_worker.py), `Pipeline` (2b)
+runs up to 2 Edge requests at once, runs RVC on one thread in request order,
+and honours `{"cancel": run}`. `speak_segments` in
+[controller/bridge.py](../controller/bridge.py) keeps up to `MAX_IN_FLIGHT = 3`
+sentences in flight, announces them strictly in order, skips failures with a
+`notice`, and cancels the worker's run on interruption. `ApplioSettings.rvc_threads`
+(default 0 = PyTorch default) caps RVC threads if CPU contention shows up.
+
+Tests: [tests/test_speech_pipeline.py](../tests/test_speech_pipeline.py) (15)
+covers trim bounds, breath removal, fragment tails and silent sources; RVC
+serial order despite a slow first Edge request, the Edge concurrency limit,
+Edge/RVC overlap, cancellation before and during Edge, failure isolation and
+protocol dispatch; and ordered sending with a slow or failed middle clip, the
+in-flight limit and cancellation. Full suite: 33 tests, stable over 10 runs.
+
+End-to-end run (qwen3.8-27b, six sentences, `75e_21450s`, trimmed clips
+replayed on a simulated playback clock with 60 ms between clips):
+
+| Clip | Ready | Plays | Spare before needed | Length trimmed from → to |
+| --- | --- | --- | --- | --- |
+| "Hi, it's wonderful to see you." | 28.46 s | 28.46 s | — | 3.30 → 2.39 s |
+| "I'm glad you're here." | 29.01 s | 30.91 s | 1.90 s | 2.24 → 1.33 s |
+| "Building an avatar together…" | 31.45 s | 32.30 s | 0.85 s | 6.04 → 5.15 s |
+| "We can shape its name…" | 33.42 s | 37.51 s | 4.09 s | 6.72 → 5.82 s |
+| "Each choice becomes…" | 34.80 s | 43.39 s | 8.59 s | 4.68 → 3.84 s |
+| "Over time, it can grow…" | 36.36 s | 47.29 s | 10.93 s | 5.48 → 4.59 s |
+
+- Every clip lost ≈ 0.9 s of padding; sentence boundaries now hold ≈ 0.25 s of
+  tail plus 0.05 s of lead. Checked two clips: speech ends 0.19–0.25 s before the
+  clip ends and each lip track ends in rest (X), so word endings were kept.
+- The spare margin grows as she talks (clips arrive ~1.6 s apart, RVC ≈ 0.3×
+  real time). No Edge 429s with 2 parallel requests in this run.
+- Contention is visible but harmless: alignment took 0.54–1.16 s when overlapping
+  RVC (0.45–0.72 s before). `rvc_threads` stays at the default.
+- The first clip was ready at 28.4 s because the model reasoned for ~24 s in this
+  run (reasoning stays on). The first real RVC conversion was again slower
+  (2.39 s); the speech-like warm-up follow-up still applies.
+- Not yet checked by ear on the real display.

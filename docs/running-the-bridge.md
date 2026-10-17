@@ -72,8 +72,12 @@ Applio's Python, the voice model or the index is missing, or if the worker fails
 to start; Applio's own output goes to `assets/private/speech/applio-worker.log`.
 `--pth /path/to/model.pth` selects another voice model; the other Applio settings
 live in `ApplioSettings` in `controller/speech.py`. Each sentence is logged with
-its Edge, RVC and alignment times (about 2–4 s per sentence). While the LLM is
-reasoning, Yidhari shows the `thinking` mood. Clips are written to
+its Edge, RVC and alignment times and its length before and after trimming.
+The worker requests Edge audio for up to two sentences ahead while RVC converts
+one at a time, and the bridge keeps up to three sentences in flight, so later
+sentences are usually ready well before they are needed. Each clip is trimmed
+to 0.05 s before and 0.25 s after the speech, which also removes breaths RVC
+adds at the end. While the LLM is reasoning, Yidhari shows the `thinking` mood. Clips are written to
 `assets/private/speech/live/` and replaced on the next run. The renderer plays
 them in order and applies each mood when its clip starts.
 

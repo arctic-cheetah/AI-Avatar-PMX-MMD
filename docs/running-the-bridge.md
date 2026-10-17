@@ -48,8 +48,11 @@ The adapter reads `/v1/chat/completions` SSE content deltas and ignores separate
 supplied reasoning deltas. Thinking may delay visible output. A missing `[DONE]`
 terminator or upstream failure is reported as an error, not successful completion.
 
-Each run begins neutral. Successful completion keeps the last mood unless a
-neutral tag was emitted; generation errors reset it. The recovered browser client
+Each run begins neutral. In text-only mode, successful completion keeps the last
+mood unless a neutral tag was emitted; generation errors reset it. With
+`--speech`, the face eases back to neutral about 0.6 s after the last clip of a
+finished response stops playing, and a response that produced no clips clears
+the thinking face when it ends. The saved-sample test keeps its chosen mood. The recovered browser client
 preserves the last mood on disconnect, avoiding repeated resets during reconnects.
 An active generation is cancelled when its browser disconnects. Duplicate starts
 while busy are ignored. No automatic generation occurs on reconnect.
@@ -95,11 +98,15 @@ Run regression tests:
 
 ```bash
 .venv/bin/python -m unittest discover -s tests -v
+node --test tests/renderer/
 ```
 
 Tests cover split tags, malformed/unknown controls, bounded buffering, intensity
 clamping, prompt generation, real local WebSocket transport and Origin rejection,
 repeat runs, simulated SSE, truncated streams, and upstream-error handling.
+Speech tests cover sentence splitting, the worker protocol, trimming, Edge/RVC
+pipelining and ordered sending; `tests/renderer/` checks when the face relaxes
+after speech (Node's built-in test runner, no packages needed).
 Live verification after repair passed against qwen3.8-27b on 127.0.0.1:8080:
 the real model streamed through the parser and WebSocket, producing soft-smile
 0.6, thinking 0.5, neutral, and tag-free greeting text. This verifies backend

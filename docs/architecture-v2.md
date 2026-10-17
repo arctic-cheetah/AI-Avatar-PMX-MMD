@@ -135,8 +135,12 @@ The restored backend sends:
 {"type":"end"}
 ```
 
-`error` carries a text message. Each run begins neutral; successful completion
-keeps the last mood unless a neutral tag was emitted. Generation errors reset neutral. The browser preserves the last mood on disconnect. The renderer writes transcript text with `textContent`, limits retained
+`error` carries a text message. Each run begins neutral; in text-only mode,
+successful completion keeps the last mood unless a neutral tag was emitted. In
+speech mode the renderer eases to neutral 0.6 s after the last clip of a finished
+response stops ([speech-session.js](../renderer/speech-session.js)), and the
+bridge sends neutral if a response produced no clips, so the thinking face never
+sticks. Generation errors reset neutral. The browser preserves the last mood on disconnect. The renderer writes transcript text with `textContent`, limits retained
 text to 50,000 characters, reconnects without automatically repeating a run,
 and clears manual overrides/stops the loop on start. Authoring controls are
 inert while receiving a response.

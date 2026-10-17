@@ -45,7 +45,7 @@ class SpeechBridgeTests(unittest.IsolatedAsyncioTestCase):
             yield '[soft-smile:0.6] Hello there. [thinking]Hmm, '
             yield 'let me see.'
         spoken = []
-        async def fake_synthesise(segment, worker):
+        async def fake_synthesise(segment, worker, run=None):
             spoken.append(segment.text)
             return f'{len(spoken):016x}', {}
         args = Namespace(mode='demo', speech_worker=object())
@@ -78,7 +78,7 @@ async def run_llm(worker, chunks_with_reasoning):
                 await on_reasoning()
             else:
                 yield text
-    async def fake_synthesise(segment, worker):
+    async def fake_synthesise(segment, worker, run=None):
         return '0123456789abcdef', {}
     args = Namespace(mode='llm', llama_url='', model=None, prompt='Hi', speech_worker=worker)
     async def handler(ws): await handle_connection(ws, args, load_catalog())

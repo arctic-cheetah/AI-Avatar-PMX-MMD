@@ -107,6 +107,12 @@ class ThinkingMoodTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([e['name'] for e in events if e['type'] == 'expression'], ['neutral', 'thinking'])
         self.assertEqual([e['expression'] for e in events if e['type'] == 'speak'], ['happy'])
 
+    async def test_speech_mode_clears_thinking_when_nothing_spoken(self):
+        # Reasoning, then an answer with nothing speakable: no clip will replace the thinking face.
+        events = await run_llm(object(), [('reasoning', ''), ('content', '[happy] 🌸')])
+        self.assertEqual([e['type'] for e in events if e['type'] == 'speak'], [])
+        self.assertEqual([e['name'] for e in events if e['type'] == 'expression'], ['neutral', 'thinking', 'neutral'])
+
 
 FAKE_WORKER = '''
 import json, sys

@@ -1,11 +1,14 @@
 import asyncio
 import json
+import sys
+import tempfile
 import unittest
 from argparse import Namespace
+from pathlib import Path
 from unittest.mock import patch
 
 from controller.bridge import ORIGIN, TagParser, handle_connection, load_catalog
-from controller.speech import ApplioSettings, Segmenter, clean_for_tts
+from controller.speech import ApplioSettings, ApplioWorker, Segmenter, clean_for_tts
 
 
 def segments(chunks):
@@ -42,10 +45,10 @@ class SpeechBridgeTests(unittest.IsolatedAsyncioTestCase):
             yield '[soft-smile:0.6] Hello there. [thinking]Hmm, '
             yield 'let me see.'
         spoken = []
-        async def fake_synthesise(segment, settings):
+        async def fake_synthesise(segment, worker):
             spoken.append(segment.text)
             return f'{len(spoken):016x}', {}
-        args = Namespace(mode='demo', speech_settings=ApplioSettings())
+        args = Namespace(mode='demo', speech_worker=object())
         async def handler(ws): await handle_connection(ws, args, load_catalog())
         with patch('controller.bridge.demo_chunks', fast_demo), \
                 patch('controller.speech.synthesise', fake_synthesise), \
@@ -63,6 +66,89 @@ class SpeechBridgeTests(unittest.IsolatedAsyncioTestCase):
         ])
         # Only the initial neutral reset; later moods travel with their clip.
         self.assertEqual([e['name'] for e in events if e['type'] == 'expression'], ['neutral'])
+
+
+async def run_llm(worker, chunks_with_reasoning):
+    """Run one LLM-mode generation over a fake stream; return the events sent."""
+    from websockets.asyncio.server import serve
+    from websockets.asyncio.client import connect
+    async def fake_llama(base_url, model, prompt, catalog, on_reasoning=None):
+        for kind, text in chunks_with_reasoning:
+            if kind == 'reasoning':
+                await on_reasoning()
+            else:
+                yield text
+    async def fake_synthesise(segment, worker):
+        return '0123456789abcdef', {}
+    args = Namespace(mode='llm', llama_url='', model=None, prompt='Hi', speech_worker=worker)
+    async def handler(ws): await handle_connection(ws, args, load_catalog())
+    with patch('controller.bridge.llama_chunks', fake_llama), \
+            patch('controller.speech.synthesise', fake_synthesise), \
+            patch('controller.speech.clear_live_clips'):
+        async with serve(handler, '127.0.0.1', 0, origins=[ORIGIN]) as server:
+            async with connect(f'ws://127.0.0.1:{server.sockets[0].getsockname()[1]}', origin=ORIGIN) as ws:
+                await ws.send('{"type":"start"}')
+                events = []
+                while not events or events[-1]['type'] != 'end':
+                    events.append(json.loads(await asyncio.wait_for(ws.recv(), 3)))
+    return events
+
+
+class ThinkingMoodTests(unittest.IsolatedAsyncioTestCase):
+    STREAM = [('reasoning', ''), ('reasoning', ''), ('content', '[happy] Hello there.')]
+
+    async def test_text_mode_shows_thinking_then_answer(self):
+        events = await run_llm(None, self.STREAM)
+        moods = [e['name'] for e in events if e['type'] == 'expression']
+        self.assertEqual(moods, ['neutral', 'thinking', 'neutral', 'happy'])
+
+    async def test_speech_mode_keeps_thinking_until_clip(self):
+        events = await run_llm(object(), self.STREAM)
+        self.assertEqual([e['name'] for e in events if e['type'] == 'expression'], ['neutral', 'thinking'])
+        self.assertEqual([e['expression'] for e in events if e['type'] == 'speak'], ['happy'])
+
+
+FAKE_WORKER = '''
+import json, sys
+print(json.dumps({"ready": True, "loadSeconds": 0, "warmSeconds": 0}), flush=True)
+for line in sys.stdin:
+    request = json.loads(line)
+    if request["text"] == "crash":
+        sys.exit(3)
+    if request["text"] == "fail":
+        print(json.dumps({"id": request["id"], "ok": False, "error": "boom"}), flush=True)
+        continue
+    print(json.dumps({"id": request["id"], "ok": True, "edgeSeconds": 0, "edgeRetries": 0,
+                      "rvcSeconds": 0, "echo": request["text"]}), flush=True)
+'''
+
+
+class ApplioWorkerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_requests_errors_and_restart(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            script = Path(scratch) / 'fake_worker.py'
+            script.write_text(FAKE_WORKER)
+            worker = ApplioWorker(ApplioSettings(applio_dir=Path(scratch)),
+                                  command=[sys.executable, str(script)], log_path=Path(scratch) / 'log')
+            try:
+                self.assertTrue((await worker.start())['ready'])
+                replies = await asyncio.gather(*(worker.request(t, Path('s'), Path('o')) for t in ('a', 'b')))
+                self.assertEqual([r['echo'] for r in replies], ['a', 'b'])
+                with self.assertRaisesRegex(RuntimeError, 'boom'):
+                    await worker.request('fail', Path('s'), Path('o'))
+                with self.assertRaisesRegex(RuntimeError, 'exited'):
+                    await worker.request('crash', Path('s'), Path('o'))
+                # The next request restarts the worker transparently.
+                self.assertEqual((await worker.request('again', Path('s'), Path('o')))['echo'], 'again')
+            finally:
+                await worker.close()
+
+    async def test_start_failure_is_reported(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            worker = ApplioWorker(ApplioSettings(applio_dir=Path(scratch)),
+                                  command=[sys.executable, '-c', 'print("not ready")'], log_path=Path(scratch) / 'log')
+            with self.assertRaisesRegex(RuntimeError, 'failed to start'):
+                await worker.start()
 
 
 if __name__ == '__main__':

@@ -1,0 +1,44 @@
+# Restoration status — 2026-10-17
+
+Restored docs and renderer from surviving files and the conversation. This is a
+functional reconstruction, not recovery of the original Git commits or a claim
+of byte-for-byte identity.
+
+## Preserved before editing
+
+A compressed copy of the partially recovered docs, renderer, controller, README,
+and requirements was saved to the attached SSD:
+`/media/parrot/Backup/avatar-yidhari-before-restore-20261017.tar.gz`.
+
+## Restored
+
+- Expression controller: persistent loop weight, intensity-aware startLoop,
+  setIntensity without stopping the loop, easing, neutral and missing-morph checks.
+- Shared expressions.json: all 46 original preset names/weights preserved;
+  intended-use descriptions reconstructed from chat.
+- JSON loader, generated preview tooltips, candidate JSON export.
+- HTML matching all recovered main/audition controls, portrait/test-bench CSS.
+  CSS was recreated because the later original stylesheet was unavailable.
+- Browser WebSocket client, transcript, reconnect/reset behaviour, and suppression
+  of authoring overrides while a response is running.
+- Shared-catalog and bridge usage docs, and the Applio/phoneme-alignment architecture.
+  Documentation wording and the text diagram were reconstructed, not exactly recovered.
+
+## Still outside this restoration
+
+The current controller/bridge.py is the early scaffold. The later Python parser,
+WebSocket server, llama-server adapter, dependencies and tests need a separate
+restoration from the preserved conversation. The browser's Start response button
+will remain unavailable without a compatible running backend. Do not mistake the
+historical user-confirmed live test for a new post-restoration validation.
+
+No model assets, Git history, or external Applio installation were modified.
+TTS and lip sync were plans before deletion and are still plans now.
+
+## Checks
+
+Passed JavaScript syntax checks for all renderer modules; controller checks for
+loop intensity retention, live rescaling, neutral reset, invalid input and missing
+morphs; HTML ID bindings; and equality of all 46 morph maps against the SSD backup.
+Editor diagnostics were unavailable in this session. Browser rendering and live
+backend connectivity have not yet been revalidated in this restoration.

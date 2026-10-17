@@ -1,45 +1,35 @@
 # Emotion code structure
 
-This is the implementation plan for facial moods in the PMX companion. Local `[happy]`, `[surprised]`, `[thinking]`, `[troubled]`, `[angry]`, `[sad]`, and `[sad-combined]` previews use the same controller; none is connected to the bridge yet.
+The restored renderer separates semantic presets, animation, and authoring:
 
-See the [PMX facial morph catalog](./pmx-morph-catalog.md) for every available model morph and ideas to preview next.
+- [expressions.json](../renderer/expressions.json): 46 mood names, intended-use
+  descriptions and PMX weights. Neutral clears the mood.
+- [expression-catalog.js](../renderer/expression-catalog.js): asynchronous loader
+  and validation; no duplicated preset data.
+- [expression-controller.js](../renderer/expression-controller.js): resolves
+  morphs, tracks missing dependencies, eases one mood, cycles presets with a
+  retained intensity, and rescales intensity without stopping the loop.
+- [main.js](../renderer/main.js): model/camera/rendering, generated controls,
+  blinking/winks, and common expression entry point.
+- [morph-audition.js](../renderer/morph-audition.js) and
+  [audition-panel.js](../renderer/audition-panel.js): manual slider layer, sweep,
+  local candidate storage and JSON export. These are not LLM controls.
+- [bridge-client.js](../renderer/bridge-client.js): validates localhost WebSocket
+  events, dispatches through the same controller, and displays text safely.
 
-## Responsibilities
-
-- `renderer/expression-catalog.js` maps semantic mood names to PMX morph names and relative weights. Alongside the first five moods, it defines `sad` → `悲しむ` and `sad-combined` → `悲しむ` + `真面目` + `口角下げ`. `neutral` is a controller action, not a PMX morph.
-- `renderer/expression-controller.js` resolves those names against the loaded model, reports missing morphs, stores one active mood, and eases its morph weights each frame. Selecting another mood fades the old one out.
-- `renderer/main.js` loads and renders the model. Its preview buttons call the controller; future WebSocket messages must call the same `setExpression` method rather than implement a second animation path.
-- `controller/bridge.py` will eventually convert LLM tags into semantic expression events. It should not know PMX names or write morph weights. No bridge-to-renderer transport exists yet.
-
-## Code and file dependencies
-
-Solid arrows show the current loading, import, and runtime update paths. The dashed WebSocket arrow is planned, not implemented.
-
-```mermaid
-flowchart TD
-    html["renderer/index.html"] -->|loads module| main["renderer/main.js"]
-    main -->|imports| catalog["renderer/expression-catalog.js"]
-    main -->|imports and calls| controller["renderer/expression-controller.js"]
-    main -->|loads| pmx["yidhari-mmd/伊德海莉.pmx"]
-    pmx -->|parsed into| mesh["Loaded PMX mesh"]
-    main -->|blink updates| mesh
-    catalog -->|definitions passed by main| controller
-    controller -->|mood morph weights| mesh
-    bridge["controller/bridge.py"] -.->|planned WebSocket events| main
-```
-
-## Channel boundaries
-
-Mood is exclusive: one named mood at a time, or neutral. Idle blink remains independent, as do future speech visemes and hand poses. Each channel should own its own morphs or bones. If two channels influence the same facial area, preview the combination on this PMX and define a blending rule before enabling both together. In particular, test `笑い` with `まばたき` visually.
-
-`sad-combined` is an experimental visual comparison. Its `口角下げ` mouth morph belongs to the mood channel for now, but future lip sync may also change the mouth; resolve that overlap before enabling both simultaneously.
+The Python bridge has not been restored in this docs/renderer pass. It previously
+read the JSON, parsed split tags, and streamed semantic events. See
+[Restoration status](./restoration-status.md).
 
 ## Adding an expression
 
-1. Preview the candidate morph on the loaded PMX and confirm its visual meaning.
-2. Add one semantic entry to the catalog, with one or more PMX morph weights. Keep implementation-specific names out of bridge events.
-3. The controller will resolve every required morph. If any is missing, it marks that expression unavailable; the UI should disable its preview control and show the missing name.
-4. Route a local preview control and, later, a bridge event through `setExpression(name, weight)`.
-5. Verify transitions from neutral, from another mood, and back to neutral. Check interaction with blink and speech as those channels arrive.
+Preview individual morphs and combinations, save a candidate, then export JSON.
+Fill in its description and merge it into the shared catalog. Preview transitions
+from neutral, from another mood and back to neutral. A missing required morph
+disables the preset. Check blink and future speech compatibility before promotion.
 
-The next integration milestone after these local previews is the planned localhost WebSocket, tested with a fixed sentence before connecting `llama-server`.
+Each frame clears influences, then applies blink, winks, mood and additive manual
+weights. Shared morph ownership is a known limitation: `super-angry` overlaps
+blink and several presets overlap speech mouth controls. The planned facial
+compositor will resolve these explicitly. Preset existence does not establish
+visual compatibility or speech readiness.

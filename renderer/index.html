@@ -7,32 +7,74 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <canvas id="view"></canvas>
-  <div id="expression-controls" role="group" aria-label="Expression previews">
-    <button id="happy-button" data-expression="happy" type="button" aria-pressed="false" disabled>[happy] · 笑い</button>
-    <button id="surprised-button" data-expression="surprised" type="button" aria-pressed="false" disabled>[surprised] · びっくり</button>
-    <button id="thinking-button" data-expression="thinking" type="button" aria-pressed="false" disabled>[thinking] · じと目</button>
-    <button id="troubled-button" data-expression="troubled" type="button" aria-pressed="false" disabled>[troubled] · 困る</button>
-    <button id="angry-button" data-expression="angry" type="button" aria-pressed="false" disabled>[angry] · 怒り + 怒り目</button>
-    <button id="sad-button" data-expression="sad" type="button" aria-pressed="false" disabled>[sad] · 悲しむ</button>
-    <button id="sad-combined-button" data-expression="sad-combined" type="button" aria-pressed="false" disabled>[sad-combined] · 悲しむ + 真面目 + 口角下げ</button>
-    <button id="loop-button" type="button" aria-pressed="false" disabled>⏸ loop</button>
-
-  </div>
-  <div id="wink-controls" role="group" aria-label="Wink previews">
-    <button id="wink-left-button" data-wink="left" type="button" aria-pressed="false" disabled>[wink-left] · ウィンク</button>
-    <button id="wink-right-button" data-wink="right" type="button" aria-pressed="false" disabled>[wink-right] · ウィンク右</button>
-  </div>
-  <p id="status" role="status">Starting…</p>
-  <p id="hint">Drag to orbit · scroll to zoom</p>
-
+  <main id="stage">
+    <canvas id="view"></canvas>
+    <div id="camera-controls" role="group" aria-label="Camera framing">
+      <button id="frame-face-button" type="button" disabled>Face</button>
+      <button id="frame-bust-button" type="button" disabled>Bust</button>
+    </div>
+    <p id="status" role="status">Starting…</p>
+    <p id="hint">Drag to orbit · scroll to zoom</p>
+  </main>
+  <aside id="panel" aria-label="Facial morph test bench">
+    <section aria-labelledby="bridge-heading">
+      <h2 id="bridge-heading">Text connection</h2>
+      <p class="note">Run the bridge in demo or LLM mode, then start a response. This preview has no audio yet.</p>
+      <button id="bridge-start" type="button" disabled>Start response</button>
+      <p id="bridge-status" role="status">Waiting for model…</p>
+      <p id="bridge-transcript" style="white-space: pre-wrap"></p>
+    </section>
+    <section aria-labelledby="presets-heading">
+      <h2 id="presets-heading">Mood presets</h2>
+      <p class="note">One mood at a time; click again for neutral. Hover for usage guidance.</p>
+      <div id="expression-controls" class="button-grid" role="group" aria-label="Expression previews"></div>
+      <div class="slider-row">
+        <label for="intensity">Intensity</label>
+        <input id="intensity" type="range" min="0" max="1" step="0.05" value="1" disabled>
+        <output id="intensity-value" for="intensity">1.00</output>
+      </div>
+      <div class="toolbar">
+        <button id="loop-button" type="button" aria-pressed="false" disabled>⏸ loop</button>
+        <button id="edit-preset-button" type="button" disabled>Edit in sliders</button>
+      </div>
+    </section>
+    <section aria-labelledby="channels-heading">
+      <h2 id="channels-heading">Independent channels</h2>
+      <label class="check"><input id="blink-toggle" type="checkbox" checked disabled>Auto-blink · まばたき</label>
+      <div id="wink-controls" class="toolbar" role="group" aria-label="Wink previews">
+        <button id="wink-left-button" data-wink="left" type="button" aria-pressed="false" disabled>[wink-left] · ウィンク</button>
+        <button id="wink-right-button" data-wink="right" type="button" aria-pressed="false" disabled>[wink-right] · ウィンク右</button>
+      </div>
+    </section>
+    <section aria-labelledby="audition-heading">
+      <h2 id="audition-heading">Morph audition</h2>
+      <p class="note">Every morph in the loaded PMX. Sliders add on top of the channels above; bars show the final influence. Double-click a slider to zero it.</p>
+      <div class="toolbar">
+        <input id="morph-search" type="search" placeholder="Filter: 笑い, warai, Mth, happy…" aria-label="Filter morphs" disabled>
+        <button id="sweep-button" type="button" aria-pressed="false" disabled>▶ sweep</button>
+        <button id="reset-morphs-button" type="button" disabled>Reset</button>
+      </div>
+      <p id="sweep-status" class="note" aria-live="polite"></p>
+      <div id="morph-groups"></div>
+    </section>
+    <section aria-labelledby="candidates-heading">
+      <h2 id="candidates-heading">Candidates</h2>
+      <p class="note">Save the current sliders as a named preset, saved in this browser only.</p>
+      <div class="toolbar">
+        <input id="candidate-name" type="text" placeholder="soft-smile" aria-label="Candidate name" disabled>
+        <button id="save-candidate-button" type="button" disabled>Save</button>
+      </div>
+      <p id="candidate-status" class="note" aria-live="polite"></p>
+      <ul id="candidate-list"></ul>
+      <button id="export-candidates-button" type="button" hidden disabled>Copy as catalog JSON</button>
+      <textarea id="candidate-export" rows="5" readonly hidden aria-label="Catalog entries"></textarea>
+    </section>
+  </aside>
   <script type="importmap">
-    {
-      "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
-      }
-    }
+    {"imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }}
   </script>
   <script type="module" src="main.js"></script>
 </body>

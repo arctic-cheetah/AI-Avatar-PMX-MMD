@@ -1,154 +1,227 @@
 # Architecture v2 — PMX companion
 
-Target host: Ubuntu 24.04, AMD Ryzen AI MAX+ 395.
+Target host: user-reported ASUS ProArt PX13, Ryzen AI MAX+ 395, 128 GB unified memory, Ubuntu 24.04.
 
-This replaces the v1 browser VRM / Live2D plan. The body is the local MMD model already in `yidhari-mmd/`. v1 stays in `architecture.md` as the earlier sketch.
+This supersedes the VRM/Live2D sketch in [architecture.md](./architecture.md).
+Reconstructed from the conversation after repository loss on 2026-10-17;
+see [Restoration status](./restoration-status.md) for current recovery limits.
 
 ## Goal
 
-A quiet companion, not a dancer.
+A quiet companion, not a dancer. The face combines blink, semantic moods, and
+accurate sound-by-sound lip sync. Small canned hand poses are planned. The body
+stays mostly stationary; no dance VMD or locomotion is required. Existing arm
+lowering is a local pose adjustment. Hair/coat/tail physics remain future work.
 
-- Face: blink, mood, lip sync.
-- Hands: a few small canned poses.
-- Body: stay in the PMX bind pose. Hair, coat, and tail physics may still move.
-- No dance `.vmd` for v1 of this plan. A short talk-idle clip can be added later if we want one.
+Speech uses timed phonemes mapped to calibrated visemes, including consonant
+closures and silence. Five vowel shapes or a loudness-driven mouth alone are not
+the finished target. TTS determines audible pronunciation; animation follows it.
 
 ## Loop
 
 ```text
-You (text / voice)
-        |
-        v
-llama-server  (Qwen, Vulkan, 127.0.0.1:8080)
-        |
-        | streaming tokens + action tags
-        v
-controller/bridge.py
-        |
-        +-- TTS audio (later, Piper) --> visemes
-        |
-        | WebSocket 127.0.0.1:8765
-        v
-renderer/  (browser, Three.js + MMD loader)
-        |
-        | PMX morph weights + a few bone rotations
-        v
-screen / OBS
+User text -> llama-server (Qwen, Vulkan, 127.0.0.1:8080)
+                    |
+             streaming text + mood tags
+                    v
+             controller/bridge.py
+                    |
+                    +-- Text preview: clean text + expression events
+                    |
+                    +-- Planned speech:
+                        TTS (local, or Applio online TTS workflow)
+                          -> Applio RVC conversion (voice model)
+                          -> final audio + exact transcript
+                          -> phoneme alignment -> timed visemes + segment mood
+                    |
+             WebSocket 127.0.0.1:8765
+                    v
+             renderer/bridge-client.js -> renderer/main.js
+                    |
+             expression controller / planned audio-clock facial compositor
+                    v
+             PMX morph weights -> screen / OBS
 ```
 
-The renderer is its own browser process. LLM decode stays on Vulkan. Animation must not stall token generation.
+Applio replaces the earlier VCClient candidate for voice conversion. The user was
+downloading Applio 3.6.6; its installed CLI, AMD/Linux backend and latency have not
+been verified. Conversion can be bypassed for baseline comparisons. Keep Applio
+as a sibling installation with its own Python environment and voice models;
+configure an explicit path when integrating it. Do not mix its dependencies into
+the avatar environment.
 
-Audio is a later, separate path: LLM text → TTS → optional w-okada VCClient voice conversion → playback. VCClient converts audio rather than generating speech from text. Lip sync should follow the audio actually played, after any conversion latency.
+Applio's [TTS documentation](https://docs.applio.org/getting-started/tts/) describes
+Edge TTS followed by optional RVC conversion. Edge TTS sends text to an online
+service. For fully local generation, use local TTS (Piper remains a candidate)
+then Applio conversion. Initial integration uses a saved final WAV, not live
+virtual-device routing. Applio is not assumed to provide phoneme timings.
 
-## Why PMX, and why not a VMD yet
+The renderer runs separately from inference. This prevents blocking animation
+with inference work, but does not eliminate contention for shared hardware.
 
-The pack at `yidhari-mmd/` is a PMX 2.0 model named Yidhari (`伊德海莉.pmx`), plus `武器.pmx`, textures, and toons. It has no motion file. That is fine.
+## Model and runtime
 
-Face morphs already in the PMX:
+Load `yidhari-mmd/伊德海莉.pmx` without moving or renaming the model pack: texture
+paths are relative. Keep the pack gitignored; its readme forbids redistribution.
+Do not load `武器.pmx`. The pack contains no dance motion, and none is needed.
 
-| Use         | Morph names                                                                  |
-| ----------- | ---------------------------------------------------------------------------- |
-| Blink       | `まばたき`, `ウィンク`, `ウィンク右`, `ウィンク２`, `ウィンク２右` |
-| Eyes        | `笑い`, `びっくり`, `じと目`, `怒り目`                               |
-| Mouth       | `あ`, `い`, `う`, `え`, `お`, `にやり`                           |
-| Mouth shape | `口角上げ`, `口角下げ`, `口横広げ`, `口横狭め`, `口上`, `口下`   |
-| Mood        | `困る`, `怒り`, `真面目`                                               |
+The [PMX catalog](./pmx-morph-catalog.md) inventories 56 vertex morphs. Blink uses
+`まばたき`; winks use `ウィンク` and `ウィンク右`. The
+[shared JSON catalog](../renderer/expressions.json) holds 46 semantic presets,
+including `neutral` with an empty morph map. Presets are interpreted visually,
+not inferred reliably from duplicated English metadata labels.
 
-The complete 56-morph inventory, including unused eye, mouth, and brow controls, is in the [PMX facial morph catalog](./pmx-morph-catalog.md).
+Preview buttons and bridge callbacks call the same expression controller. One
+mood is active at a time, with easing to another mood or neutral. The controller
+resolves required morphs and disables unavailable presets. Loop intensity is
+retained across presets; the intensity slider can rescale the active mood or
+loop without stopping it. The test bench provides manual sliders, a sweep,
+candidate storage, and JSON export; these are authoring tools, not LLM controls.
 
-Hand bones already in the PMX: both wrists (`左手首`, `右手首`) and full finger chains (`左親指０`–`右小指３`).
+Every frame resets morph influences, then applies blink, winks, mood and manual
+audition contributions. Known overlap: `super-angry` uses the blink morph, and
+multiple moods use speech-related mouth shapes. A proper compositor is still
+needed before speech; existing channel independence is not a guarantee of
+non-conflicting geometry.
 
-A dance VMD would move the whole skeleton and fight this pose. Do not download one for the first milestone. If a motion is added later, it should be a short idle or talk clip (`アイドル` / `会話`), not a dance, and it must be retargeted carefully because hair, tail, and coat bones are model-specific.
+Hand poses (`rest`, `loose`, `lift`, `thinking`) are planned using wrist/finger
+bones, eased over about 300 ms. Webcam tracking and full-body locomotion are out
+of scope.
 
-## Runtime behavior
+## Current state and historical verification
 
-1. Load `yidhari-mmd/伊德海莉.pmx` from its current folder. Do not move or rename it. Texture paths are relative to the PMX.
-2. Idle: timer-driven `まばたき`. Body stays bound. Physics keeps hair and cloth alive.
-3. Mood presets set eye, brow, or experimental mouth morphs, eased in and out:
-   - `[happy]` → `笑い`
-   - `[surprised]` → `びっくり`
-   - `[thinking]` → `じと目`
-   - `[angry]` → `怒り` + `怒り目`
-   - `[troubled]` → `困る`
-   - `[sad]` → `悲しむ` (eye-only preview)
-   - `[sad-combined]` → `悲しむ` + `真面目` + `口角下げ` (experimental preview)
-   - `[neutral]` → clear mood morphs
-   - Local preview buttons exist for these seven named moods. Each selects one eased mood at a time or returns to neutral, and stays disabled until the PMX loads and all its required morphs are found. These buttons do not call the bridge or LLM yet.
-4. Speech sets `あいうえお` from TTS visemes. Until Piper exists, a simple volume envelope may drive `あ`.
-5. Hand tags set a small pose on wrist and finger bones only, eased over about 300 ms:
-   - `rest`
-   - `loose`
-   - `lift`
-   - `thinking`
-6. Weapon PMX stays unloaded until we explicitly want it.
+| Piece | State after this restoration |
+| --- | --- |
+| JSON catalog, expression controller, test bench | Restored in the renderer |
+| Browser WebSocket client and transcript | Restored; waits for backend |
+| Python bridge and llama-server adapter | Prior implementation exists in chat; current disk file is the old scaffold and is outside this docs/renderer restoration |
+| Live LLM test | User reported success before deletion on 2026-10-17; not evidence that the recovered backend works today |
+| Applio, TTS, alignment, lip sync | Planned, not implemented |
 
-## Events
+## LLM mood pipeline and events
 
-The bridge already parses tags. v2 extends that into JSON for the page:
-
-```json
-{"type":"say","text":"I am right here."}
-{"type":"expression","name":"happy","weight":1}
-{"type":"viseme","name":"aa","weight":0.7}
-{"type":"pose","name":"thinking"}
-{"type":"blink"}
-```
-
-Viseme names map to PMX morphs: `aa` → `あ`, `ih` → `い`, `uu` → `う`, `eh` → `え`, `oh` → `お`.
-
-See [Emotion code structure](./emotion-code-structure.md) for the catalog/controller design that keeps mood names separate from PMX morph names.
-
-## Code and file dependencies
-
-Solid arrows show the current loading, import, and runtime update paths. The dashed WebSocket arrow is planned, not implemented.
-
-```mermaid
-flowchart TD
-    html["renderer/index.html"] -->|loads module| main["renderer/main.js"]
-    main -->|imports| catalog["renderer/expression-catalog.js"]
-    main -->|imports and calls| controller["renderer/expression-controller.js"]
-    main -->|loads| pmx["yidhari-mmd/伊德海莉.pmx"]
-    pmx -->|parsed into| mesh["Loaded PMX mesh"]
-    main -->|blink updates| mesh
-    catalog -->|definitions passed by main| controller
-    controller -->|mood morph weights| mesh
-    bridge["controller/bridge.py"] -.->|planned WebSocket events| main
-```
-
-## Layout
+The LLM gets only allowed semantic names and descriptions, never PMX names or
+weights. The bridge reads the same UTF-8 JSON via a path relative to its source.
+Example target output:
 
 ```text
-avatar-yidhari/
-  controller/bridge.py     # tags -> events, then WebSocket
-  renderer/                # browser PMX viewer: blink and local mood previews
-  yidhari-mmd/             # local model pack, do not commit
-  docs/architecture.md     # v1 sketch
-  docs/architecture-v2.md  # this plan
+[soft-smile:0.6] Good morning. [thinking:0.5] Let me think about that. [neutral]
 ```
 
-`yidhari-mmd/` must stay out of git. The pack readme forbids redistribution. Ignore that directory before the first commit.
+The previously implemented protocol, to be restored in the backend, sends:
 
-## Hardware notes
+```json
+{"type":"start"}
+{"type":"expression","name":"soft-smile","weight":0.6}
+{"type":"say","text":"Good morning."}
+{"type":"end"}
+```
 
-- Chip: AMD Ryzen AI MAX+ 395 (Strix Halo)
-- Bus: 256-bit LPDDR5X-8000, 256 GB/s theoretical, ~220–230 GB/s sustained
-- Unified memory is shared by CPU, RDNA 3.5 iGPU, and XDNA 2 NPU
-- This avatar is morph weights plus a handful of bone updates. It is compute-light next to 27B decode.
-- Contention to watch is still iGPU time, not bandwidth. Keep the page in its own process.
+`error` carries a text message. Each run begins neutral; successful completion
+keeps the last mood unless a neutral tag was emitted. Errors/disconnects reset
+neutral. The renderer writes transcript text with `textContent`, limits retained
+text to 50,000 characters, reconnects without automatically repeating a run,
+and clears manual overrides/stops the loop on start. Authoring controls are
+inert while receiving a response.
+
+The streaming parser must retain split tags such as `[soft-` + `smile:0.6]`.
+Case-sensitive catalog names are allowlisted; decimal intensity defaults to 1,
+finite values clamp to 0–1. Brackets are reserved controls: unknown, malformed,
+oversized (over 128 characters), and unfinished blocks are dropped. Text outside
+tags preserves whitespace. Consequently general Markdown links, bracketed
+citations and code indexing require a different structured-control protocol.
+
+The intended llama-server adapter posts streamed `/v1/chat/completions` requests,
+uses content deltas rather than reasoning deltas, and generates its system
+prompt from the catalog. The CLI prompt represents a fresh single-turn request,
+not persistent chat history. Text preview changes expression on arrival; final
+speech must change it at audio playback start.
+
+## Speech and expression synchronisation
+
+This is the next milestone, not implemented functionality. Multiple phonemes
+can share a viseme. Do not assign mouth shapes from spelling or equal-duration
+syllables, and do not ask the LLM to invent timestamps.
+
+1. Produce a short fixed sentence with the selected TTS/Applio voice. Save source
+   audio, final converted WAV, exact transcript, duration and generation time.
+2. Prefer verified synthesis phone/viseme timestamps if trustworthy. Otherwise
+   align the final audio and transcript using a local phone-level forced aligner.
+   Word timestamps alone are insufficient; an aligner has not been selected.
+3. If conversion changes timing, re-align converted audio or use a measured,
+   validated time mapping. Constant offset correction is valid only when
+   durations are preserved.
+4. Buffer final audio and its complete timing track per segment before playback.
+   Prepare subsequent segments asynchronously with a bounded queue.
+5. Schedule mood and visemes on the browser audio clock. Each speech segment
+   needs utterance ID, segment ID, audio reference, duration, expression, and
+   ordered audio-relative viseme intervals. Validate finite times, bounds and
+   weights; interpolate locally each frame rather than send per-frame messages.
+6. Cancel audio and queued tracks together on interruption. Pause/resume follows
+   the audio position, not wall time. Release speech mouth influence afterwards.
+   Report alignment failures and any explicitly labelled degraded animation.
+
+Initial candidate shapes: `aa` → `あ`, `ih` → `い`, `uu` → `う`, `eh` → `え`,
+`oh` → `お`. These require auditioning. Add closed lips for /m b p/, lip/teeth
+contact for /f v/, rounding, and silence/rest to a separate speech-shape catalog.
+Document unsupported articulation or create local corrective morphs subject to
+the asset licence. Extra compute does not repair missing geometry.
+
+Use smooth transitions with neighbouring-sound influence (coarticulation), but
+preserve short closures. Mood easing should not simply be reused for rapid
+speech shapes. Speech owns articulation; attenuate conflicting mood mouth
+contributions with per-shape rules while preserving compatible brows and eyes.
+A blanket 50% mood-mouth reduction does not prove closures work. Restore the
+resting mood mouth smoothly after speech.
+
+The [Montreal Forced Aligner guide](https://montreal-forced-aligner.readthedocs.io/en/v3.4.0/user_guide/index.html)
+is a reference for audio/transcript alignment, not a selection or performance claim.
+
+## Validation and hardware
+
+The Ryzen AI MAX+ 395 / 128 GB UMA configuration is a capable candidate for this
+workload; the project has not benchmarked this host. ASUS documents the
+[2026 PX13 configuration](https://press.asus.com/news/press-releases/asus-proart-px13/).
+Morph updates are modest; TTS, alignment, conversion and concurrent LLM inference
+determine practical latency. Start with CPU-capable speech workers and bounded
+concurrency. Verify each Linux backend; NPU acceleration is optional, not assumed.
+UMA is one pool shared by weights, KV cache, speech models, rendering and the OS.
+Bandwidth, GPU/CPU contention and sustained laptop thermals all matter.
+
+Proposed acceptance targets, not measured results:
+
+- Use recordings covering vowels, closures, diphthongs, pauses, fast speech and
+  project names. Check audible pronunciation separately from alignment/animation.
+- Aim for representative visible landmarks within 50 ms of annotated audio,
+  allowing deliberate anticipation. Inspect start/end drift using captures and
+  playback logs.
+- Replay the same sentence in neutral, soft-smile, sad and angry. Confirm closures,
+  silence and readable eye/brow expression.
+- Measure time to first audio, total audio-preparation real-time factor, tokens/s,
+  frame-time percentiles, peak memory and thermals under the actual LLM workload.
+- Target smooth 60 fps with a configurable 30 fps fallback. After initial buffering,
+  aim for preparation faster than playback with no underruns. Set a latency budget
+  after benchmarking. Volume-only mouth movement is not acceptance of lip sync.
+
+## Security
+
+Treat LLM and WebSocket data as untrusted. Allowlist events/expressions, validate
+finite weights, and never evaluate message content. Bind the bridge to
+127.0.0.1:8765 and accept only `Origin: http://127.0.0.1:8770`; reject absent and
+other Origins. This is browser-origin protection, not authentication against
+other local processes. Do not expose arbitrary file paths or commands to tags.
 
 ## Build order
 
-1. Ignore `yidhari-mmd/` in git. Done.
-2. Browser page that loads the PMX and blinks. Done in `renderer/`.
-3. Local buttons for five initial moods and two sad variants use one expression controller, switch between moods, then return to neutral. Done; compare the sad variants visually in the browser.
-4. WebSocket on `127.0.0.1:8765` sends the same expression event from `controller/bridge.py`; test with a fixed sentence before connecting `llama-server`.
-5. Connect `llama-server` output to the bridge, then expand mood tags and the four hand poses.
-6. Add TTS and optional voice conversion; drive mouth movement from the final playback audio.
+1. Preserve the local PMX pack outside git. Keep the renderer working.
+2. Restore the Python bridge separately, then re-run the fixed tagged sentence
+   and live LLM text checks. The browser side is restored here.
+3. Next visual milestone: one saved Applio-voiced sentence with accurate lip sync
+   and a matching expression. Calibrate in neutral, then test a few moods.
+4. Automate the verified Applio workflow in its own environment and feed live LLM
+   segments through the proven speech path.
+5. Finish bounded queues, cancellation, pause/resume, compositor, optional
+   conversion comparisons and concurrent-load checks. Additional gestures follow.
 
-## Out of scope for now
-
-- Dance playback
-- Full-body locomotion
-- Webcam face tracking
-- Redistributing or renaming the model pack
-- Loading `武器.pmx`
+The current preview and future experience differ: text arrives immediately now;
+the final experience schedules facial expressions and articulation together.

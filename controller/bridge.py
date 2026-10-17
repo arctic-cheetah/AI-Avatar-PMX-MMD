@@ -158,6 +158,7 @@ async def speak_segments(queue, send, worker, run=None):
 
     A failed sentence is skipped with a notice and never blocks later ones. On
     cancellation the remaining work is cancelled and the worker drops the run.
+    Returns the number of clips announced.
     """
     from controller.speech import synthesise
     started = time.perf_counter()
@@ -173,6 +174,7 @@ async def speak_segments(queue, send, worker, run=None):
             ordered.put_nowait(None)
     submitter = asyncio.create_task(submit())
     first = True
+    spoken = 0
     try:
         while (item := await ordered.get()) is not None:
             segment, task = item
@@ -190,7 +192,9 @@ async def speak_segments(queue, send, worker, run=None):
             LOG.info('Speech %s %s: %s', clip_id, timings, segment.text)
             await send({'type': 'speak', 'id': clip_id, 'expression': segment.expression,
                         'weight': segment.weight, 'text': segment.text})
+            spoken += 1
         await submitter
+        return spoken
     except asyncio.CancelledError:
         if run is not None and hasattr(worker, 'cancel'):
             worker.cancel(run)
@@ -252,7 +256,9 @@ async def handle_connection(socket, args, catalog):
                 for segment in segmenter.finish():
                     queue.put_nowait(segment)
                 queue.put_nowait(None)
-                await speaker
+                if await speaker == 0 and thinking:
+                    # Nothing was spoken, so no clip will replace the thinking face.
+                    await send({'type': 'expression', 'name': 'neutral', 'weight': 1})
             await send({'type': 'end'})
         except ConnectionClosed:
             pass

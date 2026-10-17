@@ -30,6 +30,7 @@ import { MorphAudition, buildMorphInventory } from "./morph-audition.js";
 import { AuditionPanel } from "./audition-panel.js";
 import { connectBridge } from "./bridge-client.js";
 import { SpeechPlayer, loadSpeechShapes } from "./speech-player.js";
+import { LiveSpeechSession } from "./speech-session.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
 const MODEL_URL = "/yidhari-mmd/伊德海莉.pmx";
@@ -152,6 +153,9 @@ const speechQueue = [];
 /** Bumped on every new response or stop, so stale clip loads are discarded. */
 let liveRun = 0;
 let speechStarting = false;
+const liveSpeech = new LiveSpeechSession();
+// Linger on the last mood briefly after the final word, then ease to neutral.
+const RELAX_DELAY_MS = 600;
 /** @type {THREE.Vector3 | null} Head position used by the camera framings. */
 let headTarget = null;
 let previousFrame = performance.now();
@@ -553,6 +557,7 @@ function applyMood(name, weight) {
  * @returns {void}
  */
 function enqueueSpeech({ id, expression, weight, text }) {
+  liveSpeech.clipQueued();
   const clip = speech.load(`${LIVE_CLIP_DIR}${id}.wav`, `${LIVE_CLIP_DIR}${id}.visemes.json`);
   clip.catch(() => {}); // Reported when its turn comes.
   speechQueue.push({ clip, expression, weight, text });
@@ -588,6 +593,33 @@ async function playNextSpeech() {
     }
   }
   speechStarting = false;
+  if (!speech.playing) {
+    // The last queued clip could not be played; the response may still be over.
+    relaxAfterSpeech();
+  }
+}
+
+/** @returns {boolean} Whether no clip is playing, loading or queued. */
+function speechIdle() {
+  return !speech.playing && !speechStarting && speechQueue.length === 0;
+}
+
+/**
+ * Return the face to neutral once a live spoken response has fully finished.
+ * Re-checks after the delay, so a new response or clip cancels the relax.
+ * @returns {void}
+ */
+function relaxAfterSpeech() {
+  if (!liveSpeech.shouldRelax(speechIdle())) {
+    return;
+  }
+  const run = liveRun;
+  setTimeout(() => {
+    if (run === liveRun && liveSpeech.shouldRelax(speechIdle())) {
+      liveSpeech.relaxed();
+      applyMood("neutral", 1);
+    }
+  }, RELAX_DELAY_MS);
 }
 
 /**
@@ -644,6 +676,7 @@ function onModelLoaded(loaded, data) {
     }
     speechButton.textContent = "▶ Play sample";
     speechStatus.textContent = "Finished.";
+    relaxAfterSpeech();
   };
   speechButton.disabled = false;
   if (speech.missingMorphs.length > 0) {
@@ -655,6 +688,11 @@ function onModelLoaded(loaded, data) {
     audition,
     speech,
     speak: enqueueSpeech,
+    /** Simulate the bridge ending a response (end, error or disconnect). */
+    finish() {
+      liveSpeech.responseFinished();
+      relaxAfterSpeech();
+    },
     frameCamera,
     /**
      * Hold one morph combination still, above the mood loop, for visual checks.
@@ -698,6 +736,7 @@ function onModelLoaded(loaded, data) {
       for (const section of document.querySelectorAll('#panel > section:not(:first-child)')) section.inert = true;
       expressions.stopLoop();
       stopSpeech("");
+      liveSpeech.reset();
       audition.stopSweep();
       audition.clear();
       globalThis.__yidhariHold = null;
@@ -706,6 +745,8 @@ function onModelLoaded(loaded, data) {
     },
     onFinish: () => {
       for (const section of document.querySelectorAll('#panel > section:not(:first-child)')) section.inert = false;
+      liveSpeech.responseFinished();
+      relaxAfterSpeech();
     },
     onExpression: applyMood,
     onText: (text) => { transcript.textContent = (transcript.textContent + text).slice(-50000); },

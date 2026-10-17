@@ -186,6 +186,127 @@ function resize() {
   outline.setSize(width, height);
 }
 
+const PANEL_WIDTH_KEY = "yidhari.panelWidth";
+const PANEL_MIN = 280;
+const PANEL_STAGE_MIN = 280;
+
+/**
+ * Drag the divider between the portrait and the settings panel.
+ * Width is a CSS variable on the wide layout; below 720px the same
+ * control sets the panel's row height. The canvas ResizeObserver
+ * already follows either change.
+ * @returns {void}
+ */
+function installPanelResizer() {
+  const handle = document.querySelector("#panel-resizer");
+  const panel = document.querySelector("#panel");
+  if (!(handle instanceof HTMLElement) || !(panel instanceof HTMLElement)) return;
+
+  const stackedQuery = window.matchMedia("(max-width: 720px)");
+  const stacked = () => stackedQuery.matches;
+
+  const syncOrientation = () => {
+    handle.setAttribute("aria-orientation", stacked() ? "horizontal" : "vertical");
+  };
+
+  const limits = () => {
+    if (stacked()) {
+      const max = Math.max(160, window.innerHeight - PANEL_STAGE_MIN - 6);
+      return { min: 160, max };
+    }
+    const max = Math.max(PANEL_MIN, window.innerWidth - PANEL_STAGE_MIN - 6);
+    return { min: PANEL_MIN, max };
+  };
+
+  const apply = (size) => {
+    const { min, max } = limits();
+    const next = Math.round(Math.min(max, Math.max(min, size)));
+    if (stacked()) {
+      document.body.style.gridTemplateRows = `minmax(0, 1fr) 6px ${next}px`;
+      document.body.style.removeProperty("--panel-width");
+    } else {
+      document.body.style.removeProperty("grid-template-rows");
+      document.body.style.setProperty("--panel-width", `${next}px`);
+    }
+    handle.setAttribute("aria-valuenow", String(next));
+    handle.setAttribute("aria-valuemin", String(min));
+    handle.setAttribute("aria-valuemax", String(max));
+    syncOrientation();
+    return next;
+  };
+
+  syncOrientation();
+
+  try {
+    const saved = Number(localStorage.getItem(PANEL_WIDTH_KEY));
+    if (Number.isFinite(saved) && saved > 0) apply(saved);
+  } catch {
+    // Storage can be blocked; the CSS default width still applies.
+  }
+
+  const persist = (size) => {
+    try {
+      localStorage.setItem(PANEL_WIDTH_KEY, String(size));
+    } catch {
+      // Remembering the width is a convenience, not required to resize.
+    }
+  };
+
+  /** @param {number} client */
+  const sizeFromPointer = (client) => stacked()
+    ? window.innerHeight - client - handle.offsetHeight / 2
+    : window.innerWidth - client - handle.offsetWidth / 2;
+
+  handle.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    handle.setPointerCapture(event.pointerId);
+    document.body.classList.add("panel-resizing");
+    const move = (ev) => {
+      apply(sizeFromPointer(stacked() ? ev.clientY : ev.clientX));
+    };
+    const stop = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", stop);
+      handle.removeEventListener("pointercancel", stop);
+      document.body.classList.remove("panel-resizing");
+      persist(Number(handle.getAttribute("aria-valuenow")));
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", stop);
+    handle.addEventListener("pointercancel", stop);
+  });
+
+  handle.addEventListener("keydown", (event) => {
+    const step = event.shiftKey ? 48 : 16;
+    const box = panel.getBoundingClientRect();
+    const current = stacked() ? box.height : box.width;
+    // Toward the stage grows the panel; toward the outer edge shrinks it.
+    const grow = stacked() ? event.key === "ArrowUp" : event.key === "ArrowLeft";
+    const shrink = stacked() ? event.key === "ArrowDown" : event.key === "ArrowRight";
+    if (grow || shrink) {
+      event.preventDefault();
+      persist(apply(current + (grow ? step : -step)));
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      persist(apply(stacked() ? limits().max : limits().min));
+    } else if (event.key === "End") {
+      event.preventDefault();
+      persist(apply(stacked() ? limits().min : limits().max));
+    }
+  });
+
+  stackedQuery.addEventListener("change", () => {
+    const saved = Number(handle.getAttribute("aria-valuenow"));
+    if (Number.isFinite(saved)) apply(saved);
+    else syncOrientation();
+  });
+  window.addEventListener("resize", () => {
+    const saved = Number(handle.getAttribute("aria-valuenow"));
+    if (Number.isFinite(saved)) apply(saved);
+  });
+}
+
 /**
  * Find a named PMX bone and return its current world-space position.
  * @param {THREE.SkinnedMesh} object Loaded PMX mesh.
@@ -830,5 +951,6 @@ function animate() {
 
 resize();
 new ResizeObserver(resize).observe(canvas);
+installPanelResizer();
 renderer.setAnimationLoop(animate);
 loadModel();

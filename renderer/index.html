@@ -29,7 +29,14 @@
     <section aria-labelledby="bridge-heading">
       <h2 id="bridge-heading">Chat</h2>
       <p class="note">Use the bar above the portrait to talk; replies stream here. Add --speech to the bridge for voice and lip sync.</p>
-      <div id="chat-log" role="log" aria-label="Conversation" aria-live="polite"></div>
+      <div id="chat-box">
+        <div id="chat-box-bar">
+          <button id="chat-drag" type="button" aria-label="Drag chat box" hidden>Chat</button>
+          <button id="chat-float" type="button" aria-pressed="false" title="Float the chat over the portrait">Float</button>
+        </div>
+        <div id="chat-log" role="log" aria-label="Conversation" aria-live="polite"></div>
+        <button id="chat-resizer" type="button" aria-label="Resize chat box"></button>
+      </div>
       <button id="bridge-start" type="button" disabled>Start default response</button>
       <p id="bridge-status" role="status">Waiting for model…</p>
       <p id="bridge-transcript" hidden></p>

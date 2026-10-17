@@ -208,3 +208,15 @@ npm install
 ```
 
 `jsconfig.json` points the JavaScript language service at `renderer/`. `node_modules/` is gitignored.
+
+## 📜 License
+
+Copyright © 2026 arctic-cheetah
+
+This program is free software: you can redistribute it and/or modify it under the terms of the **GNU Lesser General Public License** as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the [GNU Lesser General Public License](https://www.gnu.org/licenses/lgpl-3.0.html) for more details. The LGPLv3 builds on the [GNU General Public License v3](https://www.gnu.org/licenses/gpl-3.0.html).
+
+SPDX identifier: `LGPL-3.0-or-later`
+
+**Not covered by this license:** the Yidhari PMX model pack (`yidhari-mmd/`, third-party, gitignored, and not redistributable), voice models and audio, and external tools used alongside this project (Applio, Rhubarb Lip Sync, Edge TTS, llama.cpp and Three.js), which keep their own licenses and terms.

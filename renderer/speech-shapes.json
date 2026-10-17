@@ -1,0 +1,11 @@
+{
+  "A": { "description": "Closed lips: M, B, P. Speech holds every speech morph at zero, overriding mood mouth shapes.", "morphs": {} },
+  "B": { "description": "Slightly open, teeth near closed: most consonants (K, S, T) and EE.", "morphs": { "い": 0.3 } },
+  "C": { "description": "Open: EH and AE, as in men and bat.", "morphs": { "え": 0.6 } },
+  "D": { "description": "Wide open: AA, as in father.", "morphs": { "あ": 0.9 } },
+  "E": { "description": "Slightly rounded: AO and ER, as in off and bird.", "morphs": { "お": 0.6 } },
+  "F": { "description": "Puckered: UW, OW and W, as in you, show and way.", "morphs": { "う": 0.75 } },
+  "G": { "description": "Upper teeth on lower lip: F and V. Candidate only; the PMX may lack this geometry.", "morphs": { "い": 0.2 } },
+  "H": { "description": "Tongue raised: long L sounds.", "morphs": { "あ": 0.4 } },
+  "X": { "description": "Rest during pauses. Speech releases the mouth back to the active mood.", "morphs": {} }
+}

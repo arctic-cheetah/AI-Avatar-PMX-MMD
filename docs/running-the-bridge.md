@@ -1,45 +1,119 @@
 # Running the text-expression bridge
 
-**Recovery note:** these commands describe the previously implemented bridge.
-The renderer client is restored, but the current Python bridge is the original
-scaffold and does not support these flags until it is restored separately.
-
-From the project root, run the renderer (using your Python environment):
+The recovered Python scaffold has been replaced with the streaming bridge.
+The project-local `.venv` and dependencies have been recreated. Python 3.10+ is
+required. For a fresh environment:
 
 ```bash
-python3 renderer/serve.py
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
 ```
 
-After restoring the backend and its `websockets`/`httpx` dependencies:
+Run the renderer from the project root if it is not already running:
+
+```bash
+.venv/bin/python renderer/serve.py
+```
+
+In a separate terminal, test the deterministic demo:
 
 ```bash
 .venv/bin/python controller/bridge.py --mode demo
 ```
 
-Open http://127.0.0.1:8770/renderer/ (not localhost), wait for the model and
+Open [http://127.0.0.1:8770/renderer/](http://127.0.0.1:8770/renderer/) (not localhost), wait for the model and
 **Connected · ready**, then click **Start response**. Expected sequence:
 
 ```text
 [soft-smile:0.6] Good morning. [thinking:0.5] Let me think about that. [neutral]
 ```
 
-The transcript must omit tags, moods must change in order, and neutral clears
-the mood. Preview controls become inert during the response; authoring overrides
-are cleared. No speech is generated yet.
+The transcript omits tags, moods change in order, and neutral clears the mood.
+Preview controls become inert during a response; authoring overrides are cleared.
+No speech is generated yet.
 
-Stop demo mode before starting the historical LLM mode:
+## Local LLM
+
+Stop demo mode with Ctrl+C before starting LLM mode. Keep llama-server running:
 
 ```bash
-.venv/bin/python controller/bridge.py --mode llm --prompt "Say good morning, then think about what we could work on."
+.venv/bin/python controller/bridge.py --mode llm --prompt "Reply exactly: [soft-smile:0.6] Good morning. [thinking:0.5] Let me think about that. [neutral]"
 ```
 
-Defaults: llama-server at http://127.0.0.1:8080, bridge port 8765. Optional flags
-were `--llama-url` and `--model`. Each click made a fresh single-turn request using
-the CLI prompt. The adapter streamed `/v1/chat/completions` content deltas and
-ignored separately supplied reasoning deltas. The last mood persisted until a
-neutral event; errors/disconnects reset it. The user confirmed live LLM response
-before deletion; this has not been revalidated after recovery.
+Click **Start response** after reconnection. Default llama-server address is
+[http://127.0.0.1:8080](http://127.0.0.1:8080); optional `--llama-url` selects its base URL and `--model`
+supplies its model alias. Bridge port defaults to 8765. Each click is a fresh
+single-turn request using the CLI prompt; it does not attach to another chat UI.
+The adapter reads `/v1/chat/completions` SSE content deltas and ignores separately
+supplied reasoning deltas. Thinking may delay visible output. A missing `[DONE]`
+terminator or upstream failure is reported as an error, not successful completion.
 
-Square brackets are reserved controls, including unknown blocks: general
-Markdown/coding output needs a distinct protocol. See the
-[architecture](./architecture-v2.md) for the preserved parser contract.
+Each run begins neutral. In text-only mode, successful completion keeps the last
+mood unless a neutral tag was emitted; generation errors reset it. With
+`--speech`, the face eases back to neutral about 0.6 s after the last clip of a
+finished response stops playing, and a response that produced no clips clears
+the thinking face when it ends. The saved-sample test keeps its chosen mood. The recovered browser client
+preserves the last mood on disconnect, avoiding repeated resets during reconnects.
+An active generation is cancelled when its browser disconnects. Duplicate starts
+while busy are ignored. No automatic generation occurs on reconnect.
+
+## Speech and lip sync
+
+Add `--speech` to either mode to voice each sentence with Applio (Edge TTS → RVC)
+and lip-sync it with Rhubarb. Needs internet (Edge TTS), `rhubarb` and `ffmpeg` on
+PATH, and Applio installed next to this repository (`../Applio`, with its own
+`.venv`):
+
+```bash
+.venv/bin/python controller/bridge.py --mode llm --speech --prompt "Greet me warmly in two short sentences."
+```
+
+On startup the bridge launches a persistent Applio worker
+(`controller/applio_worker.py`, run with Applio's own Python) that loads the voice
+model once and warms up (about 4 s) before accepting connections. It stops if
+Applio's Python, the voice model or the index is missing, or if the worker fails
+to start; Applio's own output goes to `assets/private/speech/applio-worker.log`.
+`--pth /path/to/model.pth` selects another voice model; the other Applio settings
+live in `ApplioSettings` in `controller/speech.py`. Each sentence is logged with
+its Edge, RVC and alignment times and its length before and after trimming.
+The worker requests Edge audio for up to two sentences ahead while RVC converts
+one at a time, and the bridge keeps up to three sentences in flight, so later
+sentences are usually ready well before they are needed. Each clip is trimmed
+to 0.05 s before and 0.25 s after the speech, which also removes breaths RVC
+adds at the end. While the LLM is reasoning, Yidhari shows the `thinking` mood. Clips are written to
+`assets/private/speech/live/` and replaced on the next run. The renderer plays
+them in order and applies each mood when its clip starts.
+
+## Troubleshooting and tests
+
+- **Disconnected:** start the bridge; use the exact renderer Origin above.
+- **Address already in use:** stop the previous bridge in its terminal first.
+- **Generation failed:** read the bridge terminal; check that this responds:
+
+```bash
+curl http://127.0.0.1:8080/v1/models
+```
+
+Run regression tests:
+
+```bash
+.venv/bin/python -m unittest discover -s tests -v
+node --test tests/renderer/
+```
+
+Tests cover split tags, malformed/unknown controls, bounded buffering, intensity
+clamping, prompt generation, real local WebSocket transport and Origin rejection,
+repeat runs, simulated SSE, truncated streams, and upstream-error handling.
+Speech tests cover sentence splitting, the worker protocol, trimming, Edge/RVC
+pipelining and ordered sending; `tests/renderer/` checks when the face relaxes
+after speech (Node's built-in test runner, no packages needed).
+Live verification after repair passed against qwen3.8-27b on 127.0.0.1:8080:
+the real model streamed through the parser and WebSocket, producing soft-smile
+0.6, thinking 0.5, neutral, and tag-free greeting text. This verifies backend
+connectivity; a fresh visual check in the renderer remains separate.
+
+Square brackets are reserved controls: unknown/malformed/oversized/unfinished
+blocks are dropped. Text outside tags preserves whitespace. General Markdown
+links, bracketed citations, and code indexing need a separate structured protocol.
+No PMX names or weights are sent to the LLM. Origin restrictions are browser
+protection, not authentication against other local processes.

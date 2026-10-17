@@ -19,10 +19,16 @@
   <aside id="panel" aria-label="Facial morph test bench">
     <section aria-labelledby="bridge-heading">
       <h2 id="bridge-heading">Text connection</h2>
-      <p class="note">Run the bridge in demo or LLM mode, then start a response. This preview has no audio yet.</p>
+      <p class="note">Run the bridge in demo or LLM mode, then start a response. Add --speech to the bridge for voice and lip sync.</p>
       <button id="bridge-start" type="button" disabled>Start response</button>
       <p id="bridge-status" role="status">Waiting for model…</p>
       <p id="bridge-transcript" style="white-space: pre-wrap"></p>
+    </section>
+    <section aria-labelledby="speech-heading">
+      <h2 id="speech-heading">Speech test</h2>
+      <p class="note">Plays the saved Applio sample with Rhubarb lip sync over the current mood. Pick a mood first to compare.</p>
+      <button id="speech-button" type="button" disabled>▶ Play sample</button>
+      <p id="speech-status" class="note" role="status"></p>
     </section>
     <section aria-labelledby="presets-heading">
       <h2 id="presets-heading">Mood presets</h2>

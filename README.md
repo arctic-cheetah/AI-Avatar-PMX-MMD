@@ -16,7 +16,7 @@ This is a companion project, kept outside `my_code_pc` so it does not compete fo
 ## 🧭 How it works
 
 ```mermaid
-flowchart LR
+flowchart TD
     U([🧑 You]) -->|chat bar| R
     subgraph Browser["🖥️ Browser renderer · 127.0.0.1:8770"]
         R[Chat + controls] --> E[Expression controller]
@@ -65,15 +65,15 @@ sequenceDiagram
 
 ## 🧰 Requirements
 
-| Needed for | What | Notes |
-| --- | --- | --- |
-| Everything | Python 3.10+ | Bridge and renderer server |
-| Everything | Chrome or another modern browser | Loads Three.js from a CDN |
-| Everything | `yidhari-mmd/伊德海莉.pmx` | Local model pack, gitignored; its readme forbids redistribution |
-| Chat | `llama-server` (llama.cpp) on `127.0.0.1:8080` | Any OpenAI-compatible server should work |
-| 🎙️ Voice | [Applio](https://github.com/IAHispano/Applio) 3.6.6 at `../Applio` with its own `.venv` and the Yidhari voice model | Kept separate from this repo's environment |
-| 🎙️ Voice | [Rhubarb Lip Sync](https://github.com/DanielSWolf/rhubarb-lip-sync/releases) 1.14.0 and `ffmpeg` on `PATH` | Rhubarb aligns mouth shapes; ffmpeg decodes audio |
-| 🎙️ Voice | Internet access | Edge TTS is an online service; your text is sent to it |
+| Needed for | What                                                                                                                   | Notes                                                           |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| Everything | Python 3.10+                                                                                                           | Bridge and renderer server                                      |
+| Everything | Chrome or another modern browser                                                                                       | Loads Three.js from a CDN                                       |
+| Everything | `yidhari-mmd/伊德海莉.pmx`                                                                                           | Local model pack, gitignored; its readme forbids redistribution |
+| Chat       | `llama-server` (llama.cpp) on `127.0.0.1:8080`                                                                     | Any OpenAI-compatible server should work                        |
+| 🎙️ Voice | [Applio](https://github.com/IAHispano/Applio) 3.6.6 at `../Applio` with its own `.venv` and the Yidhari voice model | Kept separate from this repo's environment                      |
+| 🎙️ Voice | [Rhubarb Lip Sync](https://github.com/DanielSWolf/rhubarb-lip-sync/releases) 1.14.0 and `ffmpeg` on `PATH`          | Rhubarb aligns mouth shapes; ffmpeg decodes audio               |
+| 🎙️ Voice | Internet access                                                                                                        | Edge TTS is an online service; your text is sent to it          |
 
 ## 🚀 Quick start
 
@@ -83,19 +83,16 @@ sequenceDiagram
    python3 -m venv .venv
    .venv/bin/python -m pip install -r requirements.txt
    ```
-
 2. **Start the renderer server** (leave it running):
 
    ```bash
    .venv/bin/python renderer/serve.py
    ```
-
 3. **Start the bridge in demo mode** in a second terminal; no LLM needed:
 
    ```bash
    .venv/bin/python controller/bridge.py --mode demo
    ```
-
 4. **Open [http://127.0.0.1:8770/renderer/](http://127.0.0.1:8770/renderer/).** Use `127.0.0.1`, not `localhost`, and do not open the HTML file directly. Wait for **Connected · ready**, then click **Start default response**. She smiles, thinks, and returns to neutral.
 
 ## 🤖 Talk to the local LLM
@@ -125,9 +122,7 @@ Type into the chat bar above her portrait and press **Send**. Each message is a 
    ln -s ~/.local/opt/Rhubarb-Lip-Sync-1.14.0-Linux/rhubarb ~/.local/bin/rhubarb
    rhubarb --version
    ```
-
 2. **Check Applio:** it should be installed next to this repository at `../Applio`, with `.venv/bin/python` and the voice model under `logs/Yidhari-zzz/`.
-
 3. **Start the bridge with speech:**
 
    ```bash
@@ -140,15 +135,15 @@ The voice model and Applio settings (Edge voice, speed, pitch, index rate, prote
 
 ### 🎛️ Bridge options
 
-| Option | Default | Meaning |
-| --- | --- | --- |
-| `--mode` | `demo` | `demo` plays a fixed reply; `llm` talks to `llama-server` |
-| `--speech` | off | Speak replies with Applio and lip sync |
-| `--pth` | `Yidhari-zzz_75e_21450s.pth` | Applio voice model |
-| `--llama-url` | `http://127.0.0.1:8080` | LLM server base URL |
-| `--model` | none | Model alias, if the server needs one |
-| `--prompt` | a greeting | Prompt for **Start default response** |
-| `--port` | `8765` | Bridge WebSocket port |
+| Option          | Default                        | Meaning                                                         |
+| --------------- | ------------------------------ | --------------------------------------------------------------- |
+| `--mode`      | `demo`                       | `demo` plays a fixed reply; `llm` talks to `llama-server` |
+| `--speech`    | off                            | Speak replies with Applio and lip sync                          |
+| `--pth`       | `Yidhari-zzz_75e_21450s.pth` | Applio voice model                                              |
+| `--llama-url` | `http://127.0.0.1:8080`      | LLM server base URL                                             |
+| `--model`     | none                           | Model alias, if the server needs one                            |
+| `--prompt`    | a greeting                     | Prompt for **Start default response**                     |
+| `--port`      | `8765`                       | Bridge WebSocket port                                           |
 
 ## 🧪 Tests
 
@@ -175,13 +170,13 @@ avatar-yidhari/
 
 ## 📚 Docs
 
-| Doc | What's inside |
-| --- | --- |
-| [architecture-v2.md](docs/architecture-v2.md) | Design, pipeline details, measurements and TODOs |
-| [running-the-bridge.md](docs/running-the-bridge.md) | Full bridge guide and troubleshooting |
-| [pmx-morph-catalog.md](docs/pmx-morph-catalog.md) | Every PMX facial morph |
-| [shared-expression-catalog.md](docs/shared-expression-catalog.md) | Mood presets used by the LLM |
-| [issue-labels.md](docs/issue-labels.md) | Issue priority, difficulty and emoji labels |
+| Doc                                                              | What's inside                                    |
+| ---------------------------------------------------------------- | ------------------------------------------------ |
+| [architecture-v2.md](docs/architecture-v2.md)                     | Design, pipeline details, measurements and TODOs |
+| [running-the-bridge.md](docs/running-the-bridge.md)               | Full bridge guide and troubleshooting            |
+| [pmx-morph-catalog.md](docs/pmx-morph-catalog.md)                 | Every PMX facial morph                           |
+| [shared-expression-catalog.md](docs/shared-expression-catalog.md) | Mood presets used by the LLM                     |
+| [issue-labels.md](docs/issue-labels.md)                           | Issue priority, difficulty and emoji labels      |
 
 The plan for upcoming features is in the [🗺️ roadmap issue #21](https://github.com/arctic-cheetah/AI-Avatar-PMX-MMD/issues/21).
 

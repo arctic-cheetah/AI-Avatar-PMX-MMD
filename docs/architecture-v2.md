@@ -278,6 +278,10 @@ cap (128 KiB) bounds request size. Do not expose arbitrary file paths or command
    segments through the proven speech path.
 5. Finish bounded queues, cancellation, pause/resume, compositor, optional
    conversion comparisons and concurrent-load checks. Additional gestures follow.
+6. Agent voice over MCP ([#27](https://github.com/arctic-cheetah/AI-Avatar-PMX-MMD/issues/27)),
+   then a voice front that delegates to a back-end agent, then her own
+   allowlisted tools ([#23](https://github.com/arctic-cheetah/AI-Avatar-PMX-MMD/issues/23)).
+   See "Agent voice over MCP" below.
 
 The current preview and future experience differ: text arrives immediately now;
 the final experience schedules facial expressions and articulation together.
@@ -579,3 +583,162 @@ replayed on a simulated playback clock with 60 ms between clips):
   run (reasoning stays on). The first real RVC conversion was again slower
   (2.39 s); the speech-like warm-up follow-up still applies.
 - Not yet checked by ear on the real display.
+
+## Agent voice over MCP — plan, 2026-10-18
+
+Tracked in [#27](https://github.com/arctic-cheetah/AI-Avatar-PMX-MMD/issues/27).
+User decision: Yidhari first becomes the **voice and face of an existing coding
+agent** (Claude Code first, then Continue or VS Code agent mode) through a small
+MCP server. She does not get tools of her own in this step.
+
+```text
+1. Agent voice (#27)   agent ──say/report/ask──► Yidhari          she is the agent's voice
+2. Voice front         Yidhari ──delegate(task)──► back-end agent  she hands work to an agent
+3. Own tools (#23)     Yidhari ──allowlisted MCP tools──► PC        she acts herself, with approvals
+```
+
+### What she can and cannot see
+
+MCP is a pull protocol: the agent is the client and calls her tools. She receives
+only what the agent passes to a tool, and only when it decides to call one. She
+cannot read its transcript or watch its tools. The agent's rules file (for
+example `CLAUDE.md`) tells it to call `report` when a task finishes and `ask`
+when it needs a decision. Optionally, an agent-host hook (for example Claude
+Code's `Stop` hook) runs `controller/agent_notify.py` to send the final message
+to the bridge, so she still speaks if the model forgets. Answers flow back as
+tool results: `ask` returns the user's reply to the agent.
+
+| Tool | Arguments | What she does | Tool result |
+| --- | --- | --- | --- |
+| `say` | `text` (≤ 500 chars), optional `mood`, `weight` | Speaks the text as written | `queued` at once; never waits for playback |
+| `report` | `text` (≤ 16 KiB), `kind`: `progress`, `done` or `error` | Full text to the chat log; the local LLM rewrites it as 1–3 spoken sentences with mood tags, which she speaks | `queued` |
+| `ask` | `question` (≤ 500 chars) | Speaks the question; the next chat message is the answer | The reply, or `no answer` after a timeout (default 120 s) |
+| `set_mood` | `name`, `weight` | Changes expression without speech | `ok` |
+
+Mood names are checked against [expressions.json](../renderer/expressions.json),
+as LLM tags are.
+
+### Summariser
+
+The pattern matches voice assistants such as ChatGPT voice: an agent does the
+work and a fast conversational layer speaks the result. Here the layer is a
+cascade (local LLM → Edge TTS → RVC → Rhubarb), not one speech-to-speech model,
+and in this step the agent pushes results to her instead of her calling it.
+
+The `report` system prompt asks for 1–3 short sentences (about 60 words at most)
+with catalog mood tags; no code, paths, hashes, URLs or tables ("the details are
+in the chat" instead); no facts absent from the report; `serious` or `worried`
+for errors and `happy` or `relieved` for success. Reasoning stays on (existing
+decision); the `thinking` face covers the wait. `say` skips the summariser.
+
+### Architecture
+
+```mermaid
+flowchart LR
+    U([🧑 You]) -->|task| AG
+    subgraph Host["🤖 Agent host: Claude Code · Continue · VS Code"]
+        AG[Agent loop] <--> AT[(Its own tools<br/>files · shell · git)]
+        HK[Stop hook, optional]
+    end
+    AG -->|"MCP stdio<br/>say · report · ask · set_mood"| MS[controller/mcp_server.py]
+    MS <-->|"Unix socket, owner only"| RT
+    HK -.->|"agent_notify.py"| RT
+    subgraph Bridge["🐍 controller/bridge.py"]
+        RT[Agent router<br/>caps · rate limit] -->|report| SU[Summariser]
+        RT -->|say| TP[Tag parser +<br/>sentence splitter]
+        SU --> TP
+        TP --> Q[One speech queue<br/>chat + agent]
+    end
+    SU <-->|"/v1/chat/completions"| L[(llama-server :8080)]
+    Q --> SP[Applio worker → trim → Rhubarb]
+    subgraph Browser["🖥️ Renderer :8770"]
+        R[Chat log + PMX avatar]
+    end
+    SP -->|clip ID| R
+    RT -->|"full report text"| R
+    U -->|"chat bar"| R
+    R -->|"WebSocket :8765<br/>ask answer"| RT
+```
+
+### Timing: one agent task
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor You
+    participant Agent as Coding agent
+    participant MCP as mcp_server.py
+    participant Bridge as bridge.py
+    participant LLM as llama-server
+    participant Speech as Applio → Rhubarb
+    participant R as Renderer
+    You->>Agent: "Fix the failing tests"
+    Agent->>MCP: say("On it, checking the tests now.", mood=determined)
+    MCP->>Bridge: say
+    Bridge-->>MCP: queued
+    MCP-->>Agent: tool result: queued
+    Note over Agent: Keeps working, never waits for playback
+    Bridge->>Speech: sentence
+    Speech-->>Bridge: clip
+    Bridge-->>R: speak {id, determined}
+    Agent->>MCP: set_mood(thinking)
+    MCP->>Bridge: set_mood
+    Bridge-->>R: expression thinking
+    Note over Agent: Minutes of work with its own tools
+    Agent->>MCP: report(full result, kind=done)
+    MCP->>Bridge: report
+    Bridge-->>MCP: queued
+    MCP-->>Agent: tool result: queued
+    Bridge-->>R: full report into the chat log
+    Bridge->>LLM: rewrite as 1–3 spoken sentences + mood tags
+    LLM-->>Bridge: reasoning, then "[happy] All 33 tests pass now..."
+    Bridge->>Speech: summary sentences, pipelined
+    Speech-->>Bridge: clips
+    Bridge-->>R: speak clips in order
+    Agent->>MCP: ask("Shall I commit the fix?")
+    MCP->>Bridge: ask
+    Bridge-->>R: speak the question, mark next chat message as the answer
+    You->>R: "Yes please"
+    R->>Bridge: answer
+    Bridge-->>MCP: "Yes please"
+    MCP-->>Agent: tool result: "Yes please"
+```
+
+### Planned components
+
+1. `controller/mcp_server.py`: stdio MCP server (Python `mcp` SDK, `FastMCP`)
+   started by the agent host. It opens no network port and forwards each tool
+   call as one JSON line to the bridge.
+2. Agent socket: a Unix domain socket at `$XDG_RUNTIME_DIR/yidhari/agent.sock`
+   in a directory with mode 0700. The browser WebSocket is not reused: its Origin
+   check stops web pages, not local processes.
+3. One speech queue per renderer, shared by chat and agent. A user chat message
+   cancels agent speech (needs #14); agent items wait behind a running chat
+   reply. With no renderer connected, tools return `no renderer`.
+4. Renderer: agent bubbles labelled with the agent's name, the full `report`
+   in a collapsible bubble, and while an `ask` is pending the chat bar sends
+   `{"type":"answer","id":…,"text":…}` instead of a new prompt.
+5. New bridge event `{"type":"agent","kind":"report"|"ask","source":…,"text":…}`
+   for the chat log; speech still uses `speak`.
+
+### Security for agent input
+
+- Agent text is untrusted: same tag allowlist and parser, length caps,
+  control-character stripping, and a rate limit (for example ≤ 1 `say` per
+  second and ≤ 10 queued items; extra items get `busy`).
+- The summariser has no tools, so an injection hidden in a report can change only
+  what she says and her mood. It can still mislead, so the original report always
+  stays in the chat log; the spoken summary is not the source of truth.
+- Edge TTS sends spoken text online, and reports can contain code, file contents
+  or secrets. Speak only the summary, never send code blocks to TTS, and redact
+  obvious secrets (API keys, tokens, private keys) before TTS. Local TTS (#18)
+  removes this exposure.
+- `ask` replies are plain text for the agent; they never approve the agent
+  host's own permission prompts.
+
+### Later steps
+
+- **Voice front:** on #23's tool loop, one tool, `delegate(task)`, runs a
+  back-end agent without a UI (for example `claude -p --output-format
+  stream-json`) and feeds its progress and result into the same summariser.
+- **Own tools:** #23, with allowlisted MCP servers and approval prompts.

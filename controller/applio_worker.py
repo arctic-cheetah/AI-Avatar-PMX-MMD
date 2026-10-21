@@ -143,11 +143,12 @@ class Worker:
         if settings.get('rvc_threads'):
             import torch
             torch.set_num_threads(int(settings['rvc_threads']))
-        import edge_tts
-        from rvc.lib.tools.edge_tts_patch import apply_edge_tts_fix
         from rvc.infer.infer import VoiceConverter
-        apply_edge_tts_fix()  # Applio's fix for Edge's 403 on the old endpoint.
-        self.edge_tts = edge_tts
+        if settings.get('tts_provider', 'edge') == 'edge':
+            import edge_tts
+            from rvc.lib.tools.edge_tts_patch import apply_edge_tts_fix
+            apply_edge_tts_fix()
+            self.edge_tts = edge_tts
         self.settings = settings
         self.converter = VoiceConverter()
 
@@ -170,6 +171,10 @@ class Worker:
 
     async def edge(self, text: str, path: str) -> int:
         """Synthesise with Edge TTS; retry its intermittent 429s. Returns retries used."""
+        if self.settings.get('tts_provider') == 'kokoro':
+            if not os.path.isfile(path):
+                raise FileNotFoundError(f'Kokoro source WAV is missing: {path}')
+            return 0
         rate = self.settings['rate']
         for attempt in range(EDGE_ATTEMPTS):
             try:

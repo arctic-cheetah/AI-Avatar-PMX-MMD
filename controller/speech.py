@@ -53,6 +53,10 @@ class ApplioSettings:
     sid: int = 0
     recognizer: str = 'phonetic'
     rvc_threads: int = 0  # PyTorch CPU threads for RVC; 0 keeps PyTorch's default
+    tts_provider: str = 'edge'
+    kokoro_voice: str = 'af_heart'
+    kokoro_speed: float = 1.0
+    kokoro_threads: int = 2
 
     def worker_config(self) -> dict:
         """Settings in the form applio_worker.py expects."""
@@ -60,10 +64,21 @@ class ApplioSettings:
                 'rate': self.rate, 'pitch': self.pitch, 'index_rate': self.index_rate,
                 'volume_envelope': self.volume_envelope, 'protect': self.protect,
                 'f0_method': self.f0_method, 'embedder': self.embedder, 'sid': self.sid,
-                'rvc_threads': self.rvc_threads}
+                'rvc_threads': self.rvc_threads, 'tts_provider': self.tts_provider}
 
     def check(self) -> None:
         """Fail early, before the first sentence, if Applio is not where expected."""
+        if self.tts_provider not in ('edge', 'kokoro'):
+            raise ValueError('TTS provider must be edge or kokoro.')
+        if self.rvc_threads < 0:
+            raise ValueError('RVC threads must be nonnegative.')
+        if self.tts_provider == 'kokoro':
+            from controller.kokoro_worker import MODEL_DIR, validate_settings
+            validate_settings(self.kokoro_voice, self.kokoro_speed, self.kokoro_threads)
+            for path in (ROOT / '.venv-kokoro/bin/python', MODEL_DIR / 'kokoro-v1.0.onnx',
+                         MODEL_DIR / 'voices-v1.0.bin'):
+                if not path.is_file():
+                    raise FileNotFoundError(f'Kokoro file not found: {path}; run python3 -m controller.setup_kokoro')
         for path in (self.applio_dir / '.venv' / 'bin' / 'python', WORKER_SCRIPT,
                      self.pth, self.index):
             if not path.exists():
@@ -149,8 +164,16 @@ class ApplioWorker:
     """
 
     def __init__(self, settings: ApplioSettings, command: list[str] | None = None,
-                 log_path: Path = WORKER_LOG):
+                 log_path: Path = WORKER_LOG, cwd: Path | None = None):
         self.settings = settings
+        self.cwd = cwd or settings.applio_dir
+        self.kokoro = None
+        if command is None and settings.tts_provider == 'kokoro':
+            self.kokoro = ApplioWorker(settings, command=[
+                str(ROOT / '.venv-kokoro/bin/python'), '-m', 'controller.kokoro_worker', '--worker',
+                '--voice', settings.kokoro_voice, '--speed', str(settings.kokoro_speed),
+                '--threads', str(settings.kokoro_threads)],
+                log_path=WORKER_LOG.with_name('kokoro-worker.log'), cwd=ROOT)
         self.command = command or [str(settings.applio_dir / '.venv' / 'bin' / 'python'),
                                    str(WORKER_SCRIPT), json.dumps(settings.worker_config())]
         self.log_path = log_path
@@ -170,10 +193,12 @@ class ApplioWorker:
             if self.alive():
                 return self.ready
             await self.close()
+            if self.kokoro is not None:
+                await self.kokoro.start()
             self.log_path.parent.mkdir(parents=True, exist_ok=True)
             with open(self.log_path, 'wb') as log:
                 self.process = await asyncio.create_subprocess_exec(
-                    *self.command, cwd=self.settings.applio_dir, stdin=asyncio.subprocess.PIPE,
+                    *self.command, cwd=self.cwd, stdin=asyncio.subprocess.PIPE,
                     stdout=asyncio.subprocess.PIPE, stderr=log)
             line = await self.process.stdout.readline()
             try:
@@ -203,8 +228,11 @@ class ApplioWorker:
         pending.clear()
 
     async def request(self, text: str, source: Path, output: Path, run: str | None = None) -> dict:
-        """Synthesise ``text`` with Edge TTS into ``source``, convert into ``output``."""
+        """Synthesise ``text`` into ``source`` and convert into ``output``."""
         await self.start()
+        source_metrics = None
+        if self.kokoro is not None:
+            source_metrics = await self.kokoro.request(text, source, output, run)
         request_id = secrets.token_hex(8)
         future = asyncio.get_running_loop().create_future()
         self.pending[request_id] = future
@@ -215,15 +243,24 @@ class ApplioWorker:
         message = await future
         if not message.get('ok'):
             raise RuntimeError(f"Applio worker: {message.get('error')}")
+        if source_metrics is not None:
+            message.pop('edgeSeconds', None)
+            message.pop('edgeRetries', None)
+            message.update({key: source_metrics[key] for key in (
+                'ttsProvider', 'ttsSeconds', 'sourceSeconds', 'sampleRate', 'ttsRtf')})
         return message
 
     def cancel(self, run: str) -> None:
         """Ask the worker to drop this run's sentences that have not started RVC."""
+        if self.kokoro is not None:
+            self.kokoro.cancel(run)
         if self.alive():
             self.process.stdin.write(json.dumps({'cancel': run}).encode() + b'\n')
 
     async def close(self) -> None:
         """Stop the worker: end its input, then kill it if it does not exit."""
+        if self.kokoro is not None:
+            await self.kokoro.close()
         process, self.process = self.process, None
         if process is not None and process.returncode is None:
             process.stdin.close()
@@ -243,7 +280,8 @@ async def synthesise(segment: Segment, worker: ApplioWorker, run: str | None = N
     directory.mkdir(parents=True, exist_ok=True)
     clip_id = secrets.token_hex(8)
     text_path = directory / f'{clip_id}.txt'
-    source = directory / f'{clip_id}.src.mp3'
+    extension = 'wav' if worker.settings.tts_provider == 'kokoro' else 'mp3'
+    source = directory / f'{clip_id}.src.{extension}'
     wav = directory / f'{clip_id}.wav'
     text_path.write_text(segment.text + '\n', encoding='utf-8')
     try:
@@ -260,6 +298,8 @@ async def synthesise(segment: Segment, worker: ApplioWorker, run: str | None = N
         raise
     finally:
         source.unlink(missing_ok=True)
-    return clip_id, {'edgeSeconds': reply['edgeSeconds'], 'edgeRetries': reply['edgeRetries'],
-                     'rvcSeconds': reply['rvcSeconds'], 'alignSeconds': track['alignSeconds'],
-                     'untrimmedSeconds': trim['beforeSeconds'], 'audioSeconds': track['duration']}
+    metrics = {key: reply[key] for key in ('edgeSeconds', 'edgeRetries', 'ttsProvider',
+               'ttsSeconds', 'sourceSeconds', 'sampleRate', 'ttsRtf') if key in reply}
+    return clip_id, {**metrics, 'rvcSeconds': reply['rvcSeconds'],
+                    'alignSeconds': track['alignSeconds'],
+                    'untrimmedSeconds': trim['beforeSeconds'], 'audioSeconds': track['duration']}

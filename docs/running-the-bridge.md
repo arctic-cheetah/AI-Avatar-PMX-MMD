@@ -59,6 +59,9 @@ while busy are ignored. No automatic generation occurs on reconnect.
 
 ## Speech and lip sync
 
+For the experimental CPU Kokoro source, standalone WAV audition and local
+Kokoro → RVC mode, see [Testing Kokoro locally](./testing-kokoro.md).
+
 Add `--speech` to either mode to voice each sentence with Applio (Edge TTS → RVC)
 and lip-sync it with Rhubarb. Needs internet (Edge TTS), `rhubarb` and `ffmpeg` on
 PATH, and Applio installed next to this repository (`../Applio`, with its own

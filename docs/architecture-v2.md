@@ -19,6 +19,12 @@ the finished target. TTS determines audible pronunciation; animation follows it.
 
 ## Loop
 
+Experimental local TTS on `ticket-21-kokoro-local-tts`: `--tts kokoro` replaces Edge
+with a persistent CPU ONNX worker in its own environment, then feeds a source
+WAV to the existing RVC, trim and final-audio alignment path. Edge remains the
+default. See [Testing Kokoro locally](./testing-kokoro.md) for setup, commands,
+measurements and remaining concurrent-load validation.
+
 ```text
 User text -> llama-server (Qwen, Vulkan, 127.0.0.1:8080)
                     |

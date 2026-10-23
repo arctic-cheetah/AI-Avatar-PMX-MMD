@@ -71,6 +71,25 @@ PATH, and Applio installed next to this repository (`../Applio`, with its own
 .venv/bin/python controller/bridge.py --mode llm --speech --prompt "Greet me warmly in two short sentences."
 ```
 
+`--applio-dir` selects which Applio installation to launch (default
+`../Applio`); the Yidhari `.pth` and `.index` defaults follow the selected
+installation, and `--pth` / `--index` override them individually. For ROCm GPU
+conversion on the Radeon 8060S, point it at the separate ROCm workspace:
+
+```bash
+.venv/bin/python -m controller.bridge --mode llm --speech --tts kokoro \
+  --kokoro-voice af_heart --kokoro-speed 1.0 --kokoro-threads 2 \
+  --applio-dir ../Applio-rocm
+```
+
+ROCm RVC ignores `--rvc-threads` (a CPU-only torch setting), so omit it there.
+On 23 October 2026 this passed an isolated demo-mode check on port 8766:
+worker ready in 2.17 s (load) + 4.89 s (warm-up); the two demo sentences
+spoke in 1.64 s / 3.59 s with `rvcSeconds` 0.84 / 0.62. `--rvc-threads` was
+omitted; the host's llama-server was idle, so this verifies wiring and GPU
+conversion, not TTFS under concurrent LLM load. See
+`~/Code/Applio-rocm/README-ROCM.md` for setup and benchmarks.
+
 On startup the bridge launches a persistent Applio worker
 (`controller/applio_worker.py`, run with Applio's own Python) that loads the voice
 model once and warms up (about 4 s) before accepting connections. It stops if

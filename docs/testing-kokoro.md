@@ -77,7 +77,7 @@ Run these commands in separate terminals:
   --tts kokoro --kokoro-threads 2 --rvc-threads 4
 ```
 
-Open <http://127.0.0.1:8770/renderer/> and click **Start default response**.
+Open [http://127.0.0.1:8770/renderer/](http://127.0.0.1:8770/renderer/) and click **Start default response**.
 Demo mode speaks the fixed demo text; chat input does not invoke an LLM in this
 mode. Use this to check audio, lip sync and expression changes first.
 The renderer still loads its existing Three.js CDN resources; local speech
@@ -104,11 +104,11 @@ Host: Ryzen AI MAX+ 395, 16 cores/32 threads, approximately 128 GB RAM.
 Kokoro 0.6.1, ONNX Runtime 1.31.0, float32 v1.0 model, CPU, `af_heart`, speed 1.0,
 2 Kokoro threads; RVC used 4 threads and the existing `75e_21450s` checkpoint.
 
-| Test | Kokoro synthesis | Audio duration | Other stages |
-| --- | --- | --- | --- |
-| Standalone greeting | 0.946 s | 5.645 s source | Model load 0.605 s; RTF 0.168 |
-| First converted sentence | 0.450 s | 2.510 s final | RVC 1.83 s; align 0.567 s; total preparation 2.963 s |
-| Second converted sentence | 0.450 s | 2.440 s final | RVC 1.36 s; align 0.512 s; total preparation 2.355 s |
+| Test                      | Kokoro synthesis | Audio duration | Other stages                                         |
+| ------------------------- | ---------------- | -------------- | ---------------------------------------------------- |
+| Standalone greeting       | 0.946 s          | 5.645 s source | Model load 0.605 s; RTF 0.168                        |
+| First converted sentence  | 0.450 s          | 2.510 s final  | RVC 1.83 s; align 0.567 s; total preparation 2.963 s |
+| Second converted sentence | 0.450 s          | 2.440 s final  | RVC 1.36 s; align 0.512 s; total preparation 2.355 s |
 
 These are individual smoke-test measurements, without a concurrent LLM workload,
 not a benchmark or a guarantee of gap-free playback. The first converted clip

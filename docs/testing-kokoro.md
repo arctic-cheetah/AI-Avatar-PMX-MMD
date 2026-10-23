@@ -135,8 +135,11 @@ visual lip-sync quality and preservation of soft endings need your listening che
   `assets/private/speech/applio-worker.log`. Bridge output contains stage timings.
 - Missing models/environment: rerun setup. An unknown voice or missing source
   produces an error; it does not trigger an online fallback.
-- No retraining, GPU/ROCm deployment, Piper comparison or LLM-load tuning is
-  included in this test branch.
+- No retraining, Piper comparison or LLM-load tuning is included in this test
+  branch. RVC itself can run on the AMD GPU via `--applio-dir ../Applio-rocm`
+  (verified 2026-10-23; see [the bridge guide](./running-the-bridge.md) and
+  `docs/architecture-v2.md`). Prosody work (intonation, cadence, inflection)
+  is tracked in #29.
 
 Validation commands:
 

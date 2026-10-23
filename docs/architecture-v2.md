@@ -19,6 +19,18 @@ the finished target. TTS determines audible pronunciation; animation follows it.
 
 ## Loop
 
+Local TTS on `ticket-21-kokoro-local-tts`: `--tts kokoro` selects a persistent
+CPU ONNX Kokoro worker (`controller/kokoro_worker.py`, isolated `.venv-kokoro`,
+`kokoro-onnx` 0.6.1, `af_heart` default) instead of Edge, then feeds a source
+WAV to the existing RVC, trim and final-audio alignment path. Edge remains the
+default. Kokoro mode never falls back to Edge or sends speech text to an online
+service, which closes the offline/private exposure noted under Security below.
+User listening verdict (22 Oct 2026): Kokoro → RVC sounds noticeably more
+believable than Edge → RVC. See [Testing Kokoro locally](./testing-kokoro.md)
+for setup, commands and measurements. RVC itself can run on the AMD GPU via
+`--applio-dir ../Applio-rocm` (ROCm PyTorch, Radeon 8060S/gfx1151); measured
+2026-10-23 below and in [the bridge guide](./running-the-bridge.md).
+
 ```text
 User text -> llama-server (Qwen, Vulkan, 127.0.0.1:8080)
                     |
@@ -29,8 +41,12 @@ User text -> llama-server (Qwen, Vulkan, 127.0.0.1:8080)
                     +-- Text preview: clean text + expression events
                     |
                     +-- Speech (bridge --speech; per sentence, pipelined):
-                        persistent Applio worker (controller/applio_worker.py):
-                          Edge TTS (primary; ≤ 2 ahead) -> RVC (one thread, in order)
+                        source TTS (per --tts):
+                          edge   -> Edge TTS (online; default)
+                          kokoro -> controller/kokoro_worker.py (CPU ONNX, local)
+                        persistent Applio worker (controller/applio_worker.py;
+                        --applio-dir selects ../Applio CPU or ../Applio-rocm GPU):
+                          source audio -> RVC (one conversion at a time, in order)
                           -> controller/speech_trim.py (cut padding and tail breaths)
                           -> final WAV + exact transcript
                           -> controller/speech_align.py (Rhubarb Lip Sync)
@@ -53,18 +69,22 @@ routed through an MCP tool call (see the lip-sync tooling notes below).
 Applio replaces the earlier VCClient candidate for voice conversion. Applio 3.6.6
 is installed at `/home/parrot/Code/Applio` with the user's trained Yidhari voice
 model ported from the earlier RTX 4090 build. User-reported: its UI TTS produced a
-10.66 s clip in about 3 s (real-time factor ≈ 0.3). Its CLI, AMD/Linux backend and
-behaviour under concurrent LLM load are still unverified. Conversion can be
-bypassed for baseline comparisons. Keep Applio
-as a sibling installation with its own Python environment and voice models;
-configure an explicit path when integrating it. Do not mix its dependencies into
-the avatar environment.
+10.66 s clip in about 3 s (real-time factor ≈ 0.3). Since 2026-10-23 a second
+sibling install, `/home/parrot/Code/Applio-rocm`, carries a ROCm PyTorch build
+(`torch 2.11.0+rocm7.2`) that runs RVC on the Radeon 8060S; the bridge selects
+between them with `--applio-dir`, and the Yidhari `.pth`/`.index` defaults follow
+the chosen install (details in "Kokoro source TTS and ROCm RVC" below). Conversion
+can be bypassed for baseline comparisons. Keep each Applio as a sibling
+installation with its own Python environment and voice models; configure an
+explicit path when integrating it. Do not mix its dependencies into the avatar
+environment.
 
 Applio's [TTS documentation](https://docs.applio.org/getting-started/tts/) describes
 Edge TTS followed by optional RVC conversion. **Edge TTS is the chosen primary
-source** for now; it sends text to an online service, so local TTS (Piper remains
-a candidate) then Applio conversion is the planned offline/private alternative.
-Initial integration uses a saved final WAV, not live virtual-device routing.
+source** for now; it sends text to an online service. The local alternative is no
+longer only planned: `--tts kokoro` runs Kokoro-82M on CPU ONNX (isolated
+`.venv-kokoro`) into the same RVC model; Piper remains an unbenchmarked candidate
+(#18). Initial integration uses a saved final WAV, not live virtual-device routing.
 Applio provides no phoneme timings; alignment runs on its output.
 
 The renderer runs separately from inference. This prevents blocking animation
@@ -105,16 +125,18 @@ of scope.
 
 ## Current state and historical verification
 
-| Piece                                           | State after this restoration                                                                                             |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| JSON catalog, expression controller, test bench | Restored in the renderer                                                                                                 |
-| Browser WebSocket client and transcript         | Restored; waits for backend                                                                                              |
-| Python bridge and llama-server adapter          | Restored: catalog parser, Origin-restricted WebSocket, SSE adapter, local environment and regression tests |
-| Live LLM test                                   | Post-repair backend test passed: qwen3.8-27b streamed soft-smile, thinking, neutral and tag-free text via WebSocket                 |
-| Applio + Edge TTS                               | User-reported working in the Applio UI (10.66 s clip in ~3 s); not yet automated from the bridge                         |
-| Alignment                                       | Rhubarb Lip Sync 1.14.0 via `controller/speech_align.py`, with cue-validation tests                                      |
-| Lip sync                                        | Saved-sample speech test, user-confirmed on screen                                                                       |
-| Live LLM speech                                 | First version with `bridge --speech`: run end to end against qwen3.8-27b; renderer queue verified in headless Chrome     |
+| Piece                                           | State after this restoration                                                                                           |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| JSON catalog, expression controller, test bench | Restored in the renderer                                                                                               |
+| Browser WebSocket client and transcript         | Restored; waits for backend                                                                                            |
+| Python bridge and llama-server adapter          | Restored: catalog parser, Origin-restricted WebSocket, SSE adapter, local environment and regression tests             |
+| Live LLM test                                   | Post-repair backend test passed: qwen3.8-27b streamed soft-smile, thinking, neutral and tag-free text via WebSocket    |
+| Applio + Edge TTS                               | User-reported working in the Applio UI (10.66 s clip in ~3 s); not yet automated from the bridge                       |
+| Alignment                                       | Rhubarb Lip Sync 1.14.0 via `controller/speech_align.py`, with cue-validation tests                                  |
+| Lip sync                                        | Saved-sample speech test, user-confirmed on screen                                                                     |
+| Live LLM speech                                 | First version with `bridge --speech`: run end to end against qwen3.8-27b; renderer queue verified in headless Chrome |
+| Kokoro local TTS                                | Implemented 2026-10-22 (`--tts kokoro`, CPU ONNX); we-confirmed more believable than Edge after RVC                   |
+| ROCm RVC (Applio-rocm)                          | Implemented 2026-10-23 (`--applio-dir ../Applio-rocm`); E2E-verified; user-benchmarked faster under live LLM load       |
 
 ## LLM mood pipeline and events
 
@@ -203,17 +225,17 @@ syllables, and do not ask the LLM to invent timestamps.
 The separate speech-shape catalog is [speech-shapes.json](../renderer/speech-shapes.json).
 Starting weights, all still to be auditioned on the face:
 
-| Rhubarb | Sounds              | PMX morphs | Notes                                       |
-| ------- | ------------------- | ---------- | ------------------------------------------- |
-| A       | M B P (closed lips) | none       | Speech forces all speech morphs to zero     |
-| B       | K S T, EE           | `い` 0.3   |                                             |
-| C       | EH, AE              | `え` 0.6   |                                             |
-| D       | AA                  | `あ` 0.9   | Opens modestly on this model; may need more |
-| E       | AO, ER              | `お` 0.6   |                                             |
-| F       | UW, OW, W (rounded) | `う` 0.75  |                                             |
-| G       | F V (teeth on lip)  | `い` 0.2   | Candidate only; no dedicated geometry found |
-| H       | long L              | `あ` 0.4   |                                             |
-| X       | silence/rest        | none       | Hands the mouth back to the mood            |
+| Rhubarb | Sounds              | PMX morphs  | Notes                                       |
+| ------- | ------------------- | ----------- | ------------------------------------------- |
+| A       | M B P (closed lips) | none        | Speech forces all speech morphs to zero     |
+| B       | K S T, EE           | `い` 0.3  |                                             |
+| C       | EH, AE              | `え` 0.6  |                                             |
+| D       | AA                  | `あ` 0.9  | Opens modestly on this model; may need more |
+| E       | AO, ER              | `お` 0.6  |                                             |
+| F       | UW, OW, W (rounded) | `う` 0.75 |                                             |
+| G       | F V (teeth on lip)  | `い` 0.2  | Candidate only; no dedicated geometry found |
+| H       | long L              | `あ` 0.4  |                                             |
+| X       | silence/rest        | none        | Hands the mouth back to the mood            |
 
 To audition a shape, call `__yidhariPreview.hold({"あ": 0.9})` in the browser
 console. Document unsupported articulation or create local corrective morphs
@@ -360,12 +382,12 @@ clip on arrival, and plays the queue in order. Text-only mode is unchanged.
 
 First run (qwen3.8-27b, prompt asking for three sentences):
 
-| Stage | Measured |
-| --- | --- |
-| First clip ready | 17.9 s after start (LLM ≈ 10.7 s before the first full sentence, then Applio) |
-| Applio TTS + RVC per sentence | 7.2–9.2 s for 2.2–5.4 s of audio (slower than real time) |
-| Rhubarb phonetic alignment | 0.45–0.72 s per sentence |
-| Edge 429 retries | 1 in 3 sentences; recovered on retry |
+| Stage                            | Measured                                                                                               |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| First clip ready                 | 17.9 s after start (LLM ≈ 10.7 s before the first full sentence, then Applio)                         |
+| Applio TTS + RVC per sentence    | 7.2–9.2 s for 2.2–5.4 s of audio (slower than real time)                                             |
+| Rhubarb phonetic alignment       | 0.45–0.72 s per sentence                                                                              |
+| Edge 429 retries                 | 1 in 3 sentences; recovered on retry                                                                   |
 | Renderer queue (headless Chrome) | 3 clips back to back, ~60 ms apart once loaded; moods switched at clip start; lips moved on every clip |
 
 In live use, clips arrive ~7 s apart, so short sentences leave ~5 s of silence
@@ -373,36 +395,36 @@ between them until the cold start is removed.
 
 #### Applio TTS settings (from the user's Applio UI)
 
-| Setting | UI value | CLI flag | Note |
-| --- | --- | --- | --- |
-| Voice model | `Yidhari-zzz_75e_14475s.pth` | `--pth-path` | ⚠️ Not on this laptop (screenshot shows Windows paths, so the RTX 4090 build). Temporary default: `75e_21450s`; override with bridge `--pth` |
-| Index file | `Yidhari-zzz.index` | `--index-path` | Present in `logs/Yidhari-zzz/` |
-| Edge voice | `en-US-JennyNeural` | `--tts-voice` | |
-| TTS speed | −15 | `--tts-rate -15` | |
-| Speaker ID | 0 | `--sid 0` | |
-| Pitch | 0 | `--pitch 0` | |
-| Search feature ratio | 0.7 | `--index-rate 0.7` | CLI default is 0.3: pass explicitly |
-| Volume envelope | 1 | `--volume-envelope 1` | |
-| Protect voiceless consonants | 0.5 | `--protect 0.5` | CLI default is 0.33: pass explicitly |
-| Pitch extraction | rmvpe | `--f0-method rmvpe` | |
-| Embedder | contentvec | `--embedder-model contentvec` | Matches `model_info.json` |
-| Split audio, autotune, proposed pitch, clean audio | off | defaults | Clean audio has no CLI flag; off anyway |
+| Setting                                            | UI value                       | CLI flag                        | Note                                                                                                                                               |
+| -------------------------------------------------- | ------------------------------ | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Voice model                                        | `Yidhari-zzz_75e_14475s.pth` | `--pth-path`                  | ⚠️ Not on this laptop (screenshot shows Windows paths, so the RTX 4090 build). Temporary default: `75e_21450s`; override with bridge `--pth` |
+| Index file                                         | `Yidhari-zzz.index`          | `--index-path`                | Present in `logs/Yidhari-zzz/`                                                                                                                   |
+| Edge voice                                         | `en-US-JennyNeural`          | `--tts-voice`                 |                                                                                                                                                    |
+| TTS speed                                          | −15                           | `--tts-rate -15`              |                                                                                                                                                    |
+| Speaker ID                                         | 0                              | `--sid 0`                     |                                                                                                                                                    |
+| Pitch                                              | 0                              | `--pitch 0`                   |                                                                                                                                                    |
+| Search feature ratio                               | 0.7                            | `--index-rate 0.7`            | CLI default is 0.3: pass explicitly                                                                                                                |
+| Volume envelope                                    | 1                              | `--volume-envelope 1`         |                                                                                                                                                    |
+| Protect voiceless consonants                       | 0.5                            | `--protect 0.5`               | CLI default is 0.33: pass explicitly                                                                                                               |
+| Pitch extraction                                   | rmvpe                          | `--f0-method rmvpe`           |                                                                                                                                                    |
+| Embedder                                           | contentvec                     | `--embedder-model contentvec` | Matches `model_info.json`                                                                                                                        |
+| Split audio, autotune, proposed pitch, clean audio | off                            | defaults                        | Clean audio has no CLI flag; off anyway                                                                                                            |
 
 #### Known gaps (accepted for the first test, fix later)
 
 - [ ] **Missing checkpoint.** The UI's `75e_14475s` checkpoint is absent locally. Its run used 193 steps/epoch; only `25e_4825s` from that run was ported. Local files come from runs at 31, 145 and 286 steps/epoch. Copy `75e_14475s` from the Windows build, or audition local checkpoints; the bridge uses `75e_21450s` until then.
 - [ ] **Time to first word.** Reasoning time comes before the first sentence and must stay (user decision). Now masked by the `thinking` face; an opt-in cached filler clip is the remaining option.
-- [x] **Silence between clips.** Fixed by the persistent worker: in the measured run every clip was ready before the previous one finished. Phase 2 overlap would add margin.
-- [x] **Cold start per sentence.** Replaced the `core.py tts` call with a persistent worker in Applio's own `.venv` (Phase 1).
-- [ ] **CPU-only RVC.** Applio's PyTorch is `2.11.0+cu128` (CUDA build); on this AMD laptop `torch.cuda.is_available()` is false and there is no HIP build. Conversion competes with the LLM for CPU. Evaluate a ROCm PyTorch build in Applio's environment later.
-- [x] **Alignment latency.** Live speech uses `--recognizer phonetic` (0.45–0.72 s per sentence). PocketSphinx (~9 s per 10 s) stays for offline samples.
-- [x] **Sentence streaming.** Sentences are synthesised as soon as they are complete, while the LLM is still generating. Synthesis itself is still one sentence at a time.
-- [x] **Clip delivery.** Clips live under `assets/private/speech/live/`; only a 16-hex-character ID crosses the WebSocket, checked on both sides.
+- [X] **Silence between clips.** Fixed by the persistent worker: in the measured run every clip was ready before the previous one finished. Phase 2 overlap would add margin.
+- [X] **Cold start per sentence.** Replaced the `core.py tts` call with a persistent worker in Applio's own `.venv` (Phase 1).
+- [x] **CPU-only RVC.** Resolved 2026-10-23 (#19): the original Applio's PyTorch is `2.11.0+cu128` (CUDA build, CPU fallback on this AMD laptop), but `--applio-dir ../Applio-rocm` now selects a ROCm PyTorch build (`2.11.0+rocm7.2`) running RVC on the Radeon 8060S. See "Kokoro source TTS and ROCm RVC — 2026-10-23" below.
+- [X] **Alignment latency.** Live speech uses `--recognizer phonetic` (0.45–0.72 s per sentence). PocketSphinx (~9 s per 10 s) stays for offline samples.
+- [X] **Sentence streaming.** Sentences are synthesised as soon as they are complete, while the LLM is still generating. Synthesis itself is still one sentence at a time.
+- [X] **Clip delivery.** Clips live under `assets/private/speech/live/`; only a 16-hex-character ID crosses the WebSocket, checked on both sides.
 - [ ] **Clip cleanup.** Clips from the previous run are deleted when a new run starts; the last run's clips stay on disk. Consider deleting after playback.
-- [x] **Text for TTS.** Mood tags, Markdown symbols, emoji and control characters are stripped; fragments without letters or digits are skipped. Text goes to Applio through a file. Not done: merging very short fragments.
-- [ ] **Edge TTS dependency.** HTTP 429 is retried twice with backoff; any other failure skips that sentence with a `notice`. An offline fallback is still missing.
+- [X] **Text for TTS.** Mood tags, Markdown symbols, emoji and control characters are stripped; fragments without letters or digits are skipped. Text goes to Applio through a file. Not done: merging very short fragments.
+- [ ] **Edge TTS dependency.** HTTP 429 is retried twice with backoff; any other failure skips that sentence with a `notice`. An offline fallback now exists (`--tts kokoro`, local CPU ONNX); whether Kokoro becomes the default is the open call in #18.
 - [ ] **Errors and cancellation.** A failed sentence is skipped; a new run or a disconnect cancels the worker and kills a running Applio process. Not done: cancelling the reply mid-way from the renderer, and pause/resume.
-- [x] **Timing measurements.** The bridge logs per sentence: TTS+RVC seconds, alignment seconds, audio seconds, and time to first clip. Not logged yet: playback gaps on the renderer side.
+- [X] **Timing measurements.** The bridge logs per sentence: TTS+RVC seconds, alignment seconds, audio seconds, and time to first clip. Not logged yet: playback gaps on the renderer side.
 
 ### TTS latency rework plan — 2026-10-17
 
@@ -411,13 +433,13 @@ Work happens on branch `rework-tts-pipeline`.
 
 **Profile** (one process, CPU, `75e_21450s`, one run each):
 
-| Stage | Applio CLI per sentence (now) | Persistent process (warm) |
-| --- | --- | --- |
-| Python + torch start-up | ~2–3 s, twice (`core.py` spawns `tts.py`) | Paid once at bridge start |
-| Edge TTS request | 0.9–1.2 s; 3.0 s with a 429 retry | Same (network) |
-| RVC conversion | 3.3 s (reloads model, embedder, rmvpe) | 0.8 s for 2.2 s audio; 1.5 s for 5.4 s audio (RTF ≈ 0.3) |
-| Rhubarb phonetic | 0.5 s | 0.5 s |
-| Per sentence | 7–9 s | ≈ 2.2 s |
+| Stage                   | Applio CLI per sentence (now)                  | Persistent process (warm)                                 |
+| ----------------------- | ---------------------------------------------- | --------------------------------------------------------- |
+| Python + torch start-up | ~2–3 s, twice (`core.py` spawns `tts.py`) | Paid once at bridge start                                 |
+| Edge TTS request        | 0.9–1.2 s; 3.0 s with a 429 retry             | Same (network)                                            |
+| RVC conversion          | 3.3 s (reloads model, embedder, rmvpe)         | 0.8 s for 2.2 s audio; 1.5 s for 5.4 s audio (RTF ≈ 0.3) |
+| Rhubarb phonetic        | 0.5 s                                          | 0.5 s                                                     |
+| Per sentence            | 7–9 s                                         | ≈ 2.2 s                                                  |
 
 Applio's `VoiceConverter` already caches the model and embedder within a process;
 the CLI discards that cache on every call. The splitter breaks at `. ! ? …` and at
@@ -445,6 +467,9 @@ disable thinking or cap the reasoning budget to save latency.
 5. **Phase 5: later options.** Local TTS (Kokoro-82M or Piper on CPU) to remove
    network time and 429s; ROCm PyTorch for RVC (fragile on gfx1151 and shares
    the GPU with the LLM); Edge word boundaries as an alignment cross-check.
+   **Status 2026-10-23:** the Kokoro and ROCm halves are implemented — see
+   "Kokoro source TTS and ROCm RVC — 2026-10-23" below. Piper comparison (#18)
+   and Edge word boundaries (#20) remain open.
 
 Expected after Phases 1–4 (estimates, to be measured): no gap between sentences
 once speaking, and first audio ≈ 2–3 s after the first sentence is complete. Total
@@ -467,14 +492,14 @@ still fully on.
 
 End-to-end run (qwen3.8-27b, four-sentence prompt, `75e_21450s`):
 
-| Measure | CLI per sentence (before) | Persistent worker (now) |
-| --- | --- | --- |
-| Worker start-up | none | 1.46 s load + 2.78 s warm-up, once at bridge start |
-| Thinking face | none | 0.46 s after Start |
-| First answer text from LLM | ≈ 10.7 s | 5.3 s (reasoning length varies per run) |
-| First clip ready | 17.9 s | 9.1 s |
-| Edge + RVC + align per sentence | 7–9 s | 2.0–3.7 s (Edge 0.6–1.3, RVC 0.9–1.9, align 0.5–0.7) |
-| Clip ready vs previous clip finished | ~5 s gap | 0.9 s, 0.1 s and 1.9 s early: no gaps after the first clip |
+| Measure                              | CLI per sentence (before) | Persistent worker (now)                                    |
+| ------------------------------------ | ------------------------- | ---------------------------------------------------------- |
+| Worker start-up                      | none                      | 1.46 s load + 2.78 s warm-up, once at bridge start         |
+| Thinking face                        | none                      | 0.46 s after Start                                         |
+| First answer text from LLM           | ≈ 10.7 s                 | 5.3 s (reasoning length varies per run)                    |
+| First clip ready                     | 17.9 s                    | 9.1 s                                                      |
+| Edge + RVC + align per sentence      | 7–9 s                    | 2.0–3.7 s (Edge 0.6–1.3, RVC 0.9–1.9, align 0.5–0.7)   |
+| Clip ready vs previous clip finished | ~5 s gap                  | 0.9 s, 0.1 s and 1.9 s early: no gaps after the first clip |
 
 Follow-ups found: the first real conversion still took 1.89 s against ~0.94 s
 for later ones of similar length, so the synthetic-tone warm-up does not warm
@@ -564,7 +589,7 @@ End-to-end run (qwen3.8-27b, six sentences, `75e_21450s`, trimmed clips
 replayed on a simulated playback clock with 60 ms between clips):
 
 | Clip | Ready | Plays | Spare before needed | Length trimmed from → to |
-| --- | --- | --- | --- | --- |
+| -------------------------------- | ------- | ------- | ------------------- | ------------------------- |
 | "Hi, it's wonderful to see you." | 28.46 s | 28.46 s | — | 3.30 → 2.39 s |
 | "I'm glad you're here." | 29.01 s | 30.91 s | 1.90 s | 2.24 → 1.33 s |
 | "Building an avatar together…" | 31.45 s | 32.30 s | 0.85 s | 6.04 → 5.15 s |
@@ -583,6 +608,57 @@ replayed on a simulated playback clock with 60 ms between clips):
   run (reasoning stays on). The first real RVC conversion was again slower
   (2.39 s); the speech-like warm-up follow-up still applies.
 - Not yet checked by ear on the real display.
+
+### Kokoro source TTS and ROCm RVC — 2026-10-23
+
+Two of the Phase 5 options are now implemented and user-verified; this section
+supersedes the "planned offline/private alternative" framing above. Tracked in
+
+# 18 (local TTS), #19 (ROCm RVC) and #29 (prosody follow-up)
+
+**Kokoro source (default remains Edge).** `--tts kokoro` runs a persistent
+Kokoro worker (`controller/kokoro_worker.py`) under its own `.venv-kokoro`
+(`kokoro-onnx` 0.6.1, `kokoro-v1.0.onnx` + `voices-v1.0.bin` in `models/kokoro/`,
+24 kHz mono WAV). It replaces only the source stage: the Applio worker detects
+the prepared source WAV and skips Edge, then RVC → trim → Rhubarb proceed
+unchanged. Kokoro mode never falls back to Edge and never sends text online.
+Initial measurements (22 Oct 2026, CPU, `af_heart`, 2 Kokoro threads): 0.946 s
+to synthesise a 5.645 s greeting (RTF 0.168); converted sentences took
+`ttsSeconds` 0.45 with RVC 1.36–1.83 s on CPU. The user's listening verdict:
+Kokoro → RVC sounds noticeably more believable than Edge → RVC. Setup and
+audition commands: [Testing Kokoro locally](./testing-kokoro.md).
+
+**ROCm RVC.** `--applio-dir` selects the Applio installation the bridge launches
+(default `../Applio`, CUDA-build PyTorch with CPU fallback on this host);
+`../Applio-rocm` is a sibling copy whose venv carries `torch 2.11.0+rocm7.2`,
+which sees the Radeon 8060S (`gfx1151`) through its bundled ROCm userspace — no
+`HSA_OVERRIDE_GFX_VERSION` needed. Applio needed no code changes: its config
+picks `cuda:0` whenever `torch.cuda.is_available()`, which ROCm PyTorch
+satisfies. The Yidhari `.pth`/`.index` defaults follow the selected install;
+`--pth`/`--index` override individually. `--rvc-threads` is a CPU-torch-only
+setting and is ignored by the ROCm path.
+
+Measured 2026-10-23 (same model, warm-up excluded; full log in
+`~/Code/Applio-rocm/README-ROCM.md`):
+
+| Clip | GPU (ROCm) | CPU (../Applio) |
+| --- | ---: | ---: |
+| 2.51 s real Kokoro speech | 0.47 s | 0.52 s |
+| 14.84 s concatenated speech | 1.58 s | 3.34 s |
+
+Live check the same day (isolated bridge, port 8766, demo mode): worker ready
+in 2.17 s load + 4.89 s warm-up; two demo sentences spoke at 1.64 s / 3.59 s
+with `rvcSeconds` 0.84 / 0.62. The user's production LLM + Kokoro run under
+concurrent decoding logged `rvcSeconds` 0.87–1.96 (ROCm) versus 2.09–7.76 on
+the CPU path for comparable clips, and felt "hundred times better… more
+responsive". `firstClipSeconds` stayed ~46–48 s in both runs — that budget is
+LLM reasoning time, not speech processing, and remains the thinking-animation /
+filler territory (#17), not a TTS problem.
+
+Still open: TTFS and tokens/s with RVC + LLM + renderer all contending on the
+UMA (#15), the Piper side-by-side and default-source decision (#18), closing
+
+# 19 once the branch lands, and prosody (intonation/cadence/inflection) in #29
 
 ## Agent voice over MCP — plan, 2026-10-18
 
@@ -608,12 +684,12 @@ Code's `Stop` hook) runs `controller/agent_notify.py` to send the final message
 to the bridge, so she still speaks if the model forgets. Answers flow back as
 tool results: `ask` returns the user's reply to the agent.
 
-| Tool | Arguments | What she does | Tool result |
-| --- | --- | --- | --- |
-| `say` | `text` (≤ 500 chars), optional `mood`, `weight` | Speaks the text as written | `queued` at once; never waits for playback |
-| `report` | `text` (≤ 16 KiB), `kind`: `progress`, `done` or `error` | Full text to the chat log; the local LLM rewrites it as 1–3 spoken sentences with mood tags, which she speaks | `queued` |
-| `ask` | `question` (≤ 500 chars) | Speaks the question; the next chat message is the answer | The reply, or `no answer` after a timeout (default 120 s) |
-| `set_mood` | `name`, `weight` | Changes expression without speech | `ok` |
+| Tool         | Arguments                                                           | What she does                                                                                                  | Tool result                                                 |
+| ------------ | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `say`      | `text` (≤ 500 chars), optional `mood`, `weight`              | Speaks the text as written                                                                                     | `queued` at once; never waits for playback                |
+| `report`   | `text` (≤ 16 KiB), `kind`: `progress`, `done` or `error` | Full text to the chat log; the local LLM rewrites it as 1–3 spoken sentences with mood tags, which she speaks | `queued`                                                  |
+| `ask`      | `question` (≤ 500 chars)                                         | Speaks the question; the next chat message is the answer                                                       | The reply, or `no answer` after a timeout (default 120 s) |
+| `set_mood` | `name`, `weight`                                                | Changes expression without speech                                                                              | `ok`                                                      |
 
 Mood names are checked against [expressions.json](../renderer/expressions.json),
 as LLM tags are.
@@ -739,6 +815,5 @@ sequenceDiagram
 ### Later steps
 
 - **Voice front:** on #23's tool loop, one tool, `delegate(task)`, runs a
-  back-end agent without a UI (for example `claude -p --output-format
-  stream-json`) and feeds its progress and result into the same summariser.
+  back-end agent without a UI (for example `claude -p --output-format stream-json`) and feeds its progress and result into the same summariser.
 - **Own tools:** #23, with allowlisted MCP servers and approval prompts.

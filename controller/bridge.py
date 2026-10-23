@@ -27,6 +27,7 @@ THINKING, THINKING_WEIGHT = "thinking", 0.6
 MAX_IN_FLIGHT = 3  # sentences being synthesised or aligned at once
 MAX_FRAME = 65536 * 2  # TODO: largest accepted browser message (bytes)
 MAX_PROMPT = 4000  # TODO: longest accepted chat prompt (characters)
+MAX_TOKENS = 1024 * 2
 LOG = logging.getLogger(__name__)
 
 
@@ -147,7 +148,7 @@ async def llama_chunks(base_url, model, prompt, catalog, on_reasoning=None):
 
     payload = {
         "stream": True,
-        "max_tokens": 1024,
+        "max_tokens": MAX_TOKENS,
         "messages": [
             {"role": "system", "content": system_prompt(catalog)},
             {"role": "user", "content": prompt},
@@ -393,7 +394,11 @@ async def run(args):
         args.speech_settings.check()
         print("Starting Applio worker (loads the voice model once)…", flush=True)
         args.speech_worker = ApplioWorker(args.speech_settings)
-        ready = await args.speech_worker.start()
+        try:
+            ready = await args.speech_worker.start()
+        except BaseException:
+            await args.speech_worker.close()
+            raise
         print(
             f"Applio worker ready: load {ready['loadSeconds']}s, warm-up {ready['warmSeconds']}s",
             flush=True,
@@ -434,19 +439,44 @@ def main():
     parser.add_argument(
         "--speech",
         action="store_true",
-        help="Speak each sentence with Applio (Edge TTS + RVC) and lip sync.",
+        help="Speak each sentence with the selected TTS source, Applio RVC and lip sync.",
+    )
+    parser.add_argument(
+        "--applio-dir",
+        type=Path,
+        default=Path(__file__).resolve().parents[2] / "Applio",
+        help="Applio installation to launch (default: ../Applio; use ../Applio-rocm for ROCm).",
     )
     parser.add_argument(
         "--pth",
         type=Path,
-        help="Applio voice model (.pth); default in controller/speech.py.",
+        help="Applio voice model (.pth); default is the Yidhari model under --applio-dir.",
     )
+    parser.add_argument(
+        "--index",
+        type=Path,
+        help="Applio voice index (.index); default is the Yidhari index under --applio-dir.",
+    )
+    parser.add_argument("--tts", choices=["edge", "kokoro"], default="edge")
+    parser.add_argument("--kokoro-voice", default="af_heart")
+    parser.add_argument("--kokoro-speed", type=float, default=1.0)
+    parser.add_argument("--kokoro-threads", type=int, default=2)
+    parser.add_argument("--rvc-threads", type=int, default=0)
     args = parser.parse_args()
     args.speech_settings = None
     if args.speech:
         from controller.speech import ApplioSettings
 
-        args.speech_settings = ApplioSettings(**({"pth": args.pth} if args.pth else {}))
+        args.speech_settings = ApplioSettings(
+            applio_dir=args.applio_dir.expanduser().resolve(),
+            tts_provider=args.tts,
+            kokoro_voice=args.kokoro_voice,
+            kokoro_speed=args.kokoro_speed,
+            kokoro_threads=args.kokoro_threads,
+            rvc_threads=args.rvc_threads,
+            **({"pth": args.pth.expanduser().resolve()} if args.pth else {}),
+            **({"index": args.index.expanduser().resolve()} if args.index else {}),
+        )
     logging.basicConfig(level=logging.INFO)
     try:
         asyncio.run(run(args))

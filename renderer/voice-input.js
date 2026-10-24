@@ -93,8 +93,9 @@ export class VoiceInput {
     onStatus = () => {},
     onState = () => {},
     now = () => performance.now(),
-    setTimer = setTimeout,
-    clearTimer = clearTimeout,
+    // Wrapped: browsers throw "Illegal invocation" when setTimeout is called as this.setTimer().
+    setTimer = (callback, ms) => setTimeout(callback, ms),
+    clearTimer = (id) => clearTimeout(id),
   }) {
     Object.assign(this, { openMicrophone, createRecorder, transcribe, onTranscript, onStatus, onState, now, setTimer, clearTimer });
     this.state = 'idle';

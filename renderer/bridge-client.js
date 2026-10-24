@@ -1,13 +1,22 @@
-/** Bridge client: chat input, text preview, moods, and (with bridge --speech) spoken clip IDs. */
+/** Bridge client: chat input, voice input, text preview, moods, and (with bridge --speech) spoken clip IDs. */
+import { VoiceInput, voiceSupported } from './voice-input.js';
+
 const CLIP_ID = /^[0-9a-f]{16}$/;
 const MAX_PROMPT = 2000;
 const MAX_REPLY = 50000;
+
+/** The one message that starts a reply, whether the prompt was typed or spoken. */
+export function startFrame(prompt) {
+  return JSON.stringify(prompt === null ? { type: 'start' } : { type: 'start', prompt });
+}
+
 export function connectBridge({ catalog, onStart, onFinish, onExpression, onText, onSpeak }) {
   const button = document.querySelector('#bridge-start');
   const status = document.querySelector('#bridge-status');
   const chatBar = document.querySelector('#chat-bar');
   const chatInput = document.querySelector('#chat-input');
   const chatSend = document.querySelector('#chat-send');
+  const chatMic = document.querySelector('#chat-mic');
   const chatLog = document.querySelector('#chat-log');
   let socket;
   let busy = false;
@@ -27,16 +36,50 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     return body;
   }
 
+  function canSend() {
+    return !busy && socket?.readyState === WebSocket.OPEN;
+  }
+
   function setChatEnabled(enabled) {
     chatInput.disabled = !enabled;
     chatSend.disabled = !enabled;
+    updateMic();
+  }
+
+  /** Show a prompt as the user's bubble and start a reply; false if the bridge cannot take it now. */
+  function sendPrompt(prompt) {
+    if (!prompt || !canSend()) return false;
+    addLine('you').textContent = prompt;
+    chatInput.value = '';
+    startGeneration(prompt);
+    return true;
+  }
+
+  const voice = new VoiceInput({
+    onTranscript: (text) => {
+      if (!sendPrompt(text)) {
+        chatInput.value = text;
+        status.textContent = 'Transcript ready · press Send when she is free';
+      }
+    },
+    onStatus: (text) => { status.textContent = text; },
+    onState: updateMic,
+  });
+
+  function updateMic() {
+    const recording = voice.state === 'recording';
+    chatMic.disabled = !voiceSupported() || !(recording || (voice.state === 'idle' && canSend()));
+    chatMic.setAttribute('aria-pressed', String(recording));
+    chatMic.classList.toggle('recording', recording);
+    chatMic.textContent = recording ? '■ Stop' : voice.state === 'transcribing' ? '… Transcribing' : '🎤 Talk';
+    chatMic.setAttribute('aria-label', recording ? 'Stop recording and send' : 'Talk to Yidhari (start voice input)');
   }
 
   function startGeneration(prompt) {
     busy = true;
     button.disabled = true;
     setChatEnabled(false);
-    socket.send(JSON.stringify(prompt === null ? { type: 'start' } : { type: 'start', prompt }));
+    socket.send(startFrame(prompt));
     status.textContent = 'Waiting for reply…';
   }
   function connect() {
@@ -51,7 +94,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     socket.onclose = () => {
       // Do not reset the expression here: while the bridge is down this
       // close/reconnect cycle repeats and would keep forcing neutral.
-      busy = false; onFinish(); button.disabled = true; setChatEnabled(false);
+      busy = false; onFinish(); button.disabled = true; voice.cancel(); setChatEnabled(false);
       status.textContent = 'Disconnected · retrying…';
       // onExpression('neutral', 1);
       setTimeout(connect, 2000);
@@ -103,11 +146,10 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
   });
   chatBar.addEventListener('submit', (event) => {
     event.preventDefault();
-    const prompt = chatInput.value.trim();
-    if (!prompt || busy || socket?.readyState !== WebSocket.OPEN) return;
-    addLine('you').textContent = prompt;
-    chatInput.value = '';
-    startGeneration(prompt);
+    sendPrompt(chatInput.value.trim());
   });
+  chatMic.title = voiceSupported() ? '' : 'Voice input needs microphone recording support in this browser';
+  chatMic.addEventListener('click', () => voice.toggle(canSend()));
+  updateMic();
   connect();
 }

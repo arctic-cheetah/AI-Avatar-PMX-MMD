@@ -111,6 +111,28 @@ test("recording stops itself at the time limit", async () => {
   assert.equal(h.log.sent.length, 1);
 });
 
+test("default timers are not called as methods (browsers reject that)", async () => {
+  const realSet = globalThis.setTimeout;
+  const realClear = globalThis.clearTimeout;
+  let receiver = "unset";
+  globalThis.setTimeout = function (callback, ms) { receiver = this; return realSet(callback, ms); };
+  globalThis.clearTimeout = function (id) { return realClear(id); };
+  try {
+    const stream = { getTracks: () => [] };
+    const voice = new VoiceInput({
+      openMicrophone: async () => stream,
+      createRecorder: () => ({ start() {}, stop: async () => ({ size: 0 }), cancel() {} }),
+      onTranscript: () => {},
+    });
+    await voice.toggle(true);
+    assert.notEqual(receiver, voice, "setTimeout must not receive VoiceInput as this");
+    voice.cancel();
+  } finally {
+    globalThis.setTimeout = realSet;
+    globalThis.clearTimeout = realClear;
+  }
+});
+
 test("cancel drops the recording without uploading it", async () => {
   const h = harness();
   await h.voice.toggle(true);

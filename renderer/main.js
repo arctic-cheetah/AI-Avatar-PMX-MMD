@@ -31,6 +31,8 @@ import { AuditionPanel } from "./audition-panel.js";
 import { connectBridge } from "./bridge-client.js";
 import { SpeechPlayer, loadSpeechShapes } from "./speech-player.js";
 import { LiveSpeechSession } from "./speech-session.js";
+import { GazeController, normalisePointer } from "./gaze-tracking.js";
+import { CameraGaze } from "./camera-gaze.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
 const MODEL_URL = "/yidhari-mmd/伊德海莉.pmx";
@@ -66,6 +68,9 @@ const editPresetButton = document.querySelector("#edit-preset-button");
 const intensityInput = document.querySelector("#intensity");
 const intensityOutput = document.querySelector("#intensity-value");
 const blinkToggle = document.querySelector("#blink-toggle");
+const cursorGazeToggle = document.querySelector("#cursor-gaze-toggle");
+const cameraGazeToggle = document.querySelector("#camera-gaze-toggle");
+const gazeStatus = document.querySelector("#gaze-status");
 const frameButtons = {
   face: document.querySelector("#frame-face-button"),
   bust: document.querySelector("#frame-bust-button"),
@@ -161,6 +166,73 @@ let headTarget = null;
 let previousFrame = performance.now();
 /** @type {{ start: number, close: number, hold: number, open: number } | null} */
 let blink = null;
+const gaze = new GazeController();
+/** @type {{ bone: THREE.Bone, rest: THREE.Quaternion }[]} */
+let gazeBones = [];
+const gazeEuler = new THREE.Euler();
+const gazeQuat = new THREE.Quaternion();
+const cameraGaze = new CameraGaze((target) => gaze.setCamera(target, cameraGazeToggle.checked));
+
+window.addEventListener("pointermove", (event) => {
+  const rect = canvas.getBoundingClientRect();
+  gaze.setCursor(
+    normalisePointer(event.clientX - rect.left, event.clientY - rect.top, rect.width, rect.height),
+    cursorGazeToggle.checked,
+  );
+});
+window.addEventListener("pointerleave", () => gaze.setCursor({ x: 0, y: 0 }, cursorGazeToggle.checked));
+cursorGazeToggle.addEventListener("change", () => gaze.setCursor({ x: 0, y: 0 }, cursorGazeToggle.checked));
+cameraGazeToggle.addEventListener("change", async () => {
+  gaze.setCamera({ x: 0, y: 0 }, cameraGazeToggle.checked);
+  if (!cameraGazeToggle.checked) {
+    cameraGaze.stop();
+    gazeStatus.textContent = "";
+    return;
+  }
+  gazeStatus.textContent = "Starting camera…";
+  try {
+    await cameraGaze.start();
+    gazeStatus.textContent = "Camera on · processed locally, nothing is recorded or sent.";
+  } catch (error) {
+    cameraGazeToggle.checked = false;
+    gaze.setCamera(null, false);
+    gazeStatus.textContent = error.message;
+  }
+});
+
+/**
+ * Capture the eye/neck/head bones and their rest quaternions for gaze.
+ * @param {THREE.SkinnedMesh} object Loaded PMX mesh.
+ * @returns {void}
+ */
+function setupGaze(object) {
+  gazeBones = [];
+  for (const name of ["左目", "右目", "首", "頭"]) {
+    const bone = object.skeleton?.getBoneByName(name);
+    if (bone) gazeBones.push({ name, bone, rest: bone.quaternion.clone() });
+  }
+  const hasEyes = gazeBones.some(({ name }) => name === "左目" || name === "右目");
+  cursorGazeToggle.disabled = !hasEyes;
+  cameraGazeToggle.disabled = !hasEyes;
+  if (!hasEyes) gazeStatus.textContent = "This model has no eye bones, so gaze tracking is unavailable.";
+}
+
+/**
+ * Ease gaze bones toward the active pointer/face target for this frame.
+ * The PMX faces +Z toward the camera, so positive yaw turns screen-right.
+ * @param {number} delta Seconds elapsed since the previous frame.
+ * @returns {void}
+ */
+function applyGaze(delta) {
+  if (!gazeBones.length) return;
+  const angles = gaze.update(delta);
+  for (const { name, bone, rest } of gazeBones) {
+    const yaw = name === "左目" || name === "右目" ? angles.eyeYaw : angles.headYaw;
+    const pitch = name === "左目" || name === "右目" ? angles.eyePitch : angles.headPitch;
+    gazeEuler.set(pitch, yaw, 0, "YXZ");
+    bone.quaternion.copy(rest).multiply(gazeQuat.setFromEuler(gazeEuler));
+  }
+}
 
 /**
  * Show a short loading or readiness message below the canvas.
@@ -987,6 +1059,7 @@ function onModelLoaded(loaded, data) {
     onTakeover: () => expressions.setExpression("neutral"),
   });
   restArms(mesh);
+  setupGaze(mesh);
 
   const morphCount = mesh.morphTargetInfluences?.length ?? 0;
   const unavailable = [];
@@ -1086,6 +1159,7 @@ function animate() {
   speech?.update(delta);
   updateBlink(now / 1000);
   updateWinks(delta);
+  applyGaze(delta);
   audition?.update(delta);
   audition?.apply();
   // A held preview wins the frame so a visual check is not overwritten by the mood loop.

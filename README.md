@@ -12,6 +12,7 @@ This is a companion project, kept outside `my_code_pc` so it does not compete fo
 - 🎙️ **Voice:** each sentence is synthesised locally with Kokoro TTS (`--tts kokoro`), then converted to Yidhari's voice with an Applio RVC model. Edge TTS is still available with `--tts edge`.
 - 👄 **Lip sync:** Rhubarb Lip Sync times mouth shapes from the final audio, and the renderer plays them on the audio clock.
 - 👀 **Idle life and tuning:** automatic blinking, plus wink controls and a morph test bench for tuning expressions.
+- 👁️ **Gaze tracking:** her eyes (and gently, her head) follow your mouse cursor and/or your face on webcam — see [docs/gaze-tracking.md](docs/gaze-tracking.md). The webcam only starts when you toggle it on, and frames never leave the browser.
 
 ## 🧭 How it works
 
@@ -231,6 +232,7 @@ avatar-yidhari/
 | [running-the-bridge.md](docs/running-the-bridge.md)               | Full bridge guide and troubleshooting            |
 | [testing-kokoro.md](docs/testing-kokoro.md)                       | Kokoro setup, audition commands and measurements |
 | [pmx-morph-catalog.md](docs/pmx-morph-catalog.md)                 | Every PMX facial morph                           |
+| [gaze-tracking.md](docs/gaze-tracking.md)                         | Cursor + webcam gaze tracking design (issue #6)  |
 | [shared-expression-catalog.md](docs/shared-expression-catalog.md) | Mood presets used by the LLM                     |
 | [issue-labels.md](docs/issue-labels.md)                           | Issue priority, difficulty and emoji labels      |
 

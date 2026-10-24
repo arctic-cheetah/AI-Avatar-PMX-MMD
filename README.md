@@ -7,6 +7,7 @@ This is a companion project, kept outside `my_code_pc` so it does not compete fo
 ## ✨ What she can do
 
 - 💬 **Chat:** type into the chat bar; replies stream from a local `llama-server`.
+- 🎤 **Voice input:** click **🎤 Talk**, speak, click **■ Stop**. Local Whisper on the CPU turns it into a chat prompt; audio never leaves the machine ([docs/voice-input.md](docs/voice-input.md)).
 - 😊 **Moods:** the LLM adds tags such as `[soft-smile:0.6]`, which become facial expressions from a catalog of 46 presets.
 - 🤔 **Thinking face:** while the model reasons, she looks thoughtful.
 - 🎙️ **Voice:** each sentence is synthesised locally with Kokoro TTS (`--tts kokoro`), then converted to Yidhari's voice with an Applio RVC model. Edge TTS is still available with `--tts edge`.
@@ -17,13 +18,15 @@ This is a companion project, kept outside `my_code_pc` so it does not compete fo
 
 ```mermaid
 flowchart TD
-    U([🧑 You]) -->|chat bar| R
+    U([🧑 You]) -->|chat bar or 🎤 mic| R
     subgraph Browser["🖥️ Browser renderer · 127.0.0.1:8770"]
         R[Chat + controls] --> E[Expression controller]
         P[Speech player] --> M[PMX morphs]
         E --> M
     end
     R <-->|WebSocket :8765| B
+    R -.->|"POST /stt (audio)"| V[serve.py --stt<br/>local Whisper, CPU]
+    V -.->|transcript only| R
     subgraph Bridge["🐍 controller/bridge.py"]
         B[Tag parser] --> S[Sentence splitter]
     end
@@ -75,6 +78,7 @@ sequenceDiagram
 | 🎙️ Voice         | Kokoro local TTS                                                                                                       | Installed by `python3 -m controller.setup_kokoro`; runs in `.venv-kokoro` and stores models under `models/kokoro/`                                                                            |
 | 🎙️ Voice         | [Applio](https://github.com/IAHispano/Applio) 3.6.6 at `../Applio` with its own `.venv` and the Yidhari voice model | Kept separate from this repo's environment. Use `../Applio-rocm` with `--applio-dir` for ROCm GPU RVC — full GPU setup for AMD ROCm **and** NVIDIA CUDA in [docs/setup.md](docs/setup.md) |
 | 🎙️ Voice         | [Rhubarb Lip Sync](https://github.com/DanielSWolf/rhubarb-lip-sync/releases) 1.14.0 and `ffmpeg` on `PATH`          | Rhubarb aligns mouth shapes; ffmpeg decodes audio                                                                                                                                                   |
+| 🎤 Voice input    | faster-whisper in `.venv-stt` and a microphone                                                                           | Installed by `python3 -m controller.setup_stt`; models in `models/whisper/`; enabled with `renderer/serve.py --stt`                                                                                |
 | 🎙️ Edge fallback | Internet access                                                                                                        | Only needed for `--tts edge`; Edge TTS is online and receives the spoken text                                                                                                                     |
 
 ## 🚀 Quick start
@@ -113,6 +117,14 @@ Then restart the bridge in LLM mode (Ctrl+C the demo first):
 ```
 
 Type into the chat bar above her portrait and press **Send**. Each message is a fresh single-turn request; there is no chat history yet.
+
+## 🎤 Talk to her (voice input)
+
+1. **Install** (once): `python3 -m controller.setup_stt`. This creates `.venv-stt` and downloads Whisper `base.en` at a pinned revision.
+2. **Start the renderer server with STT:** `.venv/bin/python renderer/serve.py --stt` (instead of plain `serve.py`).
+3. Start the bridge as usual, open the page, click **🎤 Talk** and allow the microphone. Click **■ Stop** when you finish speaking.
+
+The transcript shows up as your chat bubble and goes down the same `{"type":"start","prompt":…}` path as typed chat. The mic is disabled while she is busy, and typing always keeps working. Measurements, options (`--stt-model`, `--stt-threads`), security notes and troubleshooting are in [docs/voice-input.md](docs/voice-input.md).
 
 ## 🎙️ Voice and lip sync
 
@@ -213,11 +225,13 @@ avatar-yidhari/
   README.md
   requirements.txt
   requirements-kokoro.txt
-  controller/          # 🐍 LLM bridge, speech pipeline, Kokoro/Applio workers, trimming, alignment
-  renderer/            # 🖥️ browser PMX viewer, chat, expressions, speech player
+  requirements-stt.txt
+  controller/          # 🐍 LLM bridge, speech pipeline, Kokoro/Applio/Whisper workers, trimming, alignment
+  renderer/            # 🖥️ browser PMX viewer, chat, voice input, expressions, speech player
   tests/               # 🧪 Python tests, plus tests/renderer/ for Node
   docs/                # 📚 architecture notes and guides
   models/kokoro/       # 🔒 gitignored: downloaded Kokoro model and voices
+  models/whisper/      # 🔒 gitignored: downloaded Whisper STT models
   assets/private/      # 🔒 gitignored: speech samples and live clips
   yidhari-mmd/         # 🔒 gitignored: local PMX model pack
 ```
@@ -230,6 +244,7 @@ avatar-yidhari/
 | [setup.md](docs/setup.md)                                         | Install Applio on GPU: AMD ROCm or NVIDIA CUDA   |
 | [running-the-bridge.md](docs/running-the-bridge.md)               | Full bridge guide and troubleshooting            |
 | [testing-kokoro.md](docs/testing-kokoro.md)                       | Kokoro setup, audition commands and measurements |
+| [voice-input.md](docs/voice-input.md)                             | Mic → local Whisper STT: setup, measurements, security |
 | [pmx-morph-catalog.md](docs/pmx-morph-catalog.md)                 | Every PMX facial morph                           |
 | [shared-expression-catalog.md](docs/shared-expression-catalog.md) | Mood presets used by the LLM                     |
 | [issue-labels.md](docs/issue-labels.md)                           | Issue priority, difficulty and emoji labels      |
@@ -240,6 +255,7 @@ The plan for upcoming features is in the [🗺️ roadmap issue #21](https://git
 
 - The bridge listens only on `127.0.0.1` and accepts only the renderer's origin.
 - LLM output is treated as untrusted: only catalog mood names are accepted, and text is shown as plain text.
+- Voice input is transcribed locally (`serve.py --stt`); `POST /stt` accepts only the renderer's own origin, recordings are deleted right after transcription, and no audio crosses the bridge WebSocket.
 - With `--speech --tts kokoro`, speech text stays on your machine and is converted locally. With `--speech --tts edge`, each sentence is sent to Edge TTS online. Chat without `--speech` also stays on your machine.
 
 ## 🖥️ Hardware notes

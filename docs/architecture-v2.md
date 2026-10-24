@@ -660,6 +660,34 @@ UMA (#15), the Piper side-by-side and default-source decision (#18), closing
 
 # 19 once the branch lands, and prosody (intonation/cadence/inflection) in #29
 
+## Voice input (local STT) — 2026-10-24
+
+Tracked in [#25](https://github.com/arctic-cheetah/AI-Avatar-PMX-MMD/issues/25);
+user guide and full measurements in [voice-input.md](./voice-input.md).
+
+```text
+🎤 MediaRecorder (webm/opus) ─POST /stt─► renderer/serve.py --stt ─JSON line─► stt_worker.py (.venv-stt)
+       ▲                                   (Origin, MIME, 2 MiB checks;         faster-whisper base.en,
+       └────────── {"text"} ◄──────────────  0600 temp file, deleted)           CPU int8, VAD, offline)
+transcript ─► sendPrompt() ─► {"type":"start","prompt"} ─► bridge (unchanged)
+```
+
+- **Placement:** STT lives behind the renderer's HTTP server, not the bridge. The
+  upload is same-origin, so no CORS is needed and no audio frames touch the
+  WebSocket, whose 128 KiB frame limit and event protocol stay as they are.
+- **Device:** CPU. `base.en` takes 0.21 s idle and 0.45 s under LLM decoding
+  for a 2.5 s utterance. `small.en` takes 1.24 s under load and goes past real
+  time on long clips. The slowdown under load comes from the shared memory pool.
+  The iGPU stays dedicated to llama.cpp (Vulkan) and RVC (ROCm).
+- **Worker pattern:** a persistent JSON-line subprocess in its own venv, like the
+  Kokoro and Applio workers. It is started and warmed once, handles one request
+  at a time, and restarts on crash or timeout.
+- **Renderer:** `voice-input.js` is a DOM-free state machine (idle → recording →
+  transcribing). Typed and spoken prompts share `sendPrompt()`/`startFrame()`.
+- **Open:** barge-in (#14) and stopping her mid-reply to listen; an "edit before
+  send" toggle; Web Speech API fallback (cloud, so off by default); NPU offload
+  (out of scope for v1).
+
 ## Agent voice over MCP — plan, 2026-10-18
 
 Tracked in [#27](https://github.com/arctic-cheetah/AI-Avatar-PMX-MMD/issues/27).

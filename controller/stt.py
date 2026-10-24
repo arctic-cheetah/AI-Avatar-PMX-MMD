@@ -90,8 +90,9 @@ class SttWorker:
 
     @staticmethod
     def _read(process: subprocess.Popen, lines: queue.Queue) -> None:
-        for line in process.stdout:
-            lines.put(line)
+        with process.stdout:
+            for line in process.stdout:
+                lines.put(line)
         lines.put(None)
 
     def _reply(self, timeout: float) -> dict:

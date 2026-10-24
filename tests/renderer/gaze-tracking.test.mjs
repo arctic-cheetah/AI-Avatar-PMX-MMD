@@ -10,7 +10,7 @@ import {
 } from "../../renderer/gaze-tracking.js";
 
 test("centre pointer is a neutral gaze target", () => {
-  assert.deepEqual(normalisePointer(0.5, 0.5, 1000, 800), { x: 0, y: 0 });
+  assert.deepEqual(normalisePointer(500, 400, 1000, 800), { x: 0, y: 0 });
   assert.deepEqual(targetToAngles({ x: 0, y: 0 }), {
     eyeYaw: 0, eyePitch: 0, headYaw: 0, headPitch: 0,
   });
@@ -69,8 +69,10 @@ test("disabled or stale sources fall back to centre", () => {
 });
 
 test("stale camera frames expire instead of freezing the gaze", () => {
-  const gaze = new GazeController({ rate: 1000, cameraTimeout: 0.25 });
+  const gaze = new GazeController({ rate: 1000, cameraTimeout: 250 });
   gaze.setCamera({ x: 1, y: 0 }, true, 1000);
   assert.ok(gaze.update(0.01, 1100).eyeYaw > 0);
-  assert.equal(gaze.update(0.01, 1400).eyeYaw, 0, "expired -> centre (no cursor)");
+  gaze.update(0.5, 1600);
+  gaze.update(0.5, 2100);
+  assert.equal(gaze.update(0.5, 2600).eyeYaw, 0, "expired -> centre (no cursor)");
 });

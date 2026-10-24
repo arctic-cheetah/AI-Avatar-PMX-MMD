@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import unittest
 
 from controller.stt import MAX_UPLOAD, SttWorker, UploadError, check_upload
-from controller.stt_worker import clean_transcript, serve, validate_settings
+from controller.stt_worker import DEFAULT_PROMPT, MAX_PROMPT, clean_transcript, fix_names, serve, validate_settings
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('renderer_serve', ROOT / 'renderer' / 'serve.py')
@@ -58,10 +58,30 @@ class TranscriptTests(unittest.TestCase):
 
     def test_settings_are_validated(self):
         validate_settings('base.en', 4)
+        validate_settings('base.en', 4, '')
         with self.assertRaises(ValueError):
             validate_settings('large-v3', 4)
         with self.assertRaises(ValueError):
             validate_settings('base.en', 0)
+        with self.assertRaises(ValueError):
+            validate_settings('base.en', 4, 'x' * (MAX_PROMPT + 1))
+
+    def test_default_prompt_names_yidhari(self):
+        self.assertIn('Yidhari', DEFAULT_PROMPT)
+
+
+class NameFixTests(unittest.TestCase):
+    def test_near_miss_spellings_become_yidhari(self):
+        # Misspellings base.en produced for Kokoro clips of the name without a prompt.
+        for heard in ('Yidari', 'Yiddhari', 'Yiddhaari', 'Yidharri', 'yudari', 'Yidhary', 'Yidharee'):
+            self.assertEqual(fix_names(f'Hey {heard}, how are you?'), 'Hey Yidhari, how are you?', heard)
+
+    def test_real_words_are_left_alone(self):
+        for text in ('Good evening, yet, hurry.', 'Yet Hari, hi.', 'Yiddish', 'The yard.', 'Hari', 'Yidhari'):
+            self.assertEqual(fix_names(text), text)
+
+    def test_clean_transcript_applies_the_fix(self):
+        self.assertEqual(clean_transcript([segment(' Good evening, Yiddhari.')]), 'Good evening, Yidhari.')
 
 
 class WorkerProtocolTests(unittest.TestCase):
@@ -149,6 +169,13 @@ class SttWorkerTests(unittest.TestCase):
             self.worker.transcribe(b'hang')
         self.worker.timeout = 2
         self.assertEqual(self.worker.transcribe(b'ok')['text'], 'ok')
+
+    def test_prompt_is_passed_to_the_worker_only_when_set(self):
+        self.assertNotIn('--prompt', SttWorker().command)
+        command = SttWorker(prompt='A chat with Yidhari about KQL.').command
+        self.assertEqual(command[command.index('--prompt') + 1], 'A chat with Yidhari about KQL.')
+        command = SttWorker(prompt='').command
+        self.assertEqual(command[command.index('--prompt') + 1], '')
 
     def test_worker_that_never_becomes_ready_raises(self):
         broken = SttWorker(command=[sys.executable, '-c', 'print("not json")'], work_dir=self.work_dir)

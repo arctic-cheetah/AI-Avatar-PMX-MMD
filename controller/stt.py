@@ -54,10 +54,12 @@ class SttWorker:
     """Handle on stt_worker.py: started once and kept warm, one request at a time, restarted if it dies."""
 
     def __init__(self, model: str = "base.en", threads: int = 4, command: list[str] | None = None,
-                 work_dir: Path = WORK_DIR, timeout: float = 30.0, start_timeout: float = 120.0):
+                 work_dir: Path = WORK_DIR, timeout: float = 30.0, start_timeout: float = 120.0,
+                 prompt: str | None = None):
         self.command = command or [
             str(ROOT / ".venv-stt" / "bin" / "python"), "-m", "controller.stt_worker",
-            "--worker", "--model", model, "--threads", str(threads)]
+            "--worker", "--model", model, "--threads", str(threads),
+            *([] if prompt is None else ["--prompt", prompt])]
         self.work_dir, self.timeout, self.start_timeout = work_dir, timeout, start_timeout
         self.log_path = work_dir / "stt-worker.log"
         self.process: subprocess.Popen | None = None

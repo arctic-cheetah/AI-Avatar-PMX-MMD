@@ -77,6 +77,8 @@ def main() -> None:
     parser.add_argument("--stt", action="store_true", help="Enable local voice input (POST /stt).")
     parser.add_argument("--stt-model", default="base.en", choices=["base.en", "small.en"])
     parser.add_argument("--stt-threads", type=int, default=4)
+    parser.add_argument("--stt-prompt", default=None,
+                        help="Vocabulary hint for Whisper (default mentions Yidhari); \"\" disables it.")
     args = parser.parse_args()
 
     handler = partial(Handler, directory=str(ROOT))
@@ -84,7 +86,7 @@ def main() -> None:
     server.origin = f"http://{args.host}:{args.port}"
     server.stt = None
     if args.stt:
-        server.stt = SttWorker(args.stt_model, args.stt_threads)
+        server.stt = SttWorker(args.stt_model, args.stt_threads, prompt=args.stt_prompt)
         ready = server.stt.start()
         print(f"STT worker ready: {ready.get('model')} on CPU, loaded in {ready.get('loadSeconds')} s")
     print(f"Yidhari renderer: http://{args.host}:{args.port}/renderer/")

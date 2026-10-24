@@ -52,6 +52,7 @@ without HTTPS.
 | `--stt` | off | Start the Whisper worker and enable `POST /stt` |
 | `--stt-model` | `base.en` | `base.en` (fast) or `small.en` (more robust, ~2.5× slower) |
 | `--stt-threads` | `4` | CPU threads for CTranslate2 |
+| `--stt-prompt` | `"A chat with Yidhari, my companion."` | Vocabulary hint for names and jargon; `""` turns it off |
 
 How it behaves:
 
@@ -63,6 +64,42 @@ How it behaves:
   letters or digits, and stock Whisper hallucinations such as "Thanks for watching!".
 - **30 s limit.** Recording stops by itself after 30 seconds.
 - Every state is shown as **text** in the status line, not only as colour.
+
+## 🌸 Recognising her name
+
+Whisper has never seen "Yidhari", so without help it writes what it hears:
+"Yidari", "Yiddhari", or even "yet, hurry". Two layers fix this:
+
+1. **A vocabulary prompt** (Whisper's `initial_prompt`). By default it is
+   `A chat with Yidhari, my companion.` A short natural sentence works much
+   better than the bare name or faster-whisper's `hotwords`.
+2. **A narrow spelling fix** after transcription turns clear near-misses
+   (`Yidari`, `Yiddhari`, `Yidharri`, `Yudari`, `Yidhary`…) into "Yidhari".
+   Real words such as "yet, hurry" or "Yiddish" are never rewritten.
+
+Measured 2026-10-24 with `base.en` on 96 Kokoro clips: 6 voices × 4 sentences
+× 4 pronunciations ("Yidhari", "Yee-dar-ee", "Yid-har-ee", "Yi-dah-ree").
+Control clips without the name and 3 s of silence were unchanged in every row.
+
+| Setting | Name spelt "Yidhari" | Avg time |
+| --- | ---: | ---: |
+| No prompt, no fix | 4 / 96 | 315 ms |
+| `hotwords="Yidhari"` or bare `initial_prompt="Yidhari"` | 81 / 96 (drops a leading "Yidhari,") | 235–353 ms |
+| No prompt, spelling fix only | 62 / 96 | 412 ms |
+| **Default: sentence prompt + spelling fix** | **96 / 96** | **238 ms** |
+
+These are synthetic voices. If your own voice still gets misheard, check the
+spelling in the chat bubble, then add a word to the prompt. You can also put
+other vocabulary there, for example:
+
+```bash
+.venv/bin/python renderer/serve.py --stt \
+  --stt-prompt "A chat with Yidhari, my companion, about KQL, Sigma, YARA and MITRE ATT&CK."
+```
+
+Keep the prompt short and natural. It is limited to 400 characters, and Whisper
+reads at most 223 tokens of it. A long list of words can make Whisper echo the
+prompt on unclear audio.
 
 ## 📊 Why CPU, and why `base.en` — measured 2026-10-24
 

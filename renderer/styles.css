@@ -34,6 +34,8 @@ textarea { width: 100%; }
 #chat-bar input { flex: 1; min-width: 0; padding: 9px 12px; border: 1px solid #78677f;
   border-radius: 20px; background: rgba(23, 18, 28, .88); color: var(--ink); }
 #chat-bar button { border-radius: 20px; padding: 9px 16px; }
+#chat-bar #chat-mic { white-space: nowrap; }
+#chat-bar #chat-mic.recording { background: #8a2c4a; border-color: #d9608a; color: #fff; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 #chat-box { position: relative; display: flex; flex-direction: column; margin: 10px 0;
   border: 1px solid #413548; border-radius: 10px; background: #1b1520; min-width: 220px; }

@@ -106,6 +106,12 @@ adds at the end. While the LLM is reasoning, Yidhari shows the `thinking` mood. 
 `assets/private/speech/live/` and replaced on the next run. The renderer plays
 them in order and applies each mood when its clip starts.
 
+## Voice input
+
+Start the renderer server with `--stt` (after `python3 -m controller.setup_stt`) to enable the
+**🎤 Talk** button. The bridge needs no flag: spoken prompts arrive as ordinary
+`{"type":"start","prompt":…}` messages. See [voice-input.md](voice-input.md).
+
 ## Troubleshooting and tests
 
 - **Disconnected:** start the bridge; use the exact renderer Origin above.

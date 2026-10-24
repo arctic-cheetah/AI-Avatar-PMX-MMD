@@ -66,16 +66,16 @@ sequenceDiagram
 
 ## 🧰 Requirements
 
-| Needed for | What                                                                                                                   | Notes                                                           |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| Everything | Python 3.10+                                                                                                           | Bridge and renderer server                                      |
-| Everything | Chrome or another modern browser                                                                                       | Loads Three.js from a CDN                                       |
-| Everything | `yidhari-mmd/伊德海莉.pmx`                                                                                           | Local model pack, gitignored; its readme forbids redistribution |
-| Chat       | `llama-server` (llama.cpp) on `127.0.0.1:8080`                                                                     | Any OpenAI-compatible server should work                        |
-| 🎙️ Voice | Kokoro local TTS                                                                                                       | Installed by `python3 -m controller.setup_kokoro`; runs in `.venv-kokoro` and stores models under `models/kokoro/` |
-| 🎙️ Voice | [Applio](https://github.com/IAHispano/Applio) 3.6.6 at `../Applio` with its own `.venv` and the Yidhari voice model | Kept separate from this repo's environment. Use `../Applio-rocm` with `--applio-dir` for ROCm GPU RVC             |
-| 🎙️ Voice | [Rhubarb Lip Sync](https://github.com/DanielSWolf/rhubarb-lip-sync/releases) 1.14.0 and `ffmpeg` on `PATH`          | Rhubarb aligns mouth shapes; ffmpeg decodes audio                                                                |
-| 🎙️ Edge fallback | Internet access                                                                                                  | Only needed for `--tts edge`; Edge TTS is online and receives the spoken text                                    |
+| Needed for         | What                                                                                                                   | Notes                                                                                                                                                                                               |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Everything         | Python 3.10+                                                                                                           | Bridge and renderer server                                                                                                                                                                          |
+| Everything         | Chrome or another modern browser                                                                                       | Loads Three.js from a CDN                                                                                                                                                                           |
+| Everything         | `yidhari-mmd/伊德海莉.pmx`                                                                                           | Local model pack, gitignored; its readme forbids redistribution                                                                                                                                     |
+| Chat               | `llama-server` (llama.cpp) on `127.0.0.1:8080`                                                                     | Any OpenAI-compatible server should work                                                                                                                                                            |
+| 🎙️ Voice         | Kokoro local TTS                                                                                                       | Installed by `python3 -m controller.setup_kokoro`; runs in `.venv-kokoro` and stores models under `models/kokoro/`                                                                            |
+| 🎙️ Voice         | [Applio](https://github.com/IAHispano/Applio) 3.6.6 at `../Applio` with its own `.venv` and the Yidhari voice model | Kept separate from this repo's environment. Use `../Applio-rocm` with `--applio-dir` for ROCm GPU RVC — full GPU setup for AMD ROCm **and** NVIDIA CUDA in [docs/setup.md](docs/setup.md) |
+| 🎙️ Voice         | [Rhubarb Lip Sync](https://github.com/DanielSWolf/rhubarb-lip-sync/releases) 1.14.0 and `ffmpeg` on `PATH`          | Rhubarb aligns mouth shapes; ffmpeg decodes audio                                                                                                                                                   |
+| 🎙️ Edge fallback | Internet access                                                                                                        | Only needed for `--tts edge`; Edge TTS is online and receives the spoken text                                                                                                                     |
 
 ## 🚀 Quick start
 
@@ -86,19 +86,16 @@ sequenceDiagram
    .venv/bin/python -m pip install -r requirements.txt
    python3 -m controller.setup_kokoro
    ```
-
 2. **Start the renderer server** (leave it running):
 
    ```bash
    .venv/bin/python renderer/serve.py
    ```
-
 3. **Start the bridge in demo mode** in a second terminal; no LLM needed:
 
    ```bash
    .venv/bin/python controller/bridge.py --mode demo
    ```
-
 4. **Open [http://127.0.0.1:8770/renderer/](http://127.0.0.1:8770/renderer/).** Use `127.0.0.1`, not `localhost`, and do not open the HTML file directly. Wait for **Connected · ready**, then click **Start default response**. She smiles, thinks, and returns to neutral.
 
 ## 🤖 Talk to the local LLM
@@ -128,7 +125,6 @@ Type into the chat bar above her portrait and press **Send**. Each message is a 
    ln -s ~/.local/opt/Rhubarb-Lip-Sync-1.14.0-Linux/rhubarb ~/.local/bin/rhubarb
    rhubarb --version
    ```
-
 2. **Install Kokoro (default voice source):**
 
    ```bash
@@ -136,9 +132,7 @@ Type into the chat bar above her portrait and press **Send**. Each message is a 
    ```
 
    This creates `.venv-kokoro` and downloads the Kokoro model and voices into `models/kokoro/`. After setup, Kokoro synthesis runs locally and does not send speech text online.
-
-3. **Check Applio:** it should be installed next to this repository at `../Applio`, with `.venv/bin/python` and the voice model under `logs/Yidhari-zzz/`. For ROCm GPU conversion on the Ryzen AI MAX+ 395, use the separate `../Applio-rocm` install and pass `--applio-dir ../Applio-rocm`.
-
+3. **Check Applio:** it should be installed next to this repository at `../Applio`, with `.venv/bin/python` and the voice model under `logs/Yidhari-zzz/`. For GPU conversion, follow [docs/setup.md](docs/setup.md): **AMD ROCm** uses the separate `../Applio-rocm` install (`--applio-dir ../Applio-rocm`), while **NVIDIA CUDA** uses the standard `../Applio` install.
 4. **Start the bridge with Kokoro speech (recommended default command):**
 
    ```bash
@@ -148,7 +142,6 @@ Type into the chat bar above her portrait and press **Send**. Each message is a 
    ```
 
    If you do not have `../Applio-rocm`, omit `--applio-dir` to use the CPU Applio install at `../Applio` (and optionally add `--rvc-threads 4`). Wait for `Applio worker ready…`, then chat as usual. She speaks each sentence as soon as it is ready, with her mouth following the audio.
-
 5. **Edge fallback (optional):** to compare against the online Edge source instead, start with `--tts edge`:
 
    ```bash
@@ -159,50 +152,50 @@ The voice model and Applio settings (RVC pitch, index rate, protect, plus Kokoro
 
 ### 🎛️ Bridge options
 
-| Option            | Default                        | Meaning                                                                      |
-| ----------------- | ------------------------------ | ---------------------------------------------------------------------------- |
-| `--mode`          | `demo`                         | `demo` plays a fixed reply; `llm` talks to `llama-server`                    |
-| `--speech`        | off                            | Speak replies with TTS → RVC and lip sync                                    |
-| `--tts`           | `edge` in code; docs use `kokoro` | TTS source. **README's recommended default is `--tts kokoro`** (local)     |
-| `--kokoro-voice`  | `af_heart`                     | Kokoro voice ID                                                              |
-| `--kokoro-speed`  | `1.0`                          | Kokoro speed multiplier                                                      |
-| `--kokoro-threads`| `2`                            | CPU ONNX threads for the Kokoro worker                                       |
-| `--applio-dir`    | `../Applio`                    | Applio install to launch; `../Applio-rocm` enables ROCm GPU RVC              |
-| `--pth`           | model under `--applio-dir`     | Applio voice model                                                           |
-| `--index`         | index under `--applio-dir`     | Applio voice index                                                           |
-| `--rvc-threads`   | `0` (PyTorch default)          | CPU RVC threads; mainly for the CPU Applio path                              |
-| `--llama-url`     | `http://127.0.0.1:8080`        | LLM server base URL                                                          |
-| `--model`         | none                           | Model alias, if the server needs one                                         |
-| `--prompt`        | a greeting                     | Prompt for **Start default response**                         |
-| `--port`          | `8765`                         | Bridge WebSocket port                                                        |
+| Option               | Default                               | Meaning                                                                        |
+| -------------------- | ------------------------------------- | ------------------------------------------------------------------------------ |
+| `--mode`           | `demo`                              | `demo` plays a fixed reply; `llm` talks to `llama-server`                |
+| `--speech`         | off                                   | Speak replies with TTS → RVC and lip sync                                     |
+| `--tts`            | `edge` in code; docs use `kokoro` | TTS source. **README's recommended default is `--tts kokoro`** (local) |
+| `--kokoro-voice`   | `af_heart`                          | Kokoro voice ID                                                                |
+| `--kokoro-speed`   | `1.0`                               | Kokoro speed multiplier                                                        |
+| `--kokoro-threads` | `2`                                 | CPU ONNX threads for the Kokoro worker                                         |
+| `--applio-dir`     | `../Applio`                         | Applio install to launch; `../Applio-rocm` enables ROCm GPU RVC              |
+| `--pth`            | model under `--applio-dir`          | Applio voice model                                                             |
+| `--index`          | index under `--applio-dir`          | Applio voice index                                                             |
+| `--rvc-threads`    | `0` (PyTorch default)               | CPU RVC threads; mainly for the CPU Applio path                                |
+| `--llama-url`      | `http://127.0.0.1:8080`             | LLM server base URL                                                            |
+| `--model`          | none                                  | Model alias, if the server needs one                                           |
+| `--prompt`         | a greeting                            | Prompt for **Start default response**                                    |
+| `--port`           | `8765`                              | Bridge WebSocket port                                                          |
 
 ### 🚩 CLI flags added / expanded
 
 ### Bridge flags
 
-| Flag | Purpose |
-| --- | --- |
+| Flag                    | Purpose                                                                                                                                                                                |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--tts {edge,kokoro}` | Selects the TTS source. The bridge code defaults to `edge` for backwards compatibility, but the README's recommended speech command uses `--tts kokoro` for fully local synthesis. |
-| `--kokoro-voice` | Kokoro voice ID, e.g. `af_heart`. |
-| `--kokoro-speed` | Kokoro speaking speed multiplier. `1.0` is the baseline. |
-| `--kokoro-threads` | CPU ONNX thread count for the Kokoro worker. |
-| `--rvc-threads` | PyTorch CPU thread count for RVC when using the CPU Applio path. |
-| `--applio-dir` | Applio installation to launch. Defaults to `../Applio`; use `../Applio-rocm` for ROCm GPU RVC. |
-| `--pth` | Explicit Applio voice model path. If omitted, the default Yidhari model under `--applio-dir` is used. |
-| `--index` | Explicit Applio voice index path. If omitted, the default Yidhari index under `--applio-dir` is used. |
+| `--kokoro-voice`      | Kokoro voice ID, e.g. `af_heart`.                                                                                                                                                    |
+| `--kokoro-speed`      | Kokoro speaking speed multiplier. `1.0` is the baseline.                                                                                                                             |
+| `--kokoro-threads`    | CPU ONNX thread count for the Kokoro worker.                                                                                                                                           |
+| `--rvc-threads`       | PyTorch CPU thread count for RVC when using the CPU Applio path.                                                                                                                       |
+| `--applio-dir`        | Applio installation to launch. Defaults to `../Applio`; use `../Applio-rocm` for ROCm GPU RVC.                                                                                     |
+| `--pth`               | Explicit Applio voice model path. If omitted, the default Yidhari model under `--applio-dir` is used.                                                                                |
+| `--index`             | Explicit Applio voice index path. If omitted, the default Yidhari index under `--applio-dir` is used.                                                                                |
 
 ### Kokoro worker / audition flags
 
-| Flag | Purpose |
-| --- | --- |
-| `--list-voices` | Lists available Kokoro voices. |
-| `--voice` | Voice ID for standalone Kokoro or audition runs. |
-| `--speed` | Speed multiplier for standalone Kokoro or audition runs. |
-| `--threads` | CPU thread count for standalone Kokoro or audition runs. |
-| `--text` | Text to synthesise; can be repeated in audition mode for multiple samples. |
-| `--output` | Output WAV path for standalone Kokoro synthesis. |
-| `--output-dir` | Output directory for Kokoro → RVC audition clips and `results.json`. |
-| `--worker` | Runs Kokoro as the persistent JSON-line worker used by the bridge. |
+| Flag              | Purpose                                                                    |
+| ----------------- | -------------------------------------------------------------------------- |
+| `--list-voices` | Lists available Kokoro voices.                                             |
+| `--voice`       | Voice ID for standalone Kokoro or audition runs.                           |
+| `--speed`       | Speed multiplier for standalone Kokoro or audition runs.                   |
+| `--threads`     | CPU thread count for standalone Kokoro or audition runs.                   |
+| `--text`        | Text to synthesise; can be repeated in audition mode for multiple samples. |
+| `--output`      | Output WAV path for standalone Kokoro synthesis.                           |
+| `--output-dir`  | Output directory for Kokoro → RVC audition clips and `results.json`.    |
+| `--worker`      | Runs Kokoro as the persistent JSON-line worker used by the bridge.         |
 
 ## 🧪 Tests
 
@@ -234,6 +227,7 @@ avatar-yidhari/
 | Doc                                                              | What's inside                                    |
 | ---------------------------------------------------------------- | ------------------------------------------------ |
 | [architecture-v2.md](docs/architecture-v2.md)                     | Design, pipeline details, measurements and TODOs |
+| [setup.md](docs/setup.md)                                         | Install Applio on GPU: AMD ROCm or NVIDIA CUDA   |
 | [running-the-bridge.md](docs/running-the-bridge.md)               | Full bridge guide and troubleshooting            |
 | [testing-kokoro.md](docs/testing-kokoro.md)                       | Kokoro setup, audition commands and measurements |
 | [pmx-morph-catalog.md](docs/pmx-morph-catalog.md)                 | Every PMX facial morph                           |

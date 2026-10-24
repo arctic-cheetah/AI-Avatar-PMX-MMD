@@ -71,6 +71,7 @@ progress, meter { display: block; width: 100%; height: 7px; accent-color: #bc8fc
   body.panel-resizing { cursor: row-resize; }
   #panel { border-top: 0; }
 }
+.check { display: block; margin: 8px 0; }
 .morph-label { display: flex !important; flex-wrap: wrap; gap: 6px; }
 .morph-romaji, .morph-english { color: var(--muted); font-size: 11px; }
 .morph-live { height: 4px; margin-top: 5px; background: linear-gradient(to right, #bc8fc8 calc(var(--live, 0) * 100%), #413548 0); }

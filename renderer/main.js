@@ -1093,6 +1093,12 @@ function onModelLoaded(loaded, data) {
       liveSpeech.responseFinished();
       relaxAfterSpeech();
     },
+    onReset: () => {
+      // Silence any reply still speaking; the bridge has already cancelled it.
+      stopSpeech("");
+      liveSpeech.reset();
+      transcript.textContent = '';
+    },
     onExpression: applyMood,
     onText: (text) => { transcript.textContent = (transcript.textContent + text).slice(-50000); },
     onSpeak: enqueueSpeech,

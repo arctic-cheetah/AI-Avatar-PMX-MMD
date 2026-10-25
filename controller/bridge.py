@@ -28,6 +28,11 @@ MAX_IN_FLIGHT = 3  # sentences being synthesised or aligned at once
 MAX_FRAME = 65536 * 2  # TODO: largest accepted browser message (bytes)
 MAX_PROMPT = 4000  # TODO: longest accepted chat prompt (characters)
 MAX_TOKENS = 1024 * 2
+MIN_CONTEXT = 65536  # smallest context window assumed or accepted (tokens)
+CONTEXT_MARGIN = 512  # tokens kept spare beyond the estimate
+MESSAGE_OVERHEAD = 8  # estimated chat-template tokens per message
+TRIM_TO = 0.75  # trim history below this share of the budget to keep the prompt cache warm
+MAX_TURNS = 100  # user/assistant pairs kept per connection
 LOG = logging.getLogger(__name__)
 
 
@@ -128,6 +133,104 @@ def system_prompt(catalog):
     )
 
 
+def estimate_tokens(text):
+    """Conservative token estimate: UTF-8 bytes / 3 over-counts English, and
+    counts CJK and emoji as at least a token per character."""
+    return math.ceil(len(text.encode("utf-8")) / 3)
+
+
+class ContextOverflow(Exception):
+    """llama-server rejected the request as larger than its context window."""
+
+
+class Conversation:
+    """Completed user/assistant pairs for one connection, trimmed to a token budget."""
+
+    def __init__(self, window):
+        self.budget = window - MAX_TOKENS - CONTEXT_MARGIN
+        self.turns = []
+
+    def commit(self, prompt, reply):
+        self.turns.append((prompt, reply))
+        del self.turns[:-MAX_TURNS]
+
+    def clear(self):
+        self.turns.clear()
+
+    def shrink(self):
+        """Drop the older half of history after an overflow; False if none is left."""
+        if not self.turns:
+            return False
+        del self.turns[: max(1, len(self.turns) // 2)]
+        return True
+
+    def messages(self, system, prompt):
+        """System prompt, earlier pairs, then ``prompt``. Over budget, the oldest
+        pairs go until it fits in TRIM_TO of the budget, so the prefix stays
+        stable for the next few turns."""
+
+        def cost(text):
+            return estimate_tokens(text) + MESSAGE_OVERHEAD
+
+        used = cost(system) + cost(prompt)
+        used += sum(cost(user) + cost(reply) for user, reply in self.turns)
+        if used > self.budget:
+            while self.turns and used > TRIM_TO * self.budget:
+                user, reply = self.turns.pop(0)
+                used -= cost(user) + cost(reply)
+        history = [
+            message
+            for user, reply in self.turns
+            for message in (
+                {"role": "user", "content": user},
+                {"role": "assistant", "content": reply},
+            )
+        ]
+        return [
+            {"role": "system", "content": system},
+            *history,
+            {"role": "user", "content": prompt},
+        ]
+
+
+def context_tokens_arg(text):
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError("must be a whole number of tokens") from None
+    if value < MIN_CONTEXT:
+        raise argparse.ArgumentTypeError(f"must be at least {MIN_CONTEXT}")
+    return value
+
+
+async def context_window(base_url, override=None):
+    """Tokens one request may use: ``override``, else llama-server's per-slot
+    ``n_ctx`` from /props, else MIN_CONTEXT."""
+    if override is not None:
+        return override
+    import httpx
+
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(10), trust_env=False) as client:
+            response = await client.get(base_url.rstrip("/") + "/props")
+            response.raise_for_status()
+            n_ctx = response.json()["default_generation_settings"]["n_ctx"]
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        n_ctx = None
+    if not isinstance(n_ctx, int) or isinstance(n_ctx, bool) or n_ctx <= 0:
+        LOG.warning(
+            "Could not read the context window from %s/props; assuming %d tokens "
+            "(set --context-tokens to override)", base_url.rstrip("/"), MIN_CONTEXT
+        )
+        return MIN_CONTEXT
+    if n_ctx < MIN_CONTEXT:
+        LOG.warning(
+            "llama-server context is %d tokens; start it with -c %d or more for chat history",
+            n_ctx, MIN_CONTEXT,
+        )
+    return n_ctx
+
+
 async def sse_data(lines):
     """Join SSE data lines; support comments, CRLF, and final EOF record."""
     data = []
@@ -141,19 +244,12 @@ async def sse_data(lines):
         yield "\n".join(data)
 
 
-async def llama_chunks(base_url, model, prompt, catalog, on_reasoning=None):
+async def llama_chunks(base_url, model, messages, on_reasoning=None):
     """Yield content deltas. Reasoning text is never forwarded; ``on_reasoning``
     is awaited for each reasoning delta so the avatar can look thoughtful."""
     import httpx
 
-    payload = {
-        "stream": True,
-        "max_tokens": MAX_TOKENS,
-        "messages": [
-            {"role": "system", "content": system_prompt(catalog)},
-            {"role": "user", "content": prompt},
-        ],
-    }
+    payload = {"stream": True, "max_tokens": MAX_TOKENS, "messages": messages}
     if model:
         payload["model"] = model
     async with httpx.AsyncClient(
@@ -162,6 +258,10 @@ async def llama_chunks(base_url, model, prompt, catalog, on_reasoning=None):
         async with client.stream(
             "POST", base_url.rstrip("/") + "/v1/chat/completions", json=payload
         ) as response:
+            if response.status_code == 400:
+                await response.aread()
+                if "exceed_context_size" in response.text:
+                    raise ContextOverflow(response.text[:200])
             response.raise_for_status()
             async for body in sse_data(response.aiter_lines()):
                 if body == "[DONE]":
@@ -274,12 +374,37 @@ async def handle_connection(socket, args, catalog):
     from websockets.exceptions import ConnectionClosed
 
     worker = getattr(args, "speech_worker", None)
+    system = system_prompt(catalog)
+    conversation = None  # created on the first LLM request, once the window is known
 
     async def send(event):
         await socket.send(json.dumps(event, ensure_ascii=False, allow_nan=False))
 
+    async def chat_chunks(prompt, on_reasoning, reply):
+        """Stream a reply with history; after an overflow before any text, retry once
+        with the older half of history dropped."""
+        nonlocal conversation
+        if conversation is None:
+            conversation = Conversation(
+                await context_window(args.llama_url, getattr(args, "context_tokens", None))
+            )
+        for attempt in range(2):
+            messages = conversation.messages(system, prompt)
+            try:
+                async for chunk in llama_chunks(
+                    args.llama_url, args.model, messages, on_reasoning
+                ):
+                    reply.append(chunk)
+                    yield chunk
+                return
+            except ContextOverflow:
+                if reply or attempt or not conversation.shrink():
+                    raise
+                LOG.warning("Context overflow; retrying with older history dropped")
+
     async def generate(prompt):
         parser = TagParser(catalog)
+        reply = []
         speaker = None
         thinking = False
 
@@ -299,9 +424,7 @@ async def handle_connection(socket, args, catalog):
             chunks = (
                 demo_chunks()
                 if args.mode == "demo"
-                else llama_chunks(
-                    args.llama_url, args.model, prompt, catalog, on_reasoning
-                )
+                else chat_chunks(prompt, on_reasoning, reply)
             )
             if worker is not None:
                 from controller.speech import Segmenter, clear_live_clips
@@ -324,6 +447,9 @@ async def handle_connection(socket, args, catalog):
                         await send(event)
                     for segment in segmenter.feed(event):
                         queue.put_nowait(segment)
+            if conversation is not None:
+                # Only a reply that reached [DONE] is remembered, paired with its prompt.
+                conversation.commit(prompt, "".join(reply))
             parser.finish()
             if speaker is not None:
                 for segment in segmenter.finish():
@@ -356,9 +482,14 @@ async def handle_connection(socket, args, catalog):
                 if not isinstance(raw, str):
                     raise ValueError("Unknown request")
                 request = json.loads(raw)
-                if not isinstance(request, dict) or request.get("type") != "start":
+                if not isinstance(request, dict) or request.get("type") not in (
+                    "start",
+                    "reset",
+                ):
                     raise ValueError("Unknown request")
-                if "prompt" in request:
+                if request["type"] == "reset":
+                    prompt = None
+                elif "prompt" in request:
                     prompt = request["prompt"]
                     if (
                         not isinstance(prompt, str)
@@ -370,6 +501,15 @@ async def handle_connection(socket, args, catalog):
                     prompt = getattr(args, "prompt", None)
             except (ValueError, TypeError):
                 LOG.warning("Dropped invalid browser request")
+                continue
+            if request["type"] == "reset":
+                # New chat: stop any reply and forget every turn.
+                if task is not None:
+                    task.cancel()
+                    await asyncio.gather(task, return_exceptions=True)
+                if conversation is not None:
+                    conversation.clear()
+                await send({"type": "reset"})
                 continue
             if task is not None and not task.done():
                 LOG.warning("Dropped start request while generation is active")
@@ -433,6 +573,12 @@ def main():
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--llama-url", default="http://127.0.0.1:8080")
     parser.add_argument("--model", default=None)
+    parser.add_argument(
+        "--context-tokens",
+        type=context_tokens_arg,
+        default=None,
+        help=f"Model context window in tokens (at least {MIN_CONTEXT}); default reads llama-server /props.",
+    )
     parser.add_argument(
         "--prompt", default="Say good morning, then think about what we could work on."
     )

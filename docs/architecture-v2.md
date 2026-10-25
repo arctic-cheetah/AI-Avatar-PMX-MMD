@@ -167,8 +167,9 @@ sends the user's message as a `start` request carrying a prompt:
 A bare `{"type":"start"}` (the "Start default response" button) uses the CLI
 `--prompt` default. Prompts are validated before any generation starts — a bad
 request is dropped without cancelling a running response — and are limited to
-4,000 characters inside a 128 KiB socket frame. Each prompt is a fresh
-single-turn request; there is no persistent chat history yet. Replies stream
+4,000 characters inside a 128 KiB socket frame. Each connection keeps its own
+conversation history, trimmed to the context budget; `{"type":"reset"}` clears
+it (see [conversation-history.md](conversation-history.md)). Replies stream
 into the chat log as user/avatar bubbles written with `textContent`.
 
 Each run begins neutral; in text-only mode,
@@ -191,8 +192,8 @@ citations and code indexing require a different structured-control protocol.
 The restored llama-server adapter posts streamed `/v1/chat/completions` requests,
 uses content deltas rather than reasoning deltas, and generates its system
 prompt from the catalog. Every request — from the chat bar or from the CLI
-prompt default — represents a fresh single-turn exchange,
-not persistent chat history. Text preview changes expression on arrival; final
+prompt default — is sent with the connection's earlier completed turns;
+nothing persists across reconnects. Text preview changes expression on arrival; final
 speech must change it at audio playback start.
 
 ## Speech and expression synchronisation

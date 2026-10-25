@@ -42,8 +42,11 @@ Stop demo mode with Ctrl+C before starting LLM mode. Keep llama-server running:
 
 Click **Start response** after reconnection. Default llama-server address is
 [http://127.0.0.1:8080](http://127.0.0.1:8080); optional `--llama-url` selects its base URL and `--model`
-supplies its model alias. Bridge port defaults to 8765. Each click is a fresh
-single-turn request using the CLI prompt; it does not attach to another chat UI.
+supplies its model alias. Bridge port defaults to 8765. Each click sends the CLI
+prompt as the next turn of the current conversation; it does not attach to
+another chat UI. The context window comes from llama-server's `/props`; use
+`--context-tokens N` (at least 65536) to set it yourself. History, trimming and
+**New chat** are described in [conversation-history.md](conversation-history.md).
 The adapter reads `/v1/chat/completions` SSE content deltas and ignores separately
 supplied reasoning deltas. Thinking may delay visible output. A missing `[DONE]`
 terminator or upstream failure is reported as an error, not successful completion.

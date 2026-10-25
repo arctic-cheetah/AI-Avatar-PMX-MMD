@@ -117,7 +117,7 @@ Then restart the bridge in LLM mode (Ctrl+C the demo first):
 .venv/bin/python controller/bridge.py --mode llm
 ```
 
-Type into the chat bar above her portrait and press **Send**. Each message is a fresh single-turn request; there is no chat history yet.
+Type into the chat bar above her portrait and press **Send**. She remembers earlier turns of the current chat, trimmed to fit the model's context window. Press **New chat** to start over; a reconnect also starts fresh. Details are in [docs/conversation-history.md](docs/conversation-history.md).
 
 ## 🎤 Talk to her (voice input)
 
@@ -246,6 +246,7 @@ avatar-yidhari/
 | [running-the-bridge.md](docs/running-the-bridge.md)               | Full bridge guide and troubleshooting                   |
 | [testing-kokoro.md](docs/testing-kokoro.md)                       | Kokoro setup, audition commands and measurements        |
 | [voice-input.md](docs/voice-input.md)                             | Mic → local Whisper STT: setup, measurements, security |
+| [conversation-history.md](docs/conversation-history.md)           | Chat memory, context budget, New chat and reconnects   |
 | [pmx-morph-catalog.md](docs/pmx-morph-catalog.md)                 | Every PMX facial morph                                  |
 | [gaze-tracking.md](docs/gaze-tracking.md)                         | Cursor + webcam gaze tracking design (issue #6)         |
 | [shared-expression-catalog.md](docs/shared-expression-catalog.md) | Mood presets used by the LLM                            |

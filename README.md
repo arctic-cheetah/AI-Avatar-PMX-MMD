@@ -13,6 +13,7 @@ This is a companion project, kept outside `my_code_pc` so it does not compete fo
 - 🎙️ **Voice:** each sentence is synthesised locally with Kokoro TTS (`--tts kokoro`), then converted to Yidhari's voice with an Applio RVC model. Edge TTS is still available with `--tts edge`.
 - 👄 **Lip sync:** Rhubarb Lip Sync times mouth shapes from the final audio, and the renderer plays them on the audio clock.
 - 👀 **Idle life and tuning:** automatic blinking, plus wink controls and a morph test bench for tuning expressions.
+- 🌊 **Slow sway:** her upper body drifts on gentle sine waves with a breathing motion, and settles back to still when toggled off — see [docs/body-sway.md](docs/body-sway.md).
 - 👁️ **Gaze tracking:** her eyes (and gently, her head) follow your mouse cursor and/or your face on webcam — see [docs/gaze-tracking.md](docs/gaze-tracking.md). The webcam only starts when you toggle it on, and frames never leave the browser.
 
 ## 🧭 How it works
@@ -24,6 +25,7 @@ flowchart TD
         R[Chat + controls] --> E[Expression controller]
         P[Speech player] --> M[PMX morphs]
         E --> M
+        SW[🌊 swayAnglesAt · 6/9/4 s] -.->|rest × small delta| M
     end
     R <-->|WebSocket :8765| B
     R -.->|"POST /stt (audio)"| V[serve.py --stt<br/>local Whisper, CPU]
@@ -249,6 +251,7 @@ avatar-yidhari/
 | [conversation-history.md](docs/conversation-history.md)           | Chat memory, context budget, New chat and reconnects   |
 | [pmx-morph-catalog.md](docs/pmx-morph-catalog.md)                 | Every PMX facial morph                                  |
 | [gaze-tracking.md](docs/gaze-tracking.md)                         | Cursor + webcam gaze tracking design (issue #6)         |
+| [body-sway.md](docs/body-sway.md)                               | Slow sine-wave body sway design (issue #4)              |
 | [shared-expression-catalog.md](docs/shared-expression-catalog.md) | Mood presets used by the LLM                            |
 | [issue-labels.md](docs/issue-labels.md)                           | Issue priority, difficulty and emoji labels             |
 

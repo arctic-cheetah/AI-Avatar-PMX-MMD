@@ -9,8 +9,9 @@
 //   2. Frame a bust portrait.
 //   3. Drop the arms out of the PMX T-pose.
 //   4. Blink on a timer and preview facial expressions.
-//   5. Audition every PMX morph on a manual layer (see morph-audition.js).
-//   6. Play the saved speech sample with lip sync (see speech-player.js).
+//   5. Sway the upper body on slow sine waves (see body-sway.js).
+//   6. Audition every PMX morph on a manual layer (see morph-audition.js).
+//   7. Play the saved speech sample with lip sync (see speech-player.js).
 //
 // What it does not own yet:
 //   Live LLM speech, hand poses, hair/coat physics.
@@ -18,6 +19,7 @@
 // Extension points:
 //   restArms()  — add elbow, wrist, or finger rotations here.
 //   updateBlink — copy this pattern for other morph weights.
+//   applySway() — copy this pattern for other bone-motion layers.
 //   animate()   — keep per-frame work here, not in the loader callback.
 
 import * as THREE from "three";
@@ -33,6 +35,7 @@ import { SpeechPlayer, loadSpeechShapes } from "./speech-player.js";
 import { LiveSpeechSession } from "./speech-session.js";
 import { GazeController, normalisePointer } from "./gaze-tracking.js";
 import { CameraGaze } from "./camera-gaze.js";
+import { SWAY, swayAnglesAt } from "./body-sway.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
 const MODEL_URL = "/yidhari-mmd/伊德海莉.pmx";
@@ -68,6 +71,7 @@ const editPresetButton = document.querySelector("#edit-preset-button");
 const intensityInput = document.querySelector("#intensity");
 const intensityOutput = document.querySelector("#intensity-value");
 const blinkToggle = document.querySelector("#blink-toggle");
+const swayToggle = document.querySelector("#sway-toggle");
 const cursorGazeToggle = document.querySelector("#cursor-gaze-toggle");
 const cameraGazeToggle = document.querySelector("#camera-gaze-toggle");
 const gazeStatus = document.querySelector("#gaze-status");
@@ -171,6 +175,10 @@ const gaze = new GazeController();
 let gazeBones = [];
 const gazeEuler = new THREE.Euler();
 const gazeQuat = new THREE.Quaternion();
+/** @type {{ bone: THREE.Bone, rest: THREE.Quaternion }[]} */
+let swayBones = [];
+const swayEuler = new THREE.Euler();
+const swayQuat = new THREE.Quaternion();
 const cameraGaze = new CameraGaze((target) => gaze.setCamera(target, cameraGazeToggle.checked));
 
 window.addEventListener("pointermove", (event) => {
@@ -231,6 +239,45 @@ function applyGaze(delta) {
     const pitch = name === "左目" || name === "右目" ? angles.eyePitch : angles.headPitch;
     gazeEuler.set(pitch, yaw, 0, "YXZ");
     bone.quaternion.copy(rest).multiply(gazeQuat.setFromEuler(gazeEuler));
+  }
+}
+
+/**
+ * Capture the sway bones and their rest quaternions for body sway.
+ * Runs after restArms() so the lowered-arm pose is the sway's rest state.
+ * @param {THREE.SkinnedMesh} object Loaded PMX mesh.
+ * @returns {void}
+ */
+function setupSway(object) {
+  swayBones = [];
+  for (const name of [SWAY.roll.bone, SWAY.yaw.bone, SWAY.breath.bone]) {
+    const bone = object.skeleton?.getBoneByName(name);
+    if (bone && !swayBones.some(({ bone: known }) => known === bone)) {
+      swayBones.push({ bone, rest: bone.quaternion.clone() });
+    }
+  }
+  swayToggle.disabled = swayBones.length === 0;
+}
+
+/**
+ * Apply the slow sine-wave sway for this frame.
+ * Each bone returns toward its rest pose when the toggle is off, and each
+ * channel multiplies a small delta on top of rest so the lowered-arm pose
+ * and the gaze layer are never overwritten.
+ * @param {number} now Seconds since the animation clock started.
+ * @returns {void}
+ */
+function applySway(now) {
+  if (!swayBones.length) {
+    return;
+  }
+  const angles = swayToggle.checked ? swayAnglesAt(now) : { roll: 0, yaw: 0, breath: 0 };
+  for (const { bone, rest } of swayBones) {
+    const pitch = bone.name === SWAY.breath.bone ? angles.breath : 0;
+    const yaw = bone.name === SWAY.yaw.bone ? angles.yaw : 0;
+    const roll = bone.name === SWAY.roll.bone ? angles.roll : 0;
+    swayEuler.set(pitch, yaw, roll, "YXZ");
+    bone.quaternion.copy(rest).multiply(swayQuat.setFromEuler(swayEuler));
   }
 }
 
@@ -1005,7 +1052,7 @@ function onModelLoaded(loaded, data) {
     button.disabled = winks[button.dataset.wink].index < 0;
   }
   for (const control of [loopButton, editPresetButton, intensityInput, blinkToggle,
-    frameButtons.face, frameButtons.bust]) {
+    swayToggle, frameButtons.face, frameButtons.bust]) {
     control.disabled = false;
   }
   blinkToggle.disabled = blinkIndex < 0;
@@ -1060,6 +1107,7 @@ function onModelLoaded(loaded, data) {
   });
   restArms(mesh);
   setupGaze(mesh);
+  setupSway(mesh);
 
   const morphCount = mesh.morphTargetInfluences?.length ?? 0;
   const unavailable = [];
@@ -1166,6 +1214,7 @@ function animate() {
   updateBlink(now / 1000);
   updateWinks(delta);
   applyGaze(delta);
+  applySway(now / 1000);
   audition?.update(delta);
   audition?.apply();
   // A held preview wins the frame so a visual check is not overwritten by the mood loop.

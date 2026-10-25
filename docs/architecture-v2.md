@@ -123,6 +123,36 @@ Hand poses (`rest`, `loose`, `lift`, `thinking`) are planned using wrist/finger
 bones, eased over about 300 ms. Webcam tracking and full-body locomotion are out
 of scope.
 
+### Body sway (issue #4)
+
+The torso drifts on three slow sine channels so she feels alive while idle —
+roll on `上半身2` (1.5°, 6 s), yaw on `上半身` (1.0°, 9 s), and a breathing
+pitch on `グルーブ` (0.8°, 4 s). Periods are co-prime-ish, so the sum never
+reads as a rigid loop, and they stay clear of the ~3 s expression loop.
+
+```mermaid
+flowchart LR
+    T([⏱ animation clock]) --> S["swayAnglesAt(t)<br/>body-sway.js"]
+    S --> R["roll · 上半身2"]
+    S --> Y["yaw · 上半身"]
+    S --> B["breath · グルーブ"]
+    REST[(rest quaternions<br/>cached after restArms)] --> M["bone.quaternion = rest × delta"]
+    R --> M
+    Y --> M
+    B --> M
+    G["gaze layer (#6)<br/>eyes · neck · head"] --> M
+    M --> A([🖥️ idle avatar])
+```
+
+Composition rule, shared with the gaze layer: `setupSway()` caches each bone's
+rest quaternion at load (after `restArms()` drops the arms), and `applySway()`
+multiplies a small YXZ delta on top every frame — sway never overwrites a
+load-time pose. The pure math lives in `renderer/body-sway.js` with no DOM or
+Three.js imports (mirroring `gaze-tracking.js`), covered by
+`tests/renderer/body-sway.test.mjs`; a `Slow sway · ゆらぎ` toggle (default ON)
+eases the bones back to rest when cleared. Amplitudes stay at a few degrees
+because hair and coat have no physics yet — see [body-sway.md](./body-sway.md).
+
 ## Current state and historical verification
 
 | Piece                                           | State after this restoration                                                                                           |

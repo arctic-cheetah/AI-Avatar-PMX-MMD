@@ -35,7 +35,7 @@ import { SpeechPlayer, loadSpeechShapes } from "./speech-player.js";
 import { LiveSpeechSession } from "./speech-session.js";
 import { GazeController, normalisePointer } from "./gaze-tracking.js";
 import { CameraGaze } from "./camera-gaze.js";
-import { SWAY, swayAnglesAt } from "./body-sway.js";
+import { SWAY, SwayController, swayAnglesAt } from "./body-sway.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
 const MODEL_URL = "/yidhari-mmd/伊德海莉.pmx";
@@ -72,6 +72,7 @@ const intensityInput = document.querySelector("#intensity");
 const intensityOutput = document.querySelector("#intensity-value");
 const blinkToggle = document.querySelector("#blink-toggle");
 const swayToggle = document.querySelector("#sway-toggle");
+const swayButton = document.querySelector("#sway-button");
 const cursorGazeToggle = document.querySelector("#cursor-gaze-toggle");
 const cameraGazeToggle = document.querySelector("#camera-gaze-toggle");
 const gazeStatus = document.querySelector("#gaze-status");
@@ -179,6 +180,8 @@ const gazeQuat = new THREE.Quaternion();
 let swayBones = [];
 const swayEuler = new THREE.Euler();
 const swayQuat = new THREE.Quaternion();
+/** Stop/start state for the sway button; mirrored onto the button label. */
+const sway = new SwayController();
 const cameraGaze = new CameraGaze((target) => gaze.setCamera(target, cameraGazeToggle.checked));
 
 window.addEventListener("pointermove", (event) => {
@@ -257,7 +260,34 @@ function setupSway(object) {
     }
   }
   swayToggle.disabled = swayBones.length === 0;
+  swayButton.disabled = swayBones.length === 0;
 }
+
+/**
+ * Reflect the stop/start state in the sway button.
+ * @returns {void}
+ */
+function updateSwayButton() {
+  swayButton.setAttribute("aria-pressed", String(sway.enabled));
+  swayButton.textContent = sway.enabled ? "⏸ sway" : "▶ sway";
+}
+
+/**
+ * Stop or start the body sway from its button, keeping the checkbox in sync.
+ * The pose eases back to rest because applySway writes zero angles while off.
+ * @returns {void}
+ */
+function toggleSway() {
+  sway.setEnabled(!sway.enabled);
+  swayToggle.checked = sway.enabled;
+  updateSwayButton();
+}
+
+swayButton.addEventListener("click", toggleSway);
+swayToggle.addEventListener("change", () => {
+  sway.setEnabled(swayToggle.checked);
+  updateSwayButton();
+});
 
 /**
  * Apply the slow sine-wave sway for this frame.
@@ -271,7 +301,7 @@ function applySway(now) {
   if (!swayBones.length) {
     return;
   }
-  const angles = swayToggle.checked ? swayAnglesAt(now) : { roll: 0, yaw: 0, breath: 0 };
+  const angles = sway.enabled && swayToggle.checked ? swayAnglesAt(now) : { roll: 0, yaw: 0, breath: 0 };
   for (const { bone, rest } of swayBones) {
     const pitch = bone.name === SWAY.breath.bone ? angles.breath : 0;
     const yaw = bone.name === SWAY.yaw.bone ? angles.yaw : 0;
@@ -1052,7 +1082,7 @@ function onModelLoaded(loaded, data) {
     button.disabled = winks[button.dataset.wink].index < 0;
   }
   for (const control of [loopButton, editPresetButton, intensityInput, blinkToggle,
-    swayToggle, frameButtons.face, frameButtons.bust]) {
+    swayToggle, swayButton, frameButtons.face, frameButtons.bust]) {
     control.disabled = false;
   }
   blinkToggle.disabled = blinkIndex < 0;

@@ -119,7 +119,7 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
                 [
                     c
                     async for c in llama_chunks(
-                        "http://localhost:8080", None, "Hi", load_catalog()
+                        "http://localhost:8080", None, [{"role": "user", "content": "Hi"}]
                     )
                 ],
                 chunks,
@@ -138,7 +138,7 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
                 _ = [
                     c
                     async for c in llama_chunks(
-                        "http://localhost:8080", None, "Hi", load_catalog()
+                        "http://localhost:8080", None, [{"role": "user", "content": "Hi"}]
                     )
                 ]
 
@@ -151,7 +151,11 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
             yield ""
 
         args = Namespace(
-            mode="llm", llama_url="http://localhost:8080", model=None, prompt="Hi"
+            mode="llm",
+            llama_url="http://localhost:8080",
+            model=None,
+            prompt="Hi",
+            context_tokens=65536,
         )
 
         async def handler(ws):
@@ -179,8 +183,8 @@ class ChatPromptTests(unittest.IsolatedAsyncioTestCase):
 
         seen = []
 
-        async def fake_llama(base_url, model, prompt, catalog, on_reasoning=None):
-            seen.append(prompt)
+        async def fake_llama(base_url, model, messages, on_reasoning=None):
+            seen.append(messages[-1]["content"])
             yield "[neutral] ok"
 
         args = Namespace(
@@ -188,6 +192,7 @@ class ChatPromptTests(unittest.IsolatedAsyncioTestCase):
             llama_url="http://localhost:8080",
             model=None,
             prompt="default prompt",
+            context_tokens=65536,
         )
 
         async def handler(ws):

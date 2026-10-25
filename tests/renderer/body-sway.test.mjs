@@ -1,7 +1,7 @@
 // Run with: node --test tests/renderer/
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DEG, SWAY, maxSwayAmplitude, swayAnglesAt } from "../../renderer/body-sway.js";
+import { DEG, SWAY, SwayController, maxSwayAmplitude, swayAnglesAt } from "../../renderer/body-sway.js";
 
 test("sway starts at rest so the pose eases in", () => {
   assert.deepEqual(swayAnglesAt(0), { roll: 0, yaw: 0, breath: 0 });
@@ -47,4 +47,15 @@ test("sway is smooth between frames", () => {
       assert.ok(step < 0.05 * DEG, `${name} has no visible jump`);
     }
   }
+});
+
+test("stop/start controller toggles the enabled state", () => {
+  const sway = new SwayController();
+  assert.equal(sway.enabled, true);
+  assert.equal(sway.toggle(), false);
+  assert.equal(sway.toggle(), true);
+  sway.setEnabled(false);
+  assert.equal(sway.enabled, false);
+  sway.setEnabled(true);
+  assert.equal(sway.enabled, true);
 });

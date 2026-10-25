@@ -39,3 +39,26 @@ export function swayAnglesAt(now) {
 export function maxSwayAmplitude() {
   return Math.max(SWAY.roll.amplitude, SWAY.yaw.amplitude, SWAY.breath.amplitude);
 }
+
+/**
+ * Enabled state for the sway stop/start button.
+ * Lives here (no DOM) so node --test can cover the toggle behaviour;
+ * main.js owns one instance and mirrors it onto the button.
+ */
+export class SwayController {
+  /** @param {boolean} enabled Whether sway starts enabled. */
+  constructor(enabled = true) {
+    this.enabled = enabled !== false;
+  }
+
+  /** Flip the enabled state and report it. @returns {boolean} New state. */
+  toggle() {
+    this.enabled = !this.enabled;
+    return this.enabled;
+  }
+
+  /** Set the enabled state explicitly. @param {boolean} enabled New state. */
+  setEnabled(enabled) {
+    this.enabled = enabled !== false;
+  }
+}

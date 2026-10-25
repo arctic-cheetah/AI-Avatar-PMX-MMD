@@ -128,7 +128,7 @@ async def run_llm(worker, chunks_with_reasoning):
     from websockets.asyncio.server import serve
     from websockets.asyncio.client import connect
 
-    async def fake_llama(base_url, model, prompt, catalog, on_reasoning=None):
+    async def fake_llama(base_url, model, messages, on_reasoning=None):
         for kind, text in chunks_with_reasoning:
             if kind == "reasoning":
                 await on_reasoning()
@@ -139,7 +139,12 @@ async def run_llm(worker, chunks_with_reasoning):
         return "0123456789abcdef", {}
 
     args = Namespace(
-        mode="llm", llama_url="", model=None, prompt="Hi", speech_worker=worker
+        mode="llm",
+        llama_url="",
+        model=None,
+        prompt="Hi",
+        context_tokens=65536,
+        speech_worker=worker,
     )
 
     async def handler(ws):

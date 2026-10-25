@@ -10,7 +10,12 @@ export function startFrame(prompt) {
   return JSON.stringify(prompt === null ? { type: 'start' } : { type: 'start', prompt });
 }
 
-export function connectBridge({ catalog, onStart, onFinish, onExpression, onText, onSpeak }) {
+/** New chat: the bridge stops any reply, forgets the conversation and answers with a reset event. */
+export function resetFrame() {
+  return JSON.stringify({ type: 'reset' });
+}
+
+export function connectBridge({ catalog, onStart, onFinish, onExpression, onText, onSpeak, onReset }) {
   const button = document.querySelector('#bridge-start');
   const status = document.querySelector('#bridge-status');
   const chatBar = document.querySelector('#chat-bar');
@@ -18,6 +23,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
   const chatSend = document.querySelector('#chat-send');
   const chatMic = document.querySelector('#chat-mic');
   const chatLog = document.querySelector('#chat-log');
+  const chatNew = document.querySelector('#chat-new');
   let socket;
   let busy = false;
   let reply = null;
@@ -44,6 +50,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     chatInput.disabled = !enabled;
     chatSend.disabled = !enabled;
     updateMic();
+    chatNew.disabled = socket?.readyState !== WebSocket.OPEN;
   }
 
   /** Show a prompt as the user's bubble and start a reply; false if the bridge cannot take it now. */
@@ -134,6 +141,11 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
             if (typeof event.text !== 'string') throw new Error('Invalid error');
             busy = false; reply = null; onFinish(); button.disabled = false; setChatEnabled(true);
             status.textContent = event.text; break;
+          case 'reset':
+            // The bridge has forgotten every turn; clear what the user sees to match.
+            busy = false; reply = null; chatLog.replaceChildren(); onReset?.(); onFinish();
+            button.disabled = false; setChatEnabled(true);
+            status.textContent = 'New chat · ready'; break;
           default: throw new Error('Unknown event');
         }
       } catch (error) { console.warn('Dropped invalid bridge message', error); }
@@ -143,6 +155,9 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     if (!busy && socket?.readyState === WebSocket.OPEN) {
       startGeneration(null);
     }
+  });
+  chatNew.addEventListener('click', () => {
+    if (socket?.readyState === WebSocket.OPEN) socket.send(resetFrame());
   });
   chatBar.addEventListener('submit', (event) => {
     event.preventDefault();

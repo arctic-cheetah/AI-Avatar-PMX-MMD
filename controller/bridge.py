@@ -1,4 +1,4 @@
-"""Local streaming text/expression bridge; demo and llama-server modes."""
+"""Streaming text/expression bridge; demo and any OpenAI-compatible LLM."""
 
 from __future__ import annotations
 
@@ -7,11 +7,15 @@ import asyncio
 import json
 import logging
 import math
+import ipaddress
+import os
 import re
 import secrets
 import sys
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit
 
 if not __package__:
     # Support `python controller/bridge.py` as well as `python -m controller.bridge`.
@@ -193,6 +197,91 @@ class Conversation:
         ]
 
 
+def completions_url(base_url):
+    """Chat-completions endpoint for a base URL that may already end in
+    ``/v1`` or be the full endpoint (proxies often include ``/v1``)."""
+    base = (base_url or "").strip().rstrip("/")
+    if base.endswith("/chat/completions"):
+        return base
+    if base.rsplit("/", 1)[-1] == "v1":
+        return base + "/chat/completions"
+    return base + "/v1/chat/completions"
+
+
+def is_loopback_url(base_url):
+    host = urlsplit(base_url or "").hostname
+    if not host:
+        return False
+    if host.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def parse_llm_header(text):
+    name, sep, value = text.partition(":")
+    name, value = name.strip(), value.strip()
+    if (
+        not sep
+        or not value
+        or not re.fullmatch(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+", name)
+        or name.lower() == "authorization"
+        or any(c in value for c in "\r\n")
+    ):
+        raise argparse.ArgumentTypeError(
+            "must be 'Name: Value' (Authorization comes from --api-key-env)"
+        )
+    return (name, value)
+
+
+@dataclass
+class LlmConfig:
+    endpoint: str
+    external: bool
+    headers: dict = field(default_factory=dict)
+
+
+def resolve_llm_config(base_url, model, api_key_env, extra_headers,
+                       allow_no_key=False, environ=None):
+    """Validate the upstream once at startup; fail fast rather than per-chat.
+    The key value itself is never logged or returned beyond the header."""
+    environ = os.environ if environ is None else environ
+    parts = urlsplit((base_url or "").strip())
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        raise argparse.ArgumentTypeError(
+            "--llama-url must be an http(s) URL with a host"
+        )
+    if parts.username or parts.password:
+        raise argparse.ArgumentTypeError(
+            "--llama-url must not embed credentials; use --api-key-env"
+        )
+    external = not is_loopback_url(base_url)
+    if external and not model:
+        raise argparse.ArgumentTypeError(
+            "a non-loopback --llama-url requires --model"
+        )
+    headers = {}
+    for name, value in extra_headers or []:
+        if name.lower() == "authorization":
+            raise argparse.ArgumentTypeError(
+                "Authorization must come from --api-key-env, not --llm-header"
+            )
+        headers[name] = value
+    if not api_key_env or not api_key_env.strip():
+        raise argparse.ArgumentTypeError("--api-key-env must name a variable")
+    key = (environ.get(api_key_env) or "").strip()
+    if key:
+        headers["Authorization"] = f"Bearer {key}"
+    elif external and not allow_no_key:
+        raise argparse.ArgumentTypeError(
+            f"API key environment variable {api_key_env} is not set; export it, "
+            "rename it with --api-key-env, or pass --allow-no-key for a keyless proxy"
+        )
+    return LlmConfig(completions_url(base_url), external, headers)
+
+
 def context_tokens_arg(text):
     try:
         value = int(text)
@@ -208,6 +297,12 @@ async def context_window(base_url, override=None):
     ``n_ctx`` from /props, else MIN_CONTEXT."""
     if override is not None:
         return override
+    if not is_loopback_url(base_url):
+        LOG.warning(
+            "Not probing external %s/props; assuming %d tokens (set "
+            "--context-tokens for your model)", base_url.rstrip("/"), MIN_CONTEXT
+        )
+        return MIN_CONTEXT
     import httpx
 
     try:
@@ -244,7 +339,7 @@ async def sse_data(lines):
         yield "\n".join(data)
 
 
-async def llama_chunks(base_url, model, messages, on_reasoning=None):
+async def llama_chunks(base_url, model, messages, on_reasoning=None, headers=None):
     """Yield content deltas. Reasoning text is never forwarded; ``on_reasoning``
     is awaited for each reasoning delta so the avatar can look thoughtful."""
     import httpx
@@ -256,11 +351,14 @@ async def llama_chunks(base_url, model, messages, on_reasoning=None):
         timeout=httpx.Timeout(120, connect=10), trust_env=False
     ) as client:
         async with client.stream(
-            "POST", base_url.rstrip("/") + "/v1/chat/completions", json=payload
+            "POST", completions_url(base_url), json=payload, headers=headers or None
         ) as response:
             if response.status_code == 400:
                 await response.aread()
-                if "exceed_context_size" in response.text:
+                if any(
+                    marker in response.text
+                    for marker in ("exceed_context_size", "context_length_exceeded")
+                ):
                     raise ContextOverflow(response.text[:200])
             response.raise_for_status()
             async for body in sse_data(response.aiter_lines()):
@@ -272,7 +370,9 @@ async def llama_chunks(base_url, model, messages, on_reasoning=None):
                 choices = event.get("choices", [])
                 if choices:
                     delta = choices[0].get("delta", {})
-                    if on_reasoning is not None and delta.get("reasoning_content"):
+                    if on_reasoning is not None and (
+                        delta.get("reasoning_content") or delta.get("reasoning")
+                    ):
                         await on_reasoning()
                     content = delta.get("content")
                     if isinstance(content, str) and content:
@@ -392,7 +492,11 @@ async def handle_connection(socket, args, catalog):
             messages = conversation.messages(system, prompt)
             try:
                 async for chunk in llama_chunks(
-                    args.llama_url, args.model, messages, on_reasoning
+                    args.llama_url,
+                    args.model,
+                    messages,
+                    on_reasoning,
+                    headers=getattr(args, "llm_headers", None),
                 ):
                     reply.append(chunk)
                     yield chunk
@@ -557,8 +661,21 @@ async def run(args):
             max_queue=4,
         ):
             speech = "speech on" if args.speech_worker is not None else "text only"
+            upstream = ""
+            if args.mode == "llm":
+                host = urlsplit(args.llama_url).netloc or args.llama_url
+                auth = "key sent" if getattr(args, "llm_headers", {}).get(
+                    "Authorization"
+                ) else "no key"
+                place = "external" if getattr(args, "llm_external", False) else "local"
+                upstream = (
+                    f"; LLM {host} model={args.model or 'server default'} "
+                    f"({place}, {auth})"
+                )
+                if getattr(args, "llm_external", False):
+                    upstream += " — prompts and history leave this machine"
             print(
-                f"Bridge: ws://127.0.0.1:{args.port} ({args.mode}, {speech}); open {ORIGIN}/renderer/",
+                f"Bridge: ws://127.0.0.1:{args.port} ({args.mode}, {speech}){upstream}; open {ORIGIN}/renderer/",
                 flush=True,
             )
             await asyncio.Future()
@@ -567,12 +684,30 @@ async def run(args):
             await args.speech_worker.close()
 
 
-def main():
+def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=["demo", "llm"], default="demo")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--llama-url", default="http://127.0.0.1:8080")
     parser.add_argument("--model", default=None)
+    parser.add_argument(
+        "--api-key-env",
+        default="OPENAI_API_KEY",
+        help="Environment variable holding the upstream API key (default: OPENAI_API_KEY).",
+    )
+    parser.add_argument(
+        "--llm-header",
+        type=parse_llm_header,
+        action="append",
+        default=[],
+        metavar="NAME: VALUE",
+        help="Extra header for the LLM request; repeatable. Authorization comes from --api-key-env.",
+    )
+    parser.add_argument(
+        "--allow-no-key",
+        action="store_true",
+        help="Allow a non-loopback --llama-url with no API key (keyless proxies only).",
+    )
     parser.add_argument(
         "--context-tokens",
         type=context_tokens_arg,
@@ -608,7 +743,21 @@ def main():
     parser.add_argument("--kokoro-speed", type=float, default=1.0)
     parser.add_argument("--kokoro-threads", type=int, default=2)
     parser.add_argument("--rvc-threads", type=int, default=0)
-    args = parser.parse_args()
+    return parser
+
+
+def main():
+    args = build_parser().parse_args()
+    args.llm_headers, args.llm_external = {}, False
+    if args.mode == "llm":
+        try:
+            config = resolve_llm_config(
+                args.llama_url, args.model, args.api_key_env,
+                args.llm_header, allow_no_key=args.allow_no_key,
+            )
+        except argparse.ArgumentTypeError as error:
+            raise SystemExit(f"bridge: error: {error}") from None
+        args.llm_headers, args.llm_external = config.headers, config.external
     args.speech_settings = None
     if args.speech:
         from controller.speech import ApplioSettings

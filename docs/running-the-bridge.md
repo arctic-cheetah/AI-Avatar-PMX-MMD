@@ -79,7 +79,10 @@ key (`--api-key-env` names the variable, default `OPENAI_API_KEY`;
 `--allow-no-key` only for keyless proxies), are never probed at `/props`, and
 send your chat text off this machine. Provider examples, extra headers
 (`--llm-header`), the `reasoning` / `reasoning_content` spelling difference,
-and 401/stream troubleshooting are in [external-llm.md](external-llm.md).
+and 401/stream troubleshooting are in [external-llm.md](external-llm.md),
+including a verified EasyProxy (`127.0.0.1:8317`, `grok-4.3`) + Kokoro speech
+command. Remember: run `serve.py` and `bridge.py` from the **same checkout**,
+or speech clips will `404` and be skipped.
 
 ## Speech and lip sync
 

@@ -140,6 +140,58 @@ Reasoning sent inside ordinary `content` (for example `<think>…</think>` from 
 model whose server does not split it out) is still shown as text, as before;
 the bridge does not strip markup it did not produce.
 
+## Worked example: EasyProxy (CLIProxyAPI) + Grok + Kokoro speech
+
+Verified live on 26 Oct 2026 against EasyCLIProxyAPI listening on
+`127.0.0.1:8317` with model `grok-4.3`, the bridge in this worktree, and the
+renderer served from the **same worktree** (see the same-worktree rule below).
+
+First export the proxy's client key (the value from `access.api-keys` in the
+proxy's `config.yaml`) under its own variable name — never as a CLI argument:
+
+```bash
+export EASYPROXY_API_KEY='<client key from your EasyProxy config>'
+```
+
+Then start the renderer and bridge from the same checkout:
+
+```bash
+# Terminal 1 — renderer, same worktree as the bridge
+/home/parrot/Code/avatar-yidhari/.venv/bin/python renderer/serve.py
+
+# Terminal 2 — bridge: EasyProxy → Grok, with local Kokoro → RVC speech
+/home/parrot/Code/avatar-yidhari/.venv/bin/python controller/bridge.py --mode llm \
+  --llama-url http://127.0.0.1:8317/v1 \
+  --model grok-4.3 \
+  --api-key-env EASYPROXY_API_KEY \
+  --context-tokens 65536 \
+  --speech --tts kokoro --kokoro-voice af_heart --kokoro-speed 1.0 --kokoro-threads 2 \
+  --applio-dir /home/parrot/Code/Applio-rocm
+```
+
+Open [http://127.0.0.1:8770/renderer/](http://127.0.0.1:8770/renderer/), wait for **Connected · ready**,
+and chat. The startup line should read `LLM 127.0.0.1:8317 model=grok-4.3
+(local, key sent)`. The user's original verified invocation used the default
+`OPENAI_API_KEY` variable instead of `--api-key-env EASYPROXY_API_KEY`; either
+works, the named variable is clearer when several providers are in play:
+
+```bash
+/home/parrot/Code/avatar-yidhari/.venv/bin/python controller/bridge.py --mode llm \
+  --llama-url http://127.0.0.1:8317/v1 \
+  --model grok-4.3 \
+  --context-tokens 65536 \
+  --speech --tts kokoro --kokoro-voice af_heart --kokoro-speed 1.0 --kokoro-threads 2 \
+  --applio-dir /home/parrot/Code/Applio-rocm
+```
+
+> 🏠 **Same-worktree rule:** `serve.py` and `bridge.py` must run from the same
+> checkout. Speech clips are written under the bridge checkout's
+> `assets/private/speech/live/` and fetched from the server checkout's same
+> path; a mismatch serves `404`s and the page reports *“Skipped a clip that
+> could not be played.”* Relative paths such as `--applio-dir ../Applio-rocm`
+> also resolve against the checkout you start from — prefer absolute paths in
+> worktrees.
+
 ## Provider notes
 
 | Provider | `--llama-url` | `--model` | Key |
@@ -147,7 +199,7 @@ the bridge does not strip markup it did not produce.
 | llama.cpp (local) | `http://127.0.0.1:8080` | optional | none |
 | Ollama (local) | `http://127.0.0.1:11434/v1` | e.g. `llama3.1` | none |
 | LM Studio (local) | `http://127.0.0.1:1234/v1` | loaded model id | none, unless the server sets one |
-| EasyProxy / CLIProxyAPI | your proxy base, e.g. `https://proxy.example/v1` | model the proxy routes | `--api-key-env` variable for the proxy key, or `--allow-no-key` if it takes none |
+| EasyProxy / CLIProxyAPI | local default `http://127.0.0.1:8317/v1` (check the proxy config's `server.port`) | model the proxy routes, e.g. `grok-4.3` | client key from `access.api-keys`, e.g. `--api-key-env EASYPROXY_API_KEY` |
 | OpenAI | `https://api.openai.com/v1` | e.g. `gpt-…` | `OPENAI_API_KEY` |
 | OpenRouter | `https://openrouter.ai/api/v1` | e.g. `vendor/model` | `--api-key-env OPENROUTER_API_KEY`; optional headers above |
 
@@ -181,3 +233,11 @@ Notes and limits:
 - **Stream ends without `[DONE]`, or a non-SSE error page:** the URL is
   probably not an OpenAI-compatible chat endpoint; check the `/v1` suffix
   table above.
+- **Text replies but no voice, “Skipped a clip that could not be played”:**
+  `serve.py` and `bridge.py` are running from different checkouts, so clips
+  `404`. Restart both from the same worktree (see the worked example above).
+- **Speech fails at startup, “Kokoro file not found …/.venv-kokoro”:**
+  Kokoro was installed in another checkout. Either run
+  `python3 -m controller.setup_kokoro` there, or symlink the existing
+  `.venv-kokoro/` and `models/` from the checkout that has them (both are
+  gitignored).

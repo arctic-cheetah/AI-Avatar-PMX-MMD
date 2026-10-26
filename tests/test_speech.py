@@ -128,7 +128,7 @@ async def run_llm(worker, chunks_with_reasoning):
     from websockets.asyncio.server import serve
     from websockets.asyncio.client import connect
 
-    async def fake_llama(base_url, model, messages, on_reasoning=None):
+    async def fake_llama(base_url, model, messages, on_reasoning=None, headers=None):
         for kind, text in chunks_with_reasoning:
             if kind == "reasoning":
                 await on_reasoning()

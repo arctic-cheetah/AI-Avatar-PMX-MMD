@@ -14,6 +14,28 @@ and text to the browser exactly as it does for a local model.
 > line names the upstream host, model and whether a key is sent, so the
 > destination is always explicit — check it before sending anything private.
 
+## How a request flows
+
+The key and the destination stay visible at each step: the browser only ever
+talks to the local bridge, and only the bridge holds the credential.
+
+```mermaid
+flowchart LR
+    subgraph Local["🏠 This machine"]
+        R["🖥️ Renderer<br/>127.0.0.1:8770"]
+        B["🐍 Bridge<br/>ws 127.0.0.1:8765"]
+        K["🔑 OPENAI_API_KEY<br/>(bridge env only)"]
+        R -->|"chat prompt"| B
+        K -.->|"Authorization: Bearer"| B
+    end
+    B -->|"POST &lt;base&gt;/chat/completions<br/>stream: true, model, messages"| P{"Upstream"}
+    P -->|"loopback: no key needed"| L["🤖 Ollama / LM Studio<br/>llama.cpp / vLLM"]
+    P -->|"non-loopback: key required<br/>⚠️ chat text leaves machine"| C["☁️ Cloud or proxy<br/>OpenAI / OpenRouter / EasyProxy"]
+    L -->|"SSE content · reasoning(_content)"| B
+    C -->|"SSE content · reasoning(_content)"| B
+    B -->|"mood tags + text only<br/>(reasoning never forwarded)"| R
+```
+
 ## Quick start
 
 Local servers need no key. A cloud or proxy endpoint needs a model name and a

@@ -60,6 +60,30 @@ preserves the last mood on disconnect, avoiding repeated resets during reconnect
 An active generation is cancelled when its browser disconnects. Duplicate starts
 while busy are ignored. No automatic generation occurs on reconnect.
 
+## External (cloud / proxy) LLM
+
+The same bridge accepts any OpenAI-compatible base URL — a cloud API or a
+proxy such as EasyProxy / CLIProxyAPI — with a model name and an API key taken
+from an environment variable (bridge only):
+
+```bash
+export OPENAI_API_KEY='sk-…'
+.venv/bin/python controller/bridge.py --mode llm \
+  --llama-url https://your-proxy.example/v1 --model your-model-name \
+  --context-tokens 65536
+```
+
+`--llama-url` may be the bare host, a `…/v1` base, or the full
+`…/v1/chat/completions` endpoint. Non-loopback URLs require `--model` and a
+key (`--api-key-env` names the variable, default `OPENAI_API_KEY`;
+`--allow-no-key` only for keyless proxies), are never probed at `/props`, and
+send your chat text off this machine. Provider examples, extra headers
+(`--llm-header`), the `reasoning` / `reasoning_content` spelling difference,
+and 401/stream troubleshooting are in [external-llm.md](external-llm.md),
+including a verified EasyProxy (`127.0.0.1:8317`, `grok-4.3`) + Kokoro speech
+command. Remember: run `serve.py` and `bridge.py` from the **same checkout**,
+or speech clips will `404` and be skipped.
+
 ## Speech and lip sync
 
 For the experimental CPU Kokoro source, standalone WAV audition and local
@@ -124,6 +148,9 @@ Start the renderer server with `--stt` (after `python3 -m controller.setup_stt`)
 ```bash
 curl http://127.0.0.1:8080/v1/models
 ```
+
+For a cloud/proxy endpoint, check the same path under its base URL with your
+key, e.g. `curl -H "Authorization: Bearer $OPENAI_API_KEY" https://your-proxy.example/v1/models`; a 401 means the key is wrong or the model is not enabled for it.
 
 Run regression tests:
 

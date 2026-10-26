@@ -250,7 +250,7 @@ class FakeLlama:
         self.replies = list(replies)
         self.release = asyncio.Event()
 
-    async def __call__(self, base_url, model, messages, on_reasoning=None):
+    async def __call__(self, base_url, model, messages, on_reasoning=None, headers=None):
         self.seen.append([dict(m) for m in messages])
         reply = self.replies.pop(0)
         if callable(reply):

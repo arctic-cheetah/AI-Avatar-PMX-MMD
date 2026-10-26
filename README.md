@@ -121,6 +121,17 @@ Then restart the bridge in LLM mode (Ctrl+C the demo first):
 
 Type into the chat bar above her portrait and press **Send**. She remembers earlier turns of the current chat, trimmed to fit the model's context window. Press **New chat** to start over; a reconnect also starts fresh. Details are in [docs/conversation-history.md](docs/conversation-history.md).
 
+Any other OpenAI-compatible server works too — local Ollama / LM Studio, or a cloud or proxy endpoint (OpenAI, OpenRouter, EasyProxy / CLIProxyAPI) with `--llama-url <base>`, `--model <name>` and a key from an environment variable:
+
+```bash
+export OPENAI_API_KEY='sk-…'   # bridge only; never sent to the browser
+.venv/bin/python controller/bridge.py --mode llm \
+  --llama-url https://your-proxy.example/v1 --model your-model-name \
+  --context-tokens 65536
+```
+
+⚠️ With a non-loopback URL your chat text leaves this machine for that provider. Full options (`--api-key-env`, `--llm-header`, `--allow-no-key`), URL forms, provider examples and troubleshooting are in [docs/external-llm.md](docs/external-llm.md).
+
 ## 🎤 Talk to her (voice input)
 
 1. **Install** (once): `python3 -m controller.setup_stt`. This creates `.venv-stt` and downloads Whisper `base.en` at a pinned revision.
@@ -179,8 +190,12 @@ The voice model and Applio settings (RVC pitch, index rate, protect, plus Kokoro
 | `--pth`            | model under `--applio-dir`          | Applio voice model                                                             |
 | `--index`          | index under `--applio-dir`          | Applio voice index                                                             |
 | `--rvc-threads`    | `0` (PyTorch default)               | CPU RVC threads; mainly for the CPU Applio path                                |
-| `--llama-url`      | `http://127.0.0.1:8080`             | LLM server base URL                                                            |
-| `--model`          | none                                  | Model alias, if the server needs one                                           |
+| `--llama-url`      | `http://127.0.0.1:8080`             | Any OpenAI-compatible base URL (or full `…/chat/completions` endpoint); cloud/proxy URLs send chat text off-machine |
+| `--model`          | none                                  | Model name/id; required for non-loopback URLs                                  |
+| `--api-key-env`    | `OPENAI_API_KEY`                    | Env var holding the upstream API key (bridge only, sent as Bearer)             |
+| `--llm-header`     | none                                  | Extra upstream header `Name: Value`; repeatable (never `Authorization`)         |
+| `--allow-no-key`   | off                                   | Allow a non-loopback URL with no API key (keyless proxies only)                |
+| `--context-tokens` | `/props` or 65536                     | Model context window; pass it for non-loopback servers (not probed)            |
 | `--prompt`         | a greeting                            | Prompt for **Start default response**                                    |
 | `--port`           | `8765`                              | Bridge WebSocket port                                                          |
 
@@ -249,6 +264,7 @@ avatar-yidhari/
 | [testing-kokoro.md](docs/testing-kokoro.md)                       | Kokoro setup, audition commands and measurements        |
 | [voice-input.md](docs/voice-input.md)                             | Mic → local Whisper STT: setup, measurements, security |
 | [conversation-history.md](docs/conversation-history.md)           | Chat memory, context budget, New chat and reconnects   |
+| [external-llm.md](docs/external-llm.md)                           | Cloud / proxy OpenAI-compatible LLMs, API keys, headers |
 | [pmx-morph-catalog.md](docs/pmx-morph-catalog.md)                 | Every PMX facial morph                                  |
 | [gaze-tracking.md](docs/gaze-tracking.md)                         | Cursor + webcam gaze tracking design (issue #6)         |
 | [body-sway.md](docs/body-sway.md)                               | Slow sine-wave body sway design (issue #4)              |
@@ -262,7 +278,7 @@ The plan for upcoming features is in the [🗺️ roadmap issue #21](https://git
 - The bridge listens only on `127.0.0.1` and accepts only the renderer's origin.
 - LLM output is treated as untrusted: only catalog mood names are accepted, and text is shown as plain text.
 - Voice input is transcribed locally (`serve.py --stt`); `POST /stt` accepts only the renderer's own origin, recordings are deleted right after transcription, and no audio crosses the bridge WebSocket.
-- With `--speech --tts kokoro`, speech text stays on your machine and is converted locally. With `--speech --tts edge`, each sentence is sent to Edge TTS online. Chat without `--speech` also stays on your machine.
+- With `--speech --tts kokoro`, speech text stays on your machine and is converted locally. With `--speech --tts edge`, each sentence is sent to Edge TTS online. Chat without `--speech` stays on your machine with a loopback `--llama-url`; a cloud/proxy URL sends prompts and history to that provider (see [docs/external-llm.md](docs/external-llm.md)). API keys live only in the bridge's environment, never in the browser or repo.
 
 ## 🖥️ Hardware notes
 

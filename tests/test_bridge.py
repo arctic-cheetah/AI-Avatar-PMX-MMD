@@ -187,7 +187,7 @@ class ChatPromptTests(unittest.IsolatedAsyncioTestCase):
 
         seen = []
 
-        async def fake_llama(base_url, model, messages, on_reasoning=None):
+        async def fake_llama(base_url, model, messages, on_reasoning=None, headers=None):
             seen.append(messages[-1]["content"])
             yield "[neutral] ok"
 

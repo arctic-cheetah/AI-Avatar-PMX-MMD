@@ -11,8 +11,11 @@
     <canvas id="view"></canvas>
     <form id="chat-bar" hidden>
       <label class="sr-only" for="chat-input">Message Yidhari</label>
-      <input id="chat-input" type="text" maxlength="2000" autocomplete="off"
-             placeholder="Message Yidhari…" disabled>
+      <span class="chat-input-wrap">
+        <textarea id="chat-input" rows="1" maxlength="2000" autocomplete="off"
+                  placeholder="Message Yidhari…" disabled></textarea>
+        <button id="chat-input-resizer" type="button" aria-label="Resize message box" tabindex="-1"></button>
+      </span>
       <button id="chat-mic" type="button" aria-pressed="false" disabled>🎤 Talk</button>
       <button id="chat-send" type="submit" disabled>Send</button>
     </form>

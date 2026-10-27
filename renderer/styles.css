@@ -30,10 +30,22 @@ input[type='search'], input[type='text'], textarea { min-width: 0; max-width: 10
 textarea { width: 100%; }
 #camera-controls { position: absolute; bottom: 16px; left: 70%; transform: translateX(-50%); display: flex; gap: 8px; }
 #chat-bar { position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
-  display: flex; gap: 8px; width: min(560px, calc(100% - 32px)); }
-#chat-bar input { flex: 1; min-width: 0; padding: 9px 12px; border: 1px solid #78677f;
-  border-radius: 20px; background: rgba(23, 18, 28, .88); color: var(--ink); }
-#chat-bar button { border-radius: 20px; padding: 9px 16px; }
+  display: flex; align-items: flex-end; gap: 8px; width: min(560px, calc(100% - 32px)); }
+#chat-bar .chat-input-wrap { position: relative; flex: 1; min-width: 0; display: flex; }
+#chat-bar textarea { flex: 1; width: 100%; min-width: 0; min-height: 2.6em; max-height: min(50vh, 320px); padding: 9px 12px; border: 1px solid #78677f;
+  border-radius: 20px; background: rgba(23, 18, 28, .88); color: var(--ink);
+  resize: none; overflow-y: hidden; line-height: 1.45; }
+#chat-input-resizer { position: absolute; right: 1px; bottom: 1px; width: 18px; height: 16px; margin: 0; padding: 0;
+  border: 0; border-radius: 0 0 18px 0; background: transparent; cursor: ns-resize; touch-action: none; }
+#chat-input-resizer::before,
+#chat-input-resizer::after { content: ""; position: absolute; right: 5px; height: 2px; border-radius: 1px; background: #e1b5ed; }
+#chat-input-resizer::before { bottom: 6px; width: 9px; }
+#chat-input-resizer::after { bottom: 3px; width: 6px; }
+#chat-input-resizer:hover::before, #chat-input-resizer:hover::after,
+body.chat-input-resizing #chat-input-resizer::before,
+body.chat-input-resizing #chat-input-resizer::after { background: #bc8fc8; }
+body.chat-input-resizing { cursor: ns-resize; user-select: none; }
+#chat-bar button { border-radius: 20px; padding: 9px 16px; flex: none; }
 #chat-bar #chat-mic { white-space: nowrap; }
 #chat-bar #chat-mic.recording { background: #8a2c4a; border-color: #d9608a; color: #fff; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

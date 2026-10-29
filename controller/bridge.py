@@ -486,7 +486,19 @@ async def handle_connection(socket, args, catalog):
     if router is not None:
         from controller.agent import Stage
 
-        stage = Stage(send, worker, catalog)
+        llm = None
+        if args.mode == "llm":
+            # Report summaries use the same upstream as chat: local llama-server or a cloud LLM.
+            def llm(messages, on_reasoning=None):
+                return llama_chunks(
+                    args.llama_url,
+                    args.model,
+                    messages,
+                    on_reasoning,
+                    headers=getattr(args, "llm_headers", None),
+                )
+
+        stage = Stage(send, worker, catalog, llm)
         router.attach(stage)
 
     async def chat_chunks(prompt, on_reasoning, reply):
@@ -681,6 +693,12 @@ async def run(args):
                 await args.speech_worker.close()
             raise SystemExit(f"bridge: error: {error}") from None
         print(f"Agent socket: {args.agent_socket}", flush=True)
+        if args.mode == "llm" and getattr(args, "llm_external", False):
+            print(
+                "Agent reports are summarised by the external LLM: report text "
+                "(obvious secrets redacted) leaves this machine.",
+                flush=True,
+            )
 
     try:
         async with serve(

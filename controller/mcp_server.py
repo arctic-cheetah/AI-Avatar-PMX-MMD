@@ -22,6 +22,8 @@ INSTRUCTIONS = (
     "Yidhari is the user's avatar: she speaks for you aloud and shows moods. "
     "Call say with one or two short spoken sentences when you start and finish "
     "a task. Plain speech only: no code, file paths, hashes, URLs or secrets. "
+    "When a task finishes or fails, call report with your full final message; "
+    "she shows it in her chat and speaks a short summary. "
     "Call set_mood (for example thinking) during long work. Results: queued or "
     "ok means accepted; busy, no renderer or bridge not running mean she could "
     "not take it, so carry on without her."
@@ -44,6 +46,18 @@ def build_server(socket_path, source):
         return await call_bridge(
             socket_path,
             {"tool": "say", "source": source, "text": text, "mood": mood, "weight": weight},
+        )
+
+    @server.tool()
+    async def report(text: str, kind: str = "done") -> str:
+        """Hand Yidhari your full result (at most 16384 characters, Markdown is fine).
+
+        She shows the whole text in her chat log and speaks a 1-3 sentence summary
+        without code or paths. kind is progress, done or error. Returns "queued" at
+        once.
+        """
+        return await call_bridge(
+            socket_path, {"tool": "report", "source": source, "text": text, "kind": kind}
         )
 
     @server.tool()

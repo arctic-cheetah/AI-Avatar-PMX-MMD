@@ -5,6 +5,7 @@ const CLIP_ID = /^[0-9a-f]{16}$/;
 const MAX_PROMPT = 2000;
 const MAX_REPLY = 50000;
 const MAX_SOURCE = 40;
+const REPORT_STATUS = new Set(['progress', 'done', 'error']);
 
 /** The one message that starts a reply, whether the prompt was typed or spoken. */
 export function startFrame(prompt) {
@@ -17,8 +18,10 @@ export function resetFrame() {
 }
 
 /**
- * Validate a coding agent's event (#27): a say line for the chat log, or a rest mood.
- * @returns {{ kind: 'say', source: string, text: string } | { kind: 'mood', source: string, name: string, weight: number }}
+ * Validate a coding agent's event (#27): a say line or a full report for the chat log, or a rest mood.
+ * @returns {{ kind: 'say', source: string, text: string } |
+ *   { kind: 'report', source: string, status: string, text: string } |
+ *   { kind: 'mood', source: string, name: string, weight: number }}
  */
 export function agentEvent(event, catalog) {
   if (typeof event.source !== 'string') throw new Error('Invalid agent source');
@@ -26,6 +29,10 @@ export function agentEvent(event, catalog) {
   if (event.kind === 'say') {
     if (typeof event.text !== 'string') throw new Error('Invalid agent text');
     return { kind: 'say', source, text: event.text.slice(0, MAX_REPLY) };
+  }
+  if (event.kind === 'report') {
+    if (typeof event.text !== 'string' || !REPORT_STATUS.has(event.status)) throw new Error('Invalid agent report');
+    return { kind: 'report', source, status: event.status, text: event.text.slice(0, MAX_REPLY) };
   }
   if (event.kind === 'mood') {
     if (!Object.hasOwn(catalog, event.name) || typeof event.weight !== 'number' || !Number.isFinite(event.weight)) {
@@ -62,6 +69,20 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     chatLog.append(line);
     chatLog.scrollTop = chatLog.scrollHeight;
     return body;
+  }
+
+  /** A report bubble: status and first line as the summary, the full text when opened. */
+  function addReport({ source, status, text }) {
+    const body = addLine('agent', source);
+    body.parentElement.classList.add(`chat-report-${status}`);
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    const first = text.split('\n', 1)[0];
+    summary.textContent = `Report · ${status}: ${first.length > 80 ? `${first.slice(0, 80)}…` : first}`;
+    const full = document.createElement('pre');
+    full.textContent = text;
+    details.append(summary, full);
+    body.append(details);
   }
 
   function canSend() {
@@ -177,6 +198,9 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
             const agent = agentEvent(event, catalog);
             if (agent.kind === 'say') {
               addLine('agent', agent.source).textContent = agent.text;
+              onAgentSay?.(busy);
+            } else if (agent.kind === 'report') {
+              addReport(agent);
               onAgentSay?.(busy);
             } else {
               onAgentMood?.(agent.name, agent.weight);

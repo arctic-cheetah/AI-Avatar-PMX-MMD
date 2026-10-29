@@ -71,6 +71,9 @@ body.chat-input-resizing { cursor: ns-resize; user-select: none; }
 .chat-you { background: #33244a; align-self: flex-end; }
 .chat-yidhari { background: #2a2130; align-self: flex-start; }
 .chat-agent { background: #21283a; align-self: flex-start; }
+.chat-agent details summary { cursor: pointer; }
+.chat-agent pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 40vh; overflow-y: auto; margin: 6px 0 0; font-size: 12px; }
+.chat-report-error { border-left: 3px solid #c0566b; }
 #status, #hint { position: absolute; left: 16px; margin: 0; pointer-events: none; text-shadow: 0 1px 2px #000; }
 #status { bottom: 36px; } #hint { bottom: 14px; color: var(--muted); font-size: 12px; }
 .morph-group { margin: 12px 0; } summary { cursor: pointer; font-weight: 600; }

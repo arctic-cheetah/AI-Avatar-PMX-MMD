@@ -12,15 +12,19 @@ from unittest.mock import patch
 
 from controller.agent import (
     MAX_QUEUED,
+    MAX_REPORT,
     MAX_SAY,
     MAX_SOURCE,
+    MAX_SUMMARY_SENTENCES,
     AgentError,
     AgentRouter,
     Stage,
     call_bridge,
     default_socket_path,
     prepare_socket_dir,
+    redact,
     serve,
+    summary_messages,
     validate,
 )
 from controller.bridge import ORIGIN, handle_connection, load_catalog
@@ -113,6 +117,138 @@ class ValidateTests(unittest.TestCase):
             validate({"tool": "set_mood", "name": "thinking", "weight": 0.6}, CATALOG),
             {"tool": "set_mood", "source": "Agent", "name": "thinking", "weight": 0.6},
         )
+
+
+class ReportValidateTests(unittest.TestCase):
+    def test_report_keeps_lines_and_defaults_to_done(self):
+        request = validate({"tool": "report", "text": "Fixed 3 tests.\n\tAll pass.\x07"}, CATALOG)
+        self.assertEqual(request, {"tool": "report", "source": "Agent",
+                                   "text": "Fixed 3 tests.\n\tAll pass.", "kind": "done"})
+
+    def test_report_rejects_bad_input(self):
+        for request in [
+            {"tool": "report", "text": "x" * (MAX_REPORT + 1)},
+            {"tool": "report", "text": "ok", "kind": "panic"},
+            {"tool": "report", "text": "\n\n"},
+            {"tool": "report"},
+        ]:
+            with self.subTest(request=request), self.assertRaises(AgentError):
+                validate(request, CATALOG)
+
+
+class RedactTests(unittest.TestCase):
+    def test_secrets_never_reach_speech(self):
+        # Fake tokens are joined at runtime so secret scanners do not flag this file.
+        for secret in [
+            "sk-" + "proj-abcdefghijklmnopqrstuvwxyz012345",
+            "ghp" + "_abcdefghijklmnopqrstuvwxyz0123456789",
+            "github" + "_pat_11ABCDEFG0abcdefghijklmnopqrstuvwxyz",
+            "xox" + "b-123456789012-abcdefghijklmnop",
+            "AKIA" + "IOSFODNN7EXAMPLE",
+            "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U",
+            "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA\n-----END OPENSSH PRIVATE KEY-----",
+            "password=hunter2hunter2",
+            "Bearer abcdefghijklmnopqrstuvwxyz123456",
+        ]:
+            with self.subTest(secret=secret[:12]):
+                spoken = redact(f"The key is {secret} now.")
+                self.assertNotIn(secret, spoken)
+                self.assertTrue(spoken.startswith("The key is"))
+
+    def test_code_paths_urls_and_hashes_become_words(self):
+        spoken = redact(
+            "Edited /home/parrot/Code/x.py and ~/notes.md, see https://example.com/a?b=1 "
+            "at commit 1937988, ran `pytest -q`.\n```python\nprint(1)\n```\nDone."
+        )
+        for leaked in ["/home/parrot", "notes.md", "example.com", "1937988", "pytest", "print"]:
+            self.assertNotIn(leaked, spoken)
+        self.assertIn("Done.", spoken)
+
+    def test_plain_speech_unchanged(self):
+        text = "All 33 tests pass now, and the fix is ready for review."
+        self.assertEqual(redact(text), text)
+
+
+class SummariserTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.sent = []
+        self.speech = FakeSpeech()
+        patcher = patch("controller.agent.speak_segments", self.speech)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.calls = []
+
+    async def send(self, event):
+        self.sent.append(event)
+
+    def stage(self, reply=None, fail=False, reason=False):
+        async def llm(messages, on_reasoning=None):
+            self.calls.append(messages)
+            if reason:
+                await on_reasoning()
+            if fail:
+                raise ValueError("upstream down")
+            for chunk in reply:
+                yield chunk
+
+        stage = Stage(self.send, worker=object(), catalog=CATALOG,
+                      llm=None if reply is None and not fail else llm)
+        self.addAsyncCleanup(stage.close)
+        return stage
+
+    def report(self, text, kind="done"):
+        return {"tool": "report", "source": "Claude Code", "text": text, "kind": kind}
+
+    async def test_summary_is_spoken_with_moods(self):
+        stage = self.stage(["[hap", "py] All 33 tests pass now. ", "[relieved] Details are in the chat."],
+                           reason=True)
+        stage.enqueue(self.report("Ran pytest: 33 passed in 4.1s"))
+        await settle()
+        self.assertEqual(self.speech.spoken, [[("All 33 tests pass now.", "happy", 1.0),
+                                               ("Details are in the chat.", "relieved", 1.0)]])
+        self.assertIn({"type": "expression", "name": "thinking", "weight": 0.6}, self.sent)
+
+    async def test_prompt_rules_and_secret_free_input(self):
+        stage = self.stage(["[happy] Done."])
+        stage.enqueue(self.report("Deployed with key sk-" + "proj-abcdefghijklmnopqrstuvwxyz012345", "error"))
+        await settle()
+        system, user = self.calls[0]
+        self.assertEqual((system["role"], user["role"]), ("system", "user"))
+        for rule in ["1", "3", "no code", "the details are in the chat"]:
+            self.assertIn(rule, system["content"].lower())
+        self.assertIn("[worried]", system["content"])
+        self.assertNotIn("sk-proj", user["content"])
+        self.assertIn("error", user["content"])
+        self.assertEqual(summary_messages(CATALOG, self.report("x"))[0], system)
+
+    async def test_summary_capped_and_redacted(self):
+        stage = self.stage([f"Sentence {n} is at /etc/passwd{n}. " for n in range(10)])
+        stage.enqueue(self.report("long"))
+        await settle()
+        spoken = self.speech.spoken[0]
+        self.assertLessEqual(len(spoken), MAX_SUMMARY_SENTENCES)
+        self.assertFalse(any("/etc" in text for text, _, _ in spoken))
+
+    async def test_llm_failure_falls_back(self):
+        stage = self.stage(fail=True)
+        stage.enqueue(self.report("boom", "error"))
+        await settle()
+        self.assertEqual(len(self.speech.spoken), 1)
+        self.assertIn("chat", " ".join(text for text, _, _ in self.speech.spoken[0]))
+        self.assertEqual(self.speech.spoken[0][0][1], "worried")
+
+    async def test_no_llm_falls_back(self):
+        stage = self.stage()
+        stage.enqueue(self.report("all good"))
+        await settle()
+        self.assertEqual(self.speech.spoken[0][0][1], "happy")
+
+    async def test_say_is_redacted_before_tts(self):
+        stage = self.stage()
+        stage.enqueue({"tool": "say", "source": "Agent", "mood": None, "weight": 1.0,
+                       "text": "Token ghp" + "_abcdefghijklmnopqrstuvwxyz0123456789 is set."})
+        await settle()
+        self.assertNotIn("ghp_", self.speech.spoken[0][0][0])
 
 
 class SocketPathTests(unittest.TestCase):
@@ -295,6 +431,15 @@ class RouterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(results.count("queued"), MAX_QUEUED)
         self.assertEqual(results[-1], "busy")
 
+    async def test_report_logs_full_text(self):
+        self.router.attach(self.stage)
+        text = "Fixed `bridge.py`.\nAll 33 tests pass."
+        result = await self.router.handle(
+            {"tool": "report", "source": "Claude Code", "text": text, "kind": "done"})
+        self.assertEqual(result, "queued")
+        self.assertEqual(self.sent[0], {"type": "agent", "kind": "report", "source": "Claude Code",
+                                        "status": "done", "text": text})
+
     async def test_set_mood(self):
         self.router.attach(self.stage)
         result = await self.router.handle(
@@ -383,15 +528,18 @@ class McpServerTests(unittest.IsolatedAsyncioTestCase):
 
         server = mcp_server.build_server(Path("/tmp/x.sock"), "Claude Code")
         tools = {tool.name for tool in await server.list_tools()}
-        self.assertEqual(tools, {"say", "set_mood"})
+        self.assertEqual(tools, {"say", "report", "set_mood"})
         with patch("controller.mcp_server.call_bridge", fake_call):
             await server.call_tool("say", {"text": "Hi", "mood": "happy"})
             await server.call_tool("set_mood", {"name": "thinking"})
+            await server.call_tool("report", {"text": "All done.", "kind": "done"})
         self.assertEqual(calls[0], (Path("/tmp/x.sock"),
                                     {"tool": "say", "source": "Claude Code", "text": "Hi",
                                      "mood": "happy", "weight": 1.0}))
         self.assertEqual(calls[1][1], {"tool": "set_mood", "source": "Claude Code",
                                        "name": "thinking", "weight": 1.0})
+        self.assertEqual(calls[2][1], {"tool": "report", "source": "Claude Code",
+                                       "text": "All done.", "kind": "done"})
 
 
 if __name__ == "__main__":

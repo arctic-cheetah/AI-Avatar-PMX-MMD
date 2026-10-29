@@ -6,10 +6,16 @@ const MAX_PROMPT = 2000;
 const MAX_REPLY = 50000;
 const MAX_SOURCE = 40;
 const REPORT_STATUS = new Set(['progress', 'done', 'error']);
+const ASK_ID = /^[0-9a-f]{1,32}$/;
 
 /** The one message that starts a reply, whether the prompt was typed or spoken. */
 export function startFrame(prompt) {
   return JSON.stringify(prompt === null ? { type: 'start' } : { type: 'start', prompt });
+}
+
+/** The user's reply to a coding agent's ask (#27); it does not start a chat reply. */
+export function answerFrame(id, text) {
+  return JSON.stringify({ type: 'answer', id, text });
 }
 
 /** New chat: the bridge stops any reply, forgets the conversation and answers with a reset event. */
@@ -29,6 +35,12 @@ export function agentEvent(event, catalog) {
   if (event.kind === 'say') {
     if (typeof event.text !== 'string') throw new Error('Invalid agent text');
     return { kind: 'say', source, text: event.text.slice(0, MAX_REPLY) };
+  }
+  if (event.kind === 'ask' || event.kind === 'ask-closed') {
+    if (typeof event.id !== 'string' || !ASK_ID.test(event.id)) throw new Error('Invalid ask id');
+    if (event.kind === 'ask-closed') return { kind: 'ask-closed', source, id: event.id };
+    if (typeof event.text !== 'string') throw new Error('Invalid ask');
+    return { kind: 'ask', source, id: event.id, text: event.text.slice(0, MAX_REPLY) };
   }
   if (event.kind === 'report') {
     if (typeof event.text !== 'string' || !REPORT_STATUS.has(event.status)) throw new Error('Invalid agent report');
@@ -56,6 +68,15 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
   let socket;
   let busy = false;
   let reply = null;
+  /** A coding agent's open question; while set, the chat bar answers it. */
+  let pendingAsk = null;
+  const chatPlaceholder = chatInput.placeholder;
+
+  function setPendingAsk(ask) {
+    pendingAsk = ask;
+    chatInput.placeholder = ask ? `Answer ${ask.source}…` : chatPlaceholder;
+    chatBar.classList.toggle('answering', Boolean(ask));
+  }
 
   /** Append a chat bubble (user, Yidhari, or Yidhari speaking for an agent); returns the message element. */
   function addLine(who, source = null) {
@@ -120,6 +141,13 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     addLine('you').textContent = prompt;
     chatInput.value = '';
     fitChatInput({ reset: true });
+    if (pendingAsk) {
+      // This message answers the agent's question instead of starting a chat reply.
+      socket.send(answerFrame(pendingAsk.id, prompt));
+      status.textContent = `Answer sent to ${pendingAsk.source}`;
+      setPendingAsk(null);
+      return true;
+    }
     startGeneration(prompt);
     return true;
   }
@@ -164,7 +192,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     socket.onclose = () => {
       // Do not reset the expression here: while the bridge is down this
       // close/reconnect cycle repeats and would keep forcing neutral.
-      busy = false; onFinish(); button.disabled = true; voice.cancel(); setChatEnabled(false);
+      busy = false; setPendingAsk(null); onFinish(); button.disabled = true; voice.cancel(); setChatEnabled(false);
       status.textContent = 'Disconnected · retrying…';
       // onExpression('neutral', 1);
       setTimeout(connect, 2000);
@@ -202,6 +230,16 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
             } else if (agent.kind === 'report') {
               addReport(agent);
               onAgentSay?.(busy);
+            } else if (agent.kind === 'ask') {
+              addLine('agent', agent.source).textContent = `❓ ${agent.text}`;
+              setPendingAsk({ id: agent.id, source: agent.source });
+              status.textContent = `${agent.source} is asking · your next message answers`;
+              onAgentSay?.(busy);
+            } else if (agent.kind === 'ask-closed') {
+              if (pendingAsk?.id === agent.id) {
+                setPendingAsk(null);
+                status.textContent = `${agent.source} stopped waiting for an answer`;
+              }
             } else {
               onAgentMood?.(agent.name, agent.weight);
             }
@@ -219,7 +257,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
             status.textContent = event.text; break;
           case 'reset':
             // The bridge has forgotten every turn; clear what the user sees to match.
-            busy = false; reply = null; chatLog.replaceChildren(); onReset?.(); onFinish();
+            busy = false; reply = null; setPendingAsk(null); chatLog.replaceChildren(); onReset?.(); onFinish();
             button.disabled = false; setChatEnabled(true);
             status.textContent = 'New chat · ready'; break;
           default: throw new Error('Unknown event');

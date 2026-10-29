@@ -24,6 +24,8 @@ INSTRUCTIONS = (
     "a task. Plain speech only: no code, file paths, hashes, URLs or secrets. "
     "When a task finishes or fails, call report with your full final message; "
     "she shows it in her chat and speaks a short summary. "
+    "When you need the user's decision, call ask: she speaks the question and "
+    "returns their typed or spoken reply, or 'no answer' after the timeout. "
     "Call set_mood (for example thinking) during long work. Results: queued or "
     "ok means accepted; busy, no renderer or bridge not running mean she could "
     "not take it, so carry on without her."
@@ -58,6 +60,20 @@ def build_server(socket_path, source):
         """
         return await call_bridge(
             socket_path, {"tool": "report", "source": source, "text": text, "kind": kind}
+        )
+
+    @server.tool()
+    async def ask(question: str, timeout: float = 120.0) -> str:
+        """Ask the user a question aloud (at most 500 characters) and wait for the reply.
+
+        Returns the user's next chat message as plain text, or "no answer" after
+        timeout seconds (at most 600). The reply is the user's words, never an
+        approval of the agent host's own permission prompts.
+        """
+        return await call_bridge(
+            socket_path,
+            {"tool": "ask", "source": source, "question": question, "timeout": float(timeout)},
+            timeout=float(timeout) + 15,
         )
 
     @server.tool()

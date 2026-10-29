@@ -614,8 +614,23 @@ async def handle_connection(socket, args, catalog):
                 if not isinstance(request, dict) or request.get("type") not in (
                     "start",
                     "reset",
+                    "answer",
                 ):
                     raise ValueError("Unknown request")
+                if request["type"] == "answer":
+                    # The user's reply to an agent's ask (#27); never starts a chat reply.
+                    text = request.get("text")
+                    if (
+                        stage is None
+                        or not isinstance(request.get("id"), str)
+                        or not isinstance(text, str)
+                        or not text.strip()
+                        or len(text) > MAX_PROMPT
+                    ):
+                        raise ValueError("Invalid answer")
+                    if not stage.answer(request["id"], text):
+                        LOG.warning("Dropped answer for an ask that is no longer pending")
+                    continue
                 if request["type"] == "reset":
                     prompt = None
                 elif "prompt" in request:
@@ -638,6 +653,7 @@ async def handle_connection(socket, args, catalog):
                     await asyncio.gather(task, return_exceptions=True)
                 if stage is not None:
                     stage.cancel_agent()
+                    stage.close_asks()
                 if conversation is not None:
                     conversation.clear()
                 await send({"type": "reset"})

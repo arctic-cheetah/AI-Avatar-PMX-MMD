@@ -7,6 +7,7 @@ This is a companion project, kept outside `my_code_pc` so it does not compete fo
 ## ✨ What she can do
 
 - 💬 **Chat:** type into the chat bar; replies stream from a local `llama-server`.
+- 🤖 **Agent voice:** start the bridge with `--agent` and a coding agent such as Claude Code can make her speak (`say`) and change her face (`set_mood`) through a small MCP server — see [docs/agent-voice.md](docs/agent-voice.md).
 - 🎤 **Voice input:** click **🎤 Talk**, speak, click **■ Stop**. Local Whisper on the CPU turns it into a chat prompt; audio never leaves the machine ([docs/voice-input.md](docs/voice-input.md)).
 - 😊 **Moods:** the LLM adds tags such as `[soft-smile:0.6]`, which become facial expressions from a catalog of 46 presets.
 - 🤔 **Thinking face:** while the model reasons, she looks thoughtful.
@@ -265,6 +266,7 @@ avatar-yidhari/
 | [voice-input.md](docs/voice-input.md)                             | Mic → local Whisper STT: setup, measurements, security |
 | [conversation-history.md](docs/conversation-history.md)           | Chat memory, context budget, New chat and reconnects   |
 | [external-llm.md](docs/external-llm.md)                           | Cloud / proxy OpenAI-compatible LLMs, API keys, headers |
+| [agent-voice.md](docs/agent-voice.md)                             | Coding agent → MCP → Yidhari speech (issue #27)         |
 | [pmx-morph-catalog.md](docs/pmx-morph-catalog.md)                 | Every PMX facial morph                                  |
 | [gaze-tracking.md](docs/gaze-tracking.md)                         | Cursor + webcam gaze tracking design (issue #6)         |
 | [body-sway.md](docs/body-sway.md)                               | Slow sine-wave body sway design (issue #4)              |
@@ -279,6 +281,7 @@ The plan for upcoming features is in the [🗺️ roadmap issue #21](https://git
 - LLM output is treated as untrusted: only catalog mood names are accepted, and text is shown as plain text.
 - Voice input is transcribed locally (`serve.py --stt`); `POST /stt` accepts only the renderer's own origin, recordings are deleted right after transcription, and no audio crosses the bridge WebSocket.
 - With `--speech --tts kokoro`, speech text stays on your machine and is converted locally. With `--speech --tts edge`, each sentence is sent to Edge TTS online. Chat without `--speech` stays on your machine with a loopback `--llama-url`; a cloud/proxy URL sends prompts and history to that provider (see [docs/external-llm.md](docs/external-llm.md)). API keys live only in the bridge's environment, never in the browser or repo.
+- With `--agent`, only processes running as your user can reach the agent socket (mode 0700 directory, peer uid checked). Agent text is untrusted input: it is capped, stripped of control characters and rate limited.
 
 ## 🖥️ Hardware notes
 

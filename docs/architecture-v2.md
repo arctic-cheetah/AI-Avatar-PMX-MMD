@@ -722,6 +722,9 @@ transcript ─► sendPrompt() ─► {"type":"start","prompt"} ─► bridge (u
 ## Agent voice over MCP — plan, 2026-10-18
 
 Tracked in [#27](https://github.com/arctic-cheetah/AI-Avatar-PMX-MMD/issues/27).
+Status: step A (`say`, `set_mood`, agent socket, shared speech lane) is built;
+setup and behaviour are in [agent-voice.md](./agent-voice.md). `report` (step B)
+and `ask` (step C) follow.
 User decision: Yidhari first becomes the **voice and face of an existing coding
 agent** (Claude Code first, then Continue or VS Code agent mode) through a small
 MCP server. She does not get tools of her own in this step.
@@ -848,13 +851,17 @@ sequenceDiagram
    in a directory with mode 0700. The browser WebSocket is not reused: its Origin
    check stops web pages, not local processes.
 3. One speech queue per renderer, shared by chat and agent. A user chat message
-   cancels agent speech (needs #14); agent items wait behind a running chat
-   reply. With no renderer connected, tools return `no renderer`.
+   cancels agent speech; agent items wait behind a running chat reply. With no
+   renderer connected, tools return `no renderer`. Built in step A: the bridge
+   cancels the agent item and drops queued ones when a chat reply starts, and
+   the renderer already stops playback on `start`, so this does not wait for
+   #14. `set_mood` sets a rest mood that replaces neutral after speech.
 4. Renderer: agent bubbles labelled with the agent's name, the full `report`
    in a collapsible bubble, and while an `ask` is pending the chat bar sends
    `{"type":"answer","id":…,"text":…}` instead of a new prompt.
-5. New bridge event `{"type":"agent","kind":"report"|"ask","source":…,"text":…}`
-   for the chat log; speech still uses `speak`.
+5. New bridge event `{"type":"agent","kind":"say"|"report"|"ask","source":…,"text":…}`
+   for the chat log, and `{"type":"agent","kind":"mood","source":…,"name":…,"weight":…}`
+   for `set_mood`; speech still uses `speak`.
 
 ### Security for agent input
 

@@ -729,5 +729,33 @@ class McpServerTests(unittest.IsolatedAsyncioTestCase):
                                        "question": "Commit?", "timeout": 30.0})
 
 
+    async def test_whole_mood_catalog_is_visible_to_the_agent(self):
+        try:
+            import mcp  # noqa: F401
+        except ImportError:
+            self.skipTest("mcp is not installed")
+        from controller import mcp_server
+
+        def enums(schema):
+            if isinstance(schema, dict):
+                found = list(schema.get("enum", []))
+                for value in schema.values():
+                    found += enums(value)
+                return found
+            if isinstance(schema, list):
+                return [item for value in schema for item in enums(value)]
+            return []
+
+        server = mcp_server.build_server(Path("/tmp/x.sock"), "Claude Code")
+        tools = {tool.name: tool for tool in await server.list_tools()}
+        for name in ("say", "set_mood"):
+            with self.subTest(tool=name):
+                self.assertEqual(sorted(enums(tools[name].inputSchema)), sorted(CATALOG))
+        listing = tools["set_mood"].description
+        for mood, entry in CATALOG.items():
+            self.assertIn(f"{mood}: {entry['description']}", listing)
+        self.assertIn(str(len(CATALOG)), server.instructions)
+
+
 if __name__ == "__main__":
     unittest.main()

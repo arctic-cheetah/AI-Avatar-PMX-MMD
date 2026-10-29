@@ -144,6 +144,11 @@ class SocketPathTests(unittest.TestCase):
             with self.assertRaises(AgentError):
                 prepare_socket_dir(link / "agent.sock")
 
+    def test_prepare_rejects_overlong_path(self):
+        with tempfile.TemporaryDirectory() as root:
+            with self.assertRaisesRegex(AgentError, "longer"):
+                prepare_socket_dir(Path(root) / ("d" * 120) / "agent.sock")
+
     def test_prepare_removes_stale_socket_only(self):
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "yidhari" / "agent.sock"
@@ -326,6 +331,9 @@ class SocketTests(unittest.IsolatedAsyncioTestCase):
             missing = Path(root) / "agent.sock"
             self.assertEqual(await call_bridge(missing, {"tool": "say", "text": "Hi"}),
                              "bridge not running")
+            overlong = Path(root) / ("d" * 120) / "agent.sock"
+            result = await call_bridge(overlong, {"tool": "say", "text": "Hi"})
+            self.assertTrue(result.startswith("error:"), result)
 
 
 class BridgeIntegrationTests(unittest.IsolatedAsyncioTestCase):

@@ -1,7 +1,7 @@
 // Run with: node --test tests/renderer/
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { startFrame, resetFrame, agentEvent } from "../../renderer/bridge-client.js";
+import { startFrame, resetFrame, agentEvent, answerFrame } from "../../renderer/bridge-client.js";
 
 test("typed and spoken prompts share one start frame; history lives in the bridge", () => {
   assert.deepEqual(JSON.parse(startFrame("another one")), { type: "start", prompt: "another one" });
@@ -39,4 +39,13 @@ test("agent reports keep the full text and a known status for the collapsible bu
   assert.deepEqual(agentEvent({ type: "agent", kind: "report", source: "Claude Code", status: "done", text: "line 1\nline 2" }, CATALOG),
     { kind: "report", source: "Claude Code", status: "done", text: "line 1\nline 2" });
   assert.throws(() => agentEvent({ type: "agent", kind: "report", source: "Agent", status: "panic", text: "x" }, CATALOG));
+});
+
+test("agent asks carry an id; the next chat message answers it", () => {
+  assert.deepEqual(agentEvent({ type: "agent", kind: "ask", source: "Claude Code", id: "ab12", text: "Commit?" }, CATALOG),
+    { kind: "ask", source: "Claude Code", id: "ab12", text: "Commit?" });
+  assert.deepEqual(agentEvent({ type: "agent", kind: "ask-closed", source: "Claude Code", id: "ab12" }, CATALOG),
+    { kind: "ask-closed", source: "Claude Code", id: "ab12" });
+  assert.throws(() => agentEvent({ type: "agent", kind: "ask", source: "A", text: "Commit?" }, CATALOG));
+  assert.deepEqual(JSON.parse(answerFrame("ab12", "Yes please")), { type: "answer", id: "ab12", text: "Yes please" });
 });

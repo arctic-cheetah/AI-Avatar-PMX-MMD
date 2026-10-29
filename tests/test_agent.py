@@ -11,6 +11,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from controller.agent import (
+    HOOK_QUIET,
+    MAX_ANSWER,
+    MAX_ASK_TIMEOUT,
     MAX_QUEUED,
     MAX_REPORT,
     MAX_SAY,
@@ -134,6 +137,27 @@ class ReportValidateTests(unittest.TestCase):
         ]:
             with self.subTest(request=request), self.assertRaises(AgentError):
                 validate(request, CATALOG)
+
+
+class AskValidateTests(unittest.TestCase):
+    def test_ask_defaults_and_bounds(self):
+        self.assertEqual(validate({"tool": "ask", "question": "Commit it?"}, CATALOG),
+                         {"tool": "ask", "source": "Agent", "text": "Commit it?", "timeout": 120.0})
+        for request in [
+            {"tool": "ask", "question": "x" * (MAX_SAY + 1)},
+            {"tool": "ask", "question": "ok?", "timeout": 0},
+            {"tool": "ask", "question": "ok?", "timeout": MAX_ASK_TIMEOUT + 1},
+            {"tool": "ask", "question": "ok?", "timeout": True},
+            {"tool": "ask"},
+        ]:
+            with self.subTest(request=request), self.assertRaises(AgentError):
+                validate(request, CATALOG)
+
+    def test_hook_flag_only_on_report_and_say(self):
+        self.assertTrue(validate({"tool": "report", "text": "x", "hook": True}, CATALOG)["hook"])
+        self.assertNotIn("hook", validate({"tool": "report", "text": "x"}, CATALOG))
+        with self.assertRaises(AgentError):
+            validate({"tool": "report", "text": "x", "hook": "yes"}, CATALOG)
 
 
 class RedactTests(unittest.TestCase):
@@ -450,6 +474,141 @@ class RouterTests(unittest.IsolatedAsyncioTestCase):
                                       "weight": 0.6}])
 
 
+class AskTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.sent = []
+        self.speech = FakeSpeech()
+        patcher = patch("controller.agent.speak_segments", self.speech)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.router = AgentRouter(CATALOG)
+
+        async def send(event):
+            self.sent.append(event)
+
+        self.stage = Stage(send, worker=object(), catalog=CATALOG)
+        self.addAsyncCleanup(self.stage.close)
+        self.router.attach(self.stage)
+
+    async def wait_for_ask(self):
+        for _ in range(50):
+            asks = [e for e in self.sent if e.get("kind") == "ask"]
+            if asks:
+                return asks[-1]
+            await asyncio.sleep(0)
+        self.fail("no ask event")
+
+    async def test_answer_is_the_tool_result(self):
+        task = asyncio.create_task(self.router.handle(
+            {"tool": "ask", "source": "Claude Code", "question": "Shall I commit the fix?"}))
+        event = await self.wait_for_ask()
+        self.assertEqual((event["source"], event["text"]), ("Claude Code", "Shall I commit the fix?"))
+        await settle()
+        self.assertEqual(self.speech.spoken, [[("Shall I commit the fix?", "neutral", 1.0)]])
+        self.assertFalse(self.stage.answer("wrong-id", "no"))
+        self.assertTrue(self.stage.answer(event["id"], "  Yes\x07 please  "))
+        self.assertEqual(await task, "Yes please")
+
+    async def test_timeout_gives_no_answer_and_closes(self):
+        result = await self.router.handle({"tool": "ask", "question": "Still there?", "timeout": 0.05})
+        self.assertEqual(result, "no answer")
+        ask = next(e for e in self.sent if e.get("kind") == "ask")
+        self.assertIn({"type": "agent", "kind": "ask-closed", "source": "Agent", "id": ask["id"]},
+                      self.sent)
+
+    async def test_one_ask_at_a_time(self):
+        first = asyncio.create_task(self.router.handle({"tool": "ask", "question": "One?"}))
+        event = await self.wait_for_ask()
+        self.assertEqual(await self.router.handle({"tool": "ask", "question": "Two?"}), "busy")
+        self.stage.answer(event["id"], "yes")
+        self.assertEqual(await first, "yes")
+
+    async def test_answer_capped(self):
+        task = asyncio.create_task(self.router.handle({"tool": "ask", "question": "Long?"}))
+        event = await self.wait_for_ask()
+        self.stage.answer(event["id"], "y" * (MAX_ANSWER + 50))
+        self.assertEqual(len(await task), MAX_ANSWER)
+
+    async def test_new_chat_and_close_end_the_ask(self):
+        task = asyncio.create_task(self.router.handle({"tool": "ask", "question": "Ready?"}))
+        await self.wait_for_ask()
+        self.stage.close_asks()
+        self.assertEqual(await task, "no answer")
+
+    async def test_hook_report_skipped_after_a_recent_report(self):
+        clock = Clock()
+        router = AgentRouter(CATALOG, clock=clock)
+        router.attach(self.stage)
+        self.assertEqual(await router.handle({"tool": "report", "text": "Done.", "hook": True}),
+                         "queued")
+        clock.now += 2
+        self.assertEqual(await router.handle({"tool": "report", "text": "Done."}), "queued")
+        clock.now += 2
+        self.assertEqual(await router.handle({"tool": "report", "text": "Done.", "hook": True}),
+                         "skipped")
+        clock.now += HOOK_QUIET
+        self.assertEqual(await router.handle({"tool": "report", "text": "Done.", "hook": True}),
+                         "queued")
+
+
+class AgentNotifyTests(unittest.IsolatedAsyncioTestCase):
+    def test_last_assistant_text_from_transcript(self):
+        from controller.agent_notify import last_assistant_text
+
+        lines = [
+            json.dumps({"type": "user", "message": {"role": "user", "content": "fix it"}}),
+            json.dumps({"type": "assistant", "message": {"role": "assistant", "content": [
+                {"type": "text", "text": "Looking."}, {"type": "tool_use", "name": "Bash"}]}}),
+            "not json",
+            json.dumps({"type": "assistant", "message": {"role": "assistant", "content": [
+                {"type": "text", "text": "All 33 tests pass."},
+                {"type": "text", "text": "Ready to commit."}]}}),
+            json.dumps({"type": "assistant", "message": {"role": "assistant", "content": [
+                {"type": "tool_use", "name": "Read"}]}}),
+        ]
+        self.assertEqual(last_assistant_text(lines), "All 33 tests pass.\nReady to commit.")
+        self.assertIsNone(last_assistant_text(["garbage", "{}"]))
+
+    async def test_stop_and_notification_requests(self):
+        from controller.agent_notify import build_request
+
+        with tempfile.TemporaryDirectory() as root:
+            transcript = Path(root) / "t.jsonl"
+            transcript.write_text(json.dumps({"type": "assistant", "message": {
+                "role": "assistant", "content": [{"type": "text", "text": "Done!"}]}}) + "\n")
+            self.assertEqual(
+                build_request("stop", {"transcript_path": str(transcript)}, "Claude Code"),
+                {"tool": "report", "source": "Claude Code", "text": "Done!", "kind": "done",
+                 "hook": True})
+        self.assertEqual(
+            build_request("stop", {"last_assistant_message": "Finished."}, "Claude Code")["text"],
+            "Finished.")
+        self.assertIsNone(build_request("stop", {"stop_hook_active": True,
+                                                 "last_assistant_message": "x"}, "A"))
+        self.assertIsNone(build_request("stop", {"transcript_path": "/nonexistent"}, "A"))
+        self.assertEqual(
+            build_request("notification", {"message": "Claude needs your permission to use Bash"},
+                          "Claude Code"),
+            {"tool": "say", "source": "Claude Code", "mood": "worried", "hook": True,
+             "text": "Claude needs your permission to use Bash"})
+
+    async def test_main_never_fails(self):
+        import io
+        from controller import agent_notify
+
+        calls = []
+
+        async def fake_call(path, request, timeout=None):
+            calls.append(request)
+            return "queued"
+
+        with patch("controller.agent_notify.call_bridge", fake_call):
+            for stdin in ["not json", "[]", json.dumps({"last_assistant_message": "Done."})]:
+                with patch("sys.stdin", io.StringIO(stdin)):
+                    self.assertEqual(await agent_notify.run(["stop", "--name", "Claude Code"]), 0)
+        self.assertEqual([c["text"] for c in calls], ["Done."])
+
+
 class SocketTests(unittest.IsolatedAsyncioTestCase):
     async def test_round_trip_and_bad_lines(self):
         router = AgentRouter(CATALOG)
@@ -511,6 +670,31 @@ class BridgeIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 await asyncio.sleep(0.01)
             self.assertEqual(router.stages, [])
 
+    async def test_answer_frame_resolves_the_ask(self):
+        from websockets.asyncio.client import connect
+        from websockets.asyncio.server import serve as ws_serve
+
+        router = AgentRouter(CATALOG)
+        args = Namespace(mode="demo", agent_router=router)
+
+        async def handler(ws):
+            await handle_connection(ws, args, CATALOG)
+
+        async with ws_serve(handler, "127.0.0.1", 0, origins=[ORIGIN]) as server:
+            url = f"ws://127.0.0.1:{server.sockets[0].getsockname()[1]}"
+            async with connect(url, origin=ORIGIN) as ws:
+                for _ in range(50):
+                    if router.stages:
+                        break
+                    await asyncio.sleep(0.01)
+                task = asyncio.create_task(router.handle({"tool": "ask", "question": "Commit?"}))
+                event = json.loads(await asyncio.wait_for(ws.recv(), 3))
+                self.assertEqual(event["kind"], "ask")
+                await ws.send(json.dumps({"type": "answer", "id": "bogus", "text": "no"}))
+                await ws.send(json.dumps({"type": "answer", "id": event["id"], "text": 7}))
+                await ws.send(json.dumps({"type": "answer", "id": event["id"], "text": "Yes please"}))
+                self.assertEqual(await asyncio.wait_for(task, 3), "Yes please")
+
 
 class McpServerTests(unittest.IsolatedAsyncioTestCase):
     async def test_tools_forward_to_bridge(self):
@@ -528,11 +712,12 @@ class McpServerTests(unittest.IsolatedAsyncioTestCase):
 
         server = mcp_server.build_server(Path("/tmp/x.sock"), "Claude Code")
         tools = {tool.name for tool in await server.list_tools()}
-        self.assertEqual(tools, {"say", "report", "set_mood"})
+        self.assertEqual(tools, {"say", "report", "ask", "set_mood"})
         with patch("controller.mcp_server.call_bridge", fake_call):
             await server.call_tool("say", {"text": "Hi", "mood": "happy"})
             await server.call_tool("set_mood", {"name": "thinking"})
             await server.call_tool("report", {"text": "All done.", "kind": "done"})
+            await server.call_tool("ask", {"question": "Commit?", "timeout": 30})
         self.assertEqual(calls[0], (Path("/tmp/x.sock"),
                                     {"tool": "say", "source": "Claude Code", "text": "Hi",
                                      "mood": "happy", "weight": 1.0}))
@@ -540,6 +725,8 @@ class McpServerTests(unittest.IsolatedAsyncioTestCase):
                                        "name": "thinking", "weight": 1.0})
         self.assertEqual(calls[2][1], {"tool": "report", "source": "Claude Code",
                                        "text": "All done.", "kind": "done"})
+        self.assertEqual(calls[3][1], {"tool": "ask", "source": "Claude Code",
+                                       "question": "Commit?", "timeout": 30.0})
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ import { VoiceInput, voiceSupported } from './voice-input.js';
 const CLIP_ID = /^[0-9a-f]{16}$/;
 const MAX_PROMPT = 2000;
 const MAX_REPLY = 50000;
+const MAX_SOURCE = 40;
 
 /** The one message that starts a reply, whether the prompt was typed or spoken. */
 export function startFrame(prompt) {
@@ -15,7 +16,27 @@ export function resetFrame() {
   return JSON.stringify({ type: 'reset' });
 }
 
-export function connectBridge({ catalog, onStart, onFinish, onExpression, onText, onSpeak, onReset }) {
+/**
+ * Validate a coding agent's event (#27): a say line for the chat log, or a rest mood.
+ * @returns {{ kind: 'say', source: string, text: string } | { kind: 'mood', source: string, name: string, weight: number }}
+ */
+export function agentEvent(event, catalog) {
+  if (typeof event.source !== 'string') throw new Error('Invalid agent source');
+  const source = event.source.slice(0, MAX_SOURCE);
+  if (event.kind === 'say') {
+    if (typeof event.text !== 'string') throw new Error('Invalid agent text');
+    return { kind: 'say', source, text: event.text.slice(0, MAX_REPLY) };
+  }
+  if (event.kind === 'mood') {
+    if (!Object.hasOwn(catalog, event.name) || typeof event.weight !== 'number' || !Number.isFinite(event.weight)) {
+      throw new Error('Invalid agent mood');
+    }
+    return { kind: 'mood', source, name: event.name, weight: Math.max(0, Math.min(1, event.weight)) };
+  }
+  throw new Error('Unknown agent event');
+}
+
+export function connectBridge({ catalog, onStart, onFinish, onExpression, onText, onSpeak, onReset, onAgentSay, onAgentMood }) {
   const button = document.querySelector('#bridge-start');
   const status = document.querySelector('#bridge-status');
   const chatBar = document.querySelector('#chat-bar');
@@ -29,13 +50,13 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
   let busy = false;
   let reply = null;
 
-  /** Append a chat bubble (user or Yidhari); returns the message element. */
-  function addLine(who) {
+  /** Append a chat bubble (user, Yidhari, or Yidhari speaking for an agent); returns the message element. */
+  function addLine(who, source = null) {
     const line = document.createElement('p');
     line.className = `chat-line chat-${who}`;
     const label = document.createElement('span');
     label.className = 'chat-who';
-    label.textContent = who === 'you' ? 'You' : 'Yidhari';
+    label.textContent = who === 'you' ? 'You' : who === 'agent' ? `Yidhari · for ${source}` : 'Yidhari';
     const body = document.createElement('span');
     line.append(label, body);
     chatLog.append(line);
@@ -152,6 +173,16 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
             if (typeof event.id !== 'string' || !CLIP_ID.test(event.id) || !Object.hasOwn(catalog, event.expression) ||
               typeof event.weight !== 'number' || !Number.isFinite(event.weight) || typeof event.text !== 'string') throw new Error('Invalid speak');
             onSpeak({ id: event.id, expression: event.expression, weight: Math.max(0, Math.min(1, event.weight)), text: event.text }); break;
+          case 'agent': {
+            const agent = agentEvent(event, catalog);
+            if (agent.kind === 'say') {
+              addLine('agent', agent.source).textContent = agent.text;
+              onAgentSay?.(busy);
+            } else {
+              onAgentMood?.(agent.name, agent.weight);
+            }
+            break;
+          }
           case 'notice':
             if (typeof event.text !== 'string') throw new Error('Invalid notice');
             status.textContent = event.text; break;

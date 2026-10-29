@@ -70,6 +70,7 @@ body.chat-input-resizing { cursor: ns-resize; user-select: none; }
 .chat-line .chat-who { display: block; font-size: 11px; color: var(--muted); margin-bottom: 2px; }
 .chat-you { background: #33244a; align-self: flex-end; }
 .chat-yidhari { background: #2a2130; align-self: flex-start; }
+.chat-agent { background: #21283a; align-self: flex-start; }
 #status, #hint { position: absolute; left: 16px; margin: 0; pointer-events: none; text-shadow: 0 1px 2px #000; }
 #status { bottom: 36px; } #hint { bottom: 14px; color: var(--muted); font-size: 12px; }
 .morph-group { margin: 12px 0; } summary { cursor: pointer; font-weight: 600; }

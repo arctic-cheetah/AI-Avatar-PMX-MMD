@@ -30,6 +30,9 @@ MAX_REPORT = 16384  # characters of report text
 MAX_SUMMARY_CHARS = 600  # summariser output read before it is cut off
 MAX_SUMMARY_SENTENCES = 3
 REPORT_KINDS = ("progress", "done", "error")
+MAX_ANSWER = 4000  # characters of the user's reply returned to the agent
+DEFAULT_ASK_TIMEOUT, MAX_ASK_TIMEOUT = 120.0, 600.0  # seconds
+HOOK_QUIET = 120.0  # seconds after an agent's own report during which a hook report is skipped
 FALLBACK = {  # spoken when no summariser is available or it fails
     "progress": "[determined] A progress update. The details are in the chat.",
     "done": "[happy] All done. The details are in the chat.",
@@ -39,7 +42,7 @@ MAX_SOURCE = 40  # characters of agent name on chat bubbles
 MAX_QUEUED = 10  # agent items queued or speaking per renderer
 MAX_LINE = 262144  # bytes in one socket request (a 16 KiB report plus JSON escapes)
 MAX_SOCKET_PATH = 107  # bytes; Linux sun_path holds 108 including the final NUL
-MIN_INTERVAL = {"say": 1.0, "report": 1.0, "set_mood": 0.2}  # seconds between calls of one tool
+MIN_INTERVAL = {"say": 1.0, "report": 1.0, "ask": 1.0, "set_mood": 0.2}  # seconds between calls of one tool
 DEFAULT_SOURCE = "Agent"
 LOG = logging.getLogger(__name__)
 
@@ -149,6 +152,16 @@ def _mood(name, catalog):
     return name
 
 
+def _hook(request, call):
+    """Mark calls sent by an agent-host hook (agent_notify.py) rather than the model."""
+    hook = request.get("hook", False)
+    if not isinstance(hook, bool):
+        raise AgentError("hook must be true or false")
+    if hook:
+        call["hook"] = True
+    return call
+
+
 def validate(request, catalog):
     """Return a normalised tool call, or raise AgentError."""
     if not isinstance(request, dict):
@@ -160,22 +173,36 @@ def validate(request, catalog):
     tool = request.get("tool")
     if tool == "say":
         mood = request.get("mood")
-        return {
+        return _hook(request, {
             "tool": "say",
             "source": source,
             "text": _text(request, "text", MAX_SAY),
             "mood": None if mood is None else _mood(mood, catalog),
             "weight": _weight(request),
-        }
+        })
     if tool == "report":
         kind = request.get("kind", "done")
         if kind not in REPORT_KINDS:
             raise AgentError("kind must be progress, done or error")
-        return {
+        return _hook(request, {
             "tool": "report",
             "source": source,
             "text": _text(request, "text", MAX_REPORT, clean_report),
             "kind": kind,
+        })
+    if tool == "ask":
+        timeout = request.get("timeout", DEFAULT_ASK_TIMEOUT)
+        if (
+            isinstance(timeout, bool)
+            or not isinstance(timeout, (int, float))
+            or not 0 < timeout <= MAX_ASK_TIMEOUT
+        ):
+            raise AgentError(f"timeout must be over 0 and at most {MAX_ASK_TIMEOUT:.0f} seconds")
+        return {
+            "tool": "ask",
+            "source": source,
+            "text": _text(request, "question", MAX_SAY),
+            "timeout": float(timeout),
         }
     if tool == "set_mood":
         return {
@@ -202,6 +229,7 @@ class Stage:
         self.chat_idle.set()
         self.current = None
         self.epoch = 0  # bumped by cancel_agent; items from an older epoch are dropped
+        self.asks = {}  # ask id -> future for the user's reply
         self.runner = asyncio.create_task(self._run())
 
     @property
@@ -226,7 +254,24 @@ class Stage:
         if self.current is not None:
             self.current.cancel()
 
+    def answer(self, ask_id, text):
+        """Resolve a pending ask with the user's reply; False if none matches."""
+        future = self.asks.pop(ask_id, None)
+        text = clean_text(text)[:MAX_ANSWER] if isinstance(text, str) else ""
+        if future is None or future.done() or not text:
+            return False
+        future.set_result(text)
+        return True
+
+    def close_asks(self):
+        """New chat or disconnect: every pending ask gets no answer."""
+        for future in self.asks.values():
+            if not future.done():
+                future.set_result("no answer")
+        self.asks.clear()
+
     async def close(self):
+        self.close_asks()
         self.cancel_agent()
         self.runner.cancel()
         await asyncio.gather(self.runner, return_exceptions=True)
@@ -307,6 +352,7 @@ class AgentRouter:
         self.catalog, self.clock = catalog, clock
         self.stages = []
         self.last = {}
+        self.last_report = -math.inf  # the model's own report, not a hook's
 
     def attach(self, stage):
         self.stages.append(stage)
@@ -330,7 +376,22 @@ class AgentRouter:
             return f"error: {error}"
         if not self.stages:
             return "no renderer"
-        stage = self.stages[-1]
+        try:
+            return await self._dispatch(self.stages[-1], call)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            LOG.warning("Agent call failed; the renderer may have closed", exc_info=True)
+            return "no renderer"
+
+    async def _dispatch(self, stage, call):
+        if call["tool"] == "report" and call.get("hook"):
+            if self.clock() - self.last_report < HOOK_QUIET:
+                return "skipped"  # the agent already reported this task itself
+        elif call["tool"] == "report":
+            self.last_report = self.clock()
+        if call["tool"] == "ask":
+            return await self._ask(stage, call)
         if call["tool"] in ("say", "report"):
             if stage.pending >= MAX_QUEUED or self._limited(call["tool"]):
                 return "busy"
@@ -343,6 +404,35 @@ class AgentRouter:
             return "queued"
         if self._limited("set_mood"):
             return "busy"
+        return await self._mood(stage, call)
+
+    async def _ask(self, stage, call):
+        """Speak the question; the user's next chat message is the tool result."""
+        if stage.asks or stage.pending >= MAX_QUEUED or self._limited("ask"):
+            return "busy"
+        ask_id = secrets.token_hex(8)
+        future = asyncio.get_running_loop().create_future()
+        stage.asks[ask_id] = future
+        try:
+            await stage.send(
+                {"type": "agent", "kind": "ask", "source": call["source"], "id": ask_id,
+                 "text": call["text"]}
+            )
+            stage.enqueue({"tool": "say", "source": call["source"], "text": call["text"],
+                           "mood": None, "weight": 1.0})
+            return await asyncio.wait_for(asyncio.shield(future), call["timeout"])
+        except asyncio.TimeoutError:
+            try:
+                await stage.send(
+                    {"type": "agent", "kind": "ask-closed", "source": call["source"], "id": ask_id}
+                )
+            except Exception:
+                pass  # the renderer may be gone
+            return "no answer"
+        finally:
+            stage.asks.pop(ask_id, None)
+
+    async def _mood(self, stage, call):
         await stage.send(
             {
                 "type": "agent",

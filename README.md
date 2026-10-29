@@ -7,7 +7,7 @@ This is a companion project, kept outside `my_code_pc` so it does not compete fo
 ## ✨ What she can do
 
 - 💬 **Chat:** type into the chat bar; replies stream from a local `llama-server`.
-- 🤖 **Agent voice:** start the bridge with `--agent` and a coding agent such as Claude Code can make her speak (`say`), summarise its results aloud (`report`) and change her face (`set_mood`) through a small MCP server — see [docs/agent-voice.md](docs/agent-voice.md).
+- 🤖 **Agent voice:** start the bridge with `--agent` and a coding agent such as Claude Code can make her speak (`say`), summarise its results aloud (`report`), ask you questions you answer in the chat (`ask`) and change her face (`set_mood`) through a small MCP server — see [docs/agent-voice.md](docs/agent-voice.md).
 - 🎤 **Voice input:** click **🎤 Talk**, speak, click **■ Stop**. Local Whisper on the CPU turns it into a chat prompt; audio never leaves the machine ([docs/voice-input.md](docs/voice-input.md)).
 - 😊 **Moods:** the LLM adds tags such as `[soft-smile:0.6]`, which become facial expressions from a catalog of 46 presets.
 - 🤔 **Thinking face:** while the model reasons, she looks thoughtful.

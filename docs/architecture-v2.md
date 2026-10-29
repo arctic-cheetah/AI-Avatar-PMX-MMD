@@ -722,10 +722,10 @@ transcript ─► sendPrompt() ─► {"type":"start","prompt"} ─► bridge (u
 ## Agent voice over MCP — plan, 2026-10-18
 
 Tracked in [#27](https://github.com/arctic-cheetah/AI-Avatar-PMX-MMD/issues/27).
-Status: step A (`say`, `set_mood`, agent socket, shared speech lane) and step B
-(`report` summariser, redaction before TTS) are built; setup, behaviour and the
-summary latency measurement are in [agent-voice.md](./agent-voice.md). `ask`
-(step C) follows.
+Status: built in three steps: A (`say`, `set_mood`, agent socket, shared
+speech lane), B (`report` summariser, redaction before TTS) and C (`ask`, answer
+mode in the chat bar, Stop and Notification hooks). Setup, behaviour and the
+summary latency measurement are in [agent-voice.md](./agent-voice.md).
 User decision: Yidhari first becomes the **voice and face of an existing coding
 agent** (Claude Code first, then Continue or VS Code agent mode) through a small
 MCP server. She does not get tools of her own in this step.

@@ -12,7 +12,7 @@ Built in steps:
 | ---- | ---------------------- | --------------- |
 | A    | `say`, `set_mood`      | ✅ this guide   |
 | B    | `report` (summariser)  | ✅ this guide   |
-| C    | `ask`, Stop hook       | planned         |
+| C    | `ask`, Stop and Notification hooks | ✅ this guide |
 
 `say` and `set_mood` never call an LLM. `report` summaries use the same upstream
 as chat (`--llama-url`, `--model`, `--api-key-env`), so they work with the local
@@ -86,6 +86,8 @@ the agent socket is a Unix domain socket that only your user can open.
      you finish it. Plain speech only: no code, paths, hashes or URLs.
    - When a task finishes or fails, call `report` with your full final message
      and `kind` `done` or `error`.
+   - When you need my decision, call `ask` with a short question and wait for
+     the reply; treat `no answer` as "not now".
    - Call `set_mood` with `thinking` while you work for a long time.
    ```
 
@@ -99,6 +101,7 @@ Options for `mcp_server.py`: `--name` is the label on her chat bubbles (default
 | ---------- | --------------------------------------------- | ------------------------------------------------- | ---------------------------------------- |
 | `say`      | `text` (≤ 500 chars), optional `mood`, `weight` | Logs the text in the chat, then speaks it as written | `queued` at once; never waits for playback |
 | `report`   | `text` (≤ 16 KiB), `kind`: `progress`, `done` (default) or `error` | Logs the full text in a collapsible bubble; the LLM rewrites it as 1–3 spoken sentences with moods | `queued` at once |
+| `ask`      | `question` (≤ 500 chars), optional `timeout` (s, default 120, max 600) | Logs and speaks the question; your next chat message (typed or spoken) is the answer | Your reply (≤ 4000 chars), or `no answer` after the timeout |
 | `set_mood` | `name`, optional `weight`                     | Sets her resting face without speaking            | `ok`                                     |
 
 `say` text goes through the same tag parser as LLM replies, so inline tags such
@@ -152,9 +155,70 @@ Other results:
 | Result               | Meaning                                                           |
 | -------------------- | ----------------------------------------------------------------- |
 | `no renderer`        | No browser is connected to the bridge                             |
-| `busy`               | Rate limit (1 `say` per second) or 10 agent items already queued  |
+| `busy`               | Rate limit (1 `say` per second) or 10 agent items already queued; for `ask`, another question is still open |
+| `skipped`            | A hook report arrived within 2 minutes of the agent's own `report` |
 | `error: …`           | Invalid tool call, for example an unknown mood or text too long   |
 | `bridge not running` | Nothing listens on the socket; start the bridge with `--agent`    |
+
+## Asking you a question
+
+While an `ask` is open, the chat bar shows `Answer <agent>…` and your next
+message (typed, or spoken with **🎤 Talk**) goes back to the agent as the tool
+result instead of starting a chat reply. Only one question can be open at a
+time. When it times out, the chat bar returns to normal. **New chat** or closing
+the renderer ends it with `no answer`.
+
+The reply is plain text for the agent. It never approves the agent host's own
+permission prompts: those still appear in the agent host.
+
+MCP hosts may stop waiting for a tool call before the `ask` timeout. If yours
+does, pass a smaller `timeout`. In Claude Code, the `MCP_TOOL_TIMEOUT`
+environment variable (milliseconds) sets the limit.
+
+## Hooks: speak even when the model forgets
+
+MCP is a pull protocol: she hears only what the agent passes to a tool. To make
+her speak even when the model forgets to call `report`, add
+`controller/agent_notify.py` as a Claude Code hook, in `~/.claude/settings.json`
+or the project's `.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/parrot/Code/avatar-yidhari/.venv/bin/python /home/parrot/Code/avatar-yidhari/controller/agent_notify.py stop --name 'Claude Code'"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/parrot/Code/avatar-yidhari/.venv/bin/python /home/parrot/Code/avatar-yidhari/controller/agent_notify.py notification --name 'Claude Code'"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+- **`stop`:** sends the agent's final message as a `report` (kind `done`). It
+  uses `last_assistant_message` when the host sends it; otherwise it reads the
+  trailing assistant text from `transcript_path`. The bridge skips it
+  (`skipped`) if the agent already called `report` in the last 2 minutes, so
+  she does not say it twice.
+- **`notification`:** speaks the host's notice with a `worried` face, for
+  example "Claude needs your permission to use Bash". She only tells you;
+  you still approve in Claude Code.
+- The hook always exits 0, prints nothing and gives up after 5 s, so it never
+  blocks the agent, even when the bridge is down.
 
 ## Chat and agent share one speech lane
 

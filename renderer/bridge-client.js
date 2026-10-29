@@ -20,6 +20,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
   const status = document.querySelector('#bridge-status');
   const chatBar = document.querySelector('#chat-bar');
   const chatInput = document.querySelector('#chat-input');
+  const chatInputResizer = document.querySelector('#chat-input-resizer');
   const chatSend = document.querySelector('#chat-send');
   const chatMic = document.querySelector('#chat-mic');
   const chatLog = document.querySelector('#chat-log');
@@ -53,11 +54,30 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     chatNew.disabled = socket?.readyState !== WebSocket.OPEN;
   }
 
+  /** True after the user drags the composer; typing must not undo that size. */
+  let chatInputSized = false;
+
+  /** Grow with the text until the user resizes it. Pass reset after a send. */
+  function fitChatInput({ reset = false } = {}) {
+    if (reset) chatInputSized = false;
+    if (chatInputSized) {
+      chatInput.style.overflowY = chatInput.scrollHeight > chatInput.clientHeight + 1 ? 'auto' : 'hidden';
+      return;
+    }
+    chatInput.style.height = 'auto';
+    const next = chatInput.scrollHeight;
+    const cap = Number.parseFloat(getComputedStyle(chatInput).maxHeight);
+    const capped = Number.isFinite(cap) && next > cap;
+    chatInput.style.height = `${capped ? cap : next}px`;
+    chatInput.style.overflowY = capped ? 'auto' : 'hidden';
+  }
+
   /** Show a prompt as the user's bubble and start a reply; false if the bridge cannot take it now. */
   function sendPrompt(prompt) {
     if (!prompt || !canSend()) return false;
     addLine('you').textContent = prompt;
     chatInput.value = '';
+    fitChatInput({ reset: true });
     startGeneration(prompt);
     return true;
   }
@@ -66,6 +86,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     onTranscript: (text) => {
       if (!sendPrompt(text)) {
         chatInput.value = text;
+        fitChatInput();
         status.textContent = 'Transcript ready · press Send when she is free';
       }
     },
@@ -160,6 +181,37 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     if (socket?.readyState === WebSocket.OPEN) socket.send(resetFrame());
   });
   chatBar.addEventListener('submit', (event) => {
+    event.preventDefault();
+    sendPrompt(chatInput.value.trim());
+  });
+  chatInput.addEventListener('input', () => fitChatInput());
+  chatInputResizer.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0 || chatInput.disabled) return;
+    event.preventDefault();
+    chatInputSized = true;
+    const startY = event.clientY;
+    const startHeight = chatInput.getBoundingClientRect().height;
+    const maxHeight = Number.parseFloat(getComputedStyle(chatInput).maxHeight);
+    chatInputResizer.setPointerCapture(event.pointerId);
+    document.body.classList.add('chat-input-resizing');
+    function move(next) {
+      const limit = Number.isFinite(maxHeight) ? maxHeight : startHeight + 320;
+      const height = Math.min(limit, Math.max(38, startHeight + next.clientY - startY));
+      chatInput.style.height = `${height}px`;
+      chatInput.style.overflowY = chatInput.scrollHeight > chatInput.clientHeight + 1 ? 'auto' : 'hidden';
+    }
+    function stop() {
+      chatInputResizer.removeEventListener('pointermove', move);
+      chatInputResizer.removeEventListener('pointerup', stop);
+      chatInputResizer.removeEventListener('pointercancel', stop);
+      document.body.classList.remove('chat-input-resizing');
+    }
+    chatInputResizer.addEventListener('pointermove', move);
+    chatInputResizer.addEventListener('pointerup', stop);
+    chatInputResizer.addEventListener('pointercancel', stop);
+  });
+  chatInput.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
     event.preventDefault();
     sendPrompt(chatInput.value.trim());
   });

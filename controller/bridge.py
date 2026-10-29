@@ -480,6 +480,15 @@ async def handle_connection(socket, args, catalog):
     async def send(event):
         await socket.send(json.dumps(event, ensure_ascii=False, allow_nan=False))
 
+    # Agent voice (#27): this renderer's speech lane, shared by chat and agent.
+    router = getattr(args, "agent_router", None)
+    stage = None
+    if router is not None:
+        from controller.agent import Stage
+
+        stage = Stage(send, worker, catalog)
+        router.attach(stage)
+
     async def chat_chunks(prompt, on_reasoning, reply):
         """Stream a reply with history; after an overflow before any text, retry once
         with the older half of history dropped."""
@@ -522,6 +531,8 @@ async def handle_connection(socket, args, catalog):
                     {"type": "expression", "name": THINKING, "weight": THINKING_WEIGHT}
                 )
 
+        if stage is not None:
+            stage.chat_started()
         try:
             await send({"type": "start"})
             await send({"type": "expression", "name": "neutral", "weight": 1})
@@ -578,6 +589,8 @@ async def handle_connection(socket, args, catalog):
             if speaker is not None and not speaker.done():
                 speaker.cancel()
                 await asyncio.gather(speaker, return_exceptions=True)
+            if stage is not None:
+                stage.chat_finished()
 
     task = None
     try:
@@ -611,6 +624,8 @@ async def handle_connection(socket, args, catalog):
                 if task is not None:
                     task.cancel()
                     await asyncio.gather(task, return_exceptions=True)
+                if stage is not None:
+                    stage.cancel_agent()
                 if conversation is not None:
                     conversation.clear()
                 await send({"type": "reset"})
@@ -625,6 +640,9 @@ async def handle_connection(socket, args, catalog):
         if task is not None:
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
+        if stage is not None:
+            router.detach(stage)
+            await stage.close()
 
 
 async def run(args):
@@ -650,6 +668,19 @@ async def run(args):
 
     async def handler(socket):
         await handle_connection(socket, args, catalog)
+
+    agent_server = None
+    if getattr(args, "agent", False):
+        from controller.agent import AgentError, AgentRouter, serve as serve_agent
+
+        args.agent_router = AgentRouter(catalog)
+        try:
+            agent_server = await serve_agent(args.agent_socket, args.agent_router)
+        except AgentError as error:
+            if args.speech_worker is not None:
+                await args.speech_worker.close()
+            raise SystemExit(f"bridge: error: {error}") from None
+        print(f"Agent socket: {args.agent_socket}", flush=True)
 
     try:
         async with serve(
@@ -680,6 +711,10 @@ async def run(args):
             )
             await asyncio.Future()
     finally:
+        if agent_server is not None:
+            agent_server.close()
+            await agent_server.wait_closed()
+            args.agent_socket.unlink(missing_ok=True)
         if args.speech_worker is not None:
             await args.speech_worker.close()
 
@@ -743,11 +778,26 @@ def build_parser():
     parser.add_argument("--kokoro-speed", type=float, default=1.0)
     parser.add_argument("--kokoro-threads", type=int, default=2)
     parser.add_argument("--rvc-threads", type=int, default=0)
+    parser.add_argument(
+        "--agent",
+        action="store_true",
+        help="Let a coding agent speak through Yidhari via controller/mcp_server.py (owner-only Unix socket).",
+    )
+    parser.add_argument(
+        "--agent-socket",
+        type=Path,
+        default=None,
+        help="Agent socket path (default: $XDG_RUNTIME_DIR/yidhari/agent.sock).",
+    )
     return parser
 
 
 def main():
     args = build_parser().parse_args()
+    if args.agent and args.agent_socket is None:
+        from controller.agent import default_socket_path
+
+        args.agent_socket = default_socket_path()
     args.llm_headers, args.llm_external = {}, False
     if args.mode == "llm":
         try:

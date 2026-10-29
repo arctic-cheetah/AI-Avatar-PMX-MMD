@@ -1038,7 +1038,7 @@ function relaxAfterSpeech() {
   setTimeout(() => {
     if (run === liveRun && liveSpeech.shouldRelax(speechIdle())) {
       liveSpeech.relaxed();
-      applyMood("neutral", 1);
+      applyMood(liveSpeech.restMood.name, liveSpeech.restMood.weight);
     }
   }, RELAX_DELAY_MS);
 }
@@ -1180,6 +1180,14 @@ function onModelLoaded(loaded, data) {
     onExpression: applyMood,
     onText: (text) => { transcript.textContent = (transcript.textContent + text).slice(-50000); },
     onSpeak: enqueueSpeech,
+    onAgentSay: (chatBusy) => {
+      // Outside a chat reply, agent speech is its own finished response, so the face relaxes after it.
+      if (!chatBusy) liveSpeech.responseFinished();
+    },
+    onAgentMood: (name, weight) => {
+      liveSpeech.setRestMood(name, weight);
+      if (speechIdle()) applyMood(name, weight);
+    },
   });
 }
 

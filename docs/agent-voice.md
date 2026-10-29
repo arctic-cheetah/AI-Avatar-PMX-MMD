@@ -104,6 +104,13 @@ Options for `mcp_server.py`: `--name` is the label on her chat bubbles (default
 | `ask`      | `question` (≤ 500 chars), optional `timeout` (s, default 120, max 600) | Logs and speaks the question; your next chat message (typed or spoken) is the answer | Your reply (≤ 4000 chars), or `no answer` after the timeout |
 | `set_mood` | `name`, optional `weight`                     | Sets her resting face without speaking            | `ok`                                     |
 
+The agent sees every mood: `mcp_server.py` loads
+[expressions.json](../renderer/expressions.json) at start, lists each name in the
+`mood`/`name` parameter schema (an enum), and puts every name with its
+description in the `set_mood` tool description. Restart the agent session after
+changing the catalog, since hosts read tool lists once per session. An unknown
+mood is refused before it reaches the bridge.
+
 `say` text goes through the same tag parser as LLM replies, so inline tags such
 as `[relieved]` work and unknown brackets are dropped. `mood` is the mood for
 the start of the text. Mood names are checked against

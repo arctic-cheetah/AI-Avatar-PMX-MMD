@@ -144,7 +144,8 @@ Start the renderer server with `--stt` (after `python3 -m controller.setup_stt`)
 Add `--agent` to let a coding agent speak through Yidhari. The bridge opens an
 owner-only Unix socket (default `$XDG_RUNTIME_DIR/yidhari/agent.sock`, override
 with `--agent-socket PATH`) and `controller/mcp_server.py` forwards the agent's
-`say` and `set_mood` tool calls to it. Agent speech shares the renderer's
+`say`, `report` and `set_mood` tool calls to it. `report` summaries use the
+same LLM as chat, local or cloud. Agent speech shares the renderer's
 speech lane with chat; a chat message cancels it. Setup for Claude Code and
 Continue is in [agent-voice.md](agent-voice.md).
 

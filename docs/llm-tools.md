@@ -105,8 +105,15 @@ payloads or credentials. Tool activity is not spoken. The loop permits four
 tool rounds, up to eight calls per round, and 4096 argument characters per
 call. Unknown/disabled tools, invalid JSON, extra arguments and invalid values
 return errors to the model. Broken protocol envelopes, oversized call buffers,
-exhausted rounds or incomplete streams fail generation with the normal error
-notice. Overflow retries happen only before text or tool actions have started,
+or incomplete streams fail generation with the normal error notice.
+After four tool rounds, the bridge requests one final answer with no tools
+advertised. It instructs the model to use relevant evidence, acknowledge
+uncertainty if results are unhelpful, and stop promising further searches.
+If that final response is empty or still contains tool calls, the bridge
+discards its prose and emits a short uncertainty reply instead. No fifth
+round of tools executes. The final answer/fallback uses the normal text and
+speech pipeline and can be retained in conversation history.
+Overflow retries happen only before text or tool actions have started,
 so completed actions are never replayed by that retry.
 
 ## Validation
@@ -138,3 +145,18 @@ IP reputation and request patterns are possible triggers, not confirmed causes.
 A direct Bing RSS check on 1 November 2026 returned HTTP 200 and ten RSS items.
 The bridge still limits output to five. A successful request does not establish
 relevance, continued availability or end-to-end spoken response quality.
+
+## Search quality and retry limits
+
+Bing can return valid HTTP 200/RSS responses whose results are unrelated to
+the full query. A replay of `My Dress-Up Darling anime female protagonist
+name` returned results such as myGov on 1 November 2026. Successful parsing
+does not establish search relevance. The LLM must judge relevance; the bridge
+does not have a semantic relevance filter or a guaranteed alternate provider.
+
+The tool prompt asks the model to preserve the user's subject, avoid invented
+names in query rewrites, and stop after two unhelpful searches. This is model
+guidance, not an enforced per-search counter; the four-round bridge limit is
+the enforced safeguard. It prevents runaway tool use and now ends gracefully,
+but cannot guarantee the model's answer is correct or useful. Failed/truncated
+upstream requests still use the normal generation error path.

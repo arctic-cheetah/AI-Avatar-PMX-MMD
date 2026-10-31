@@ -111,8 +111,8 @@ class DuckDuckGoTests(unittest.IsolatedAsyncioTestCase):
 
 
 class SearchCliTests(unittest.TestCase):
-    def test_default_provider_is_duckduckgo(self):
-        self.assertEqual(build_parser().parse_args([]).search_provider, "duckduckgo")
+    def test_duckduckgo_remains_explicitly_selectable(self):
+        self.assertEqual(build_parser().parse_args(["--search-provider", "duckduckgo"]).search_provider, "duckduckgo")
 
     def test_keyless_startup_and_explicit_brave_startup(self):
         seen = []
@@ -121,7 +121,7 @@ class SearchCliTests(unittest.TestCase):
         with patch("controller.bridge.run", run), patch.dict("os.environ", {}, clear=True):
             with patch("sys.argv", ["bridge", "--mode", "llm", "--tools", "--web-search"]):
                 main()
-            self.assertEqual(seen[-1].search_provider, "duckduckgo")
+            self.assertEqual(seen[-1].search_provider, "bing")
             self.assertIsNone(seen[-1].search_key)
             with patch("sys.argv", ["bridge", "--mode", "llm", "--tools", "--web-search", "--search-provider", "brave"]):
                 with self.assertRaisesRegex(SystemExit, "BRAVE_SEARCH_API_KEY"):

@@ -122,10 +122,66 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
                                                   stream({"content": "Still here."})]), ["Still here."])
             self.assertIn("error", json.loads(self.requests[1]["messages"][-1]["content"]))
 
-    async def test_runaway_loop_stops(self):
-        with self.assertRaisesRegex(ValueError, "round"):
-            await self.run_loop([stream({"tool_calls": [call("get_time")]})])
-        self.assertLessEqual(len(self.requests), MAX_TOOL_ROUNDS + 1)
+    async def test_budget_exhaustion_requests_final_answer_without_tools(self):
+        tools = ToolSession(load_catalog())
+        scripts = [stream({"tool_calls": [call("get_time")]})] * MAX_TOOL_ROUNDS
+        scripts.append(stream({"content": "I couldn't verify that from these results."}))
+        with patch.object(tools, "execute", wraps=tools.execute) as execute:
+            reply = await self.run_loop(scripts, tools)
+        self.assertEqual(reply, ["I couldn't verify that from these results."])
+        self.assertEqual(execute.await_count, MAX_TOOL_ROUNDS)
+        self.assertEqual(len(self.requests), MAX_TOOL_ROUNDS + 1)
+        self.assertNotIn("tools", self.requests[-1])
+        self.assertEqual(self.requests[-1]["messages"][0]["role"], "system")
+        self.assertIn("final answer", self.requests[-1]["messages"][0]["content"])
+        self.assertTrue(any("finishing" in event["text"] for event in self.status))
+
+    async def test_noncompliant_final_call_has_fallback_and_never_executes(self):
+        tools = ToolSession(load_catalog())
+        script = stream({"content": "One more attempt.", "tool_calls": [call("get_time")]})
+        with patch.object(tools, "execute", wraps=tools.execute) as execute:
+            reply = await self.run_loop([script], tools)
+        self.assertEqual(execute.await_count, MAX_TOOL_ROUNDS)
+        self.assertEqual(reply.count("One more attempt."), MAX_TOOL_ROUNDS)
+        self.assertIn("couldn't verify", reply[-1])
+
+    async def test_empty_final_answer_has_fallback(self):
+        scripts = [stream({"tool_calls": [call("get_time")]})] * MAX_TOOL_ROUNDS
+        reply = await self.run_loop(scripts + [stream({})])
+        self.assertIn("couldn't verify", reply[-1])
+
+    async def test_exhausted_search_finishes_as_spoken_reply(self):
+        events, segments = [], []
+        ended = asyncio.Event()
+        class Socket:
+            async def send(self, raw):
+                event = json.loads(raw)
+                events.append(event)
+                if event["type"] in ("end", "error"):
+                    ended.set()
+            async def __aiter__(self):
+                yield '{"type":"start","prompt":"Who is the protagonist?"}'
+                await asyncio.wait_for(ended.wait(), 3)
+        original_client = httpx.AsyncClient
+        count = 0
+        def handler(request):
+            nonlocal count
+            count += 1
+            return httpx.Response(200, text=stream({"tool_calls": [call("web_search", '{"query":"anime protagonist"}')]}))
+        def factory(**kwargs):
+            return original_client(transport=httpx.MockTransport(handler))
+        async def synth(segment, worker, run):
+            segments.append(segment)
+            return "b" * 16, {}
+        args = Namespace(mode="llm", tools=True, web_search=True, search_provider="bing", llama_url="http://localhost",
+                         model=None, context_tokens=65536, speech_worker=object())
+        with patch("httpx.AsyncClient", side_effect=factory), patch("controller.tools.ToolSession.search", return_value={"results": []}), patch("controller.speech.synthesise", synth), patch("controller.speech.clear_live_clips"):
+            await handle_connection(Socket(), args, load_catalog())
+        self.assertEqual(events[-1]["type"], "end")
+        self.assertFalse(any(e["type"] == "error" for e in events))
+        self.assertTrue(any(e["type"] == "speak" for e in events))
+        self.assertIn("couldn't verify", " ".join(s.text for s in segments))
+        self.assertEqual(count, MAX_TOOL_ROUNDS + 1)
 
     async def test_incomplete_or_oversized_stream_never_executes(self):
         tools = ToolSession(load_catalog())

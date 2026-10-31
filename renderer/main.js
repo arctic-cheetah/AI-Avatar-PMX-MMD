@@ -33,7 +33,10 @@ import { AuditionPanel } from "./audition-panel.js";
 import { connectBridge } from "./bridge-client.js";
 import { SpeechPlayer, loadSpeechShapes } from "./speech-player.js";
 import { LiveSpeechSession } from "./speech-session.js";
-import { GazeController, normalisePointer } from "./gaze-tracking.js";
+import { FillerSession } from "./filler-session.js";
+import { ThinkingPose, THINKING_POSE } from "./thinking-pose.js";
+import { buildThinkingRig } from "./thinking-rig.js";
+import { GazeController, normalisePointer, clampEyePitch } from "./gaze-tracking.js";
 import { CameraGaze } from "./camera-gaze.js";
 import { SWAY, SwayController, swayAnglesAt } from "./body-sway.js";
 
@@ -46,6 +49,7 @@ const SPEECH_SAMPLE = {
 };
 // Live clips written by the bridge in --speech mode; only IDs arrive over the socket.
 const LIVE_CLIP_DIR = "/assets/private/speech/live/";
+const FILLER_DIR = "/assets/private/speech/filler/";
 const BLINK_MORPH = "まばたき";
 const WINK_MORPHS = { left: "ウィンク", right: "ウィンク右" };
 const WINK_EASE_RATE = 12;
@@ -53,6 +57,7 @@ const WINK_EASE_RATE = 12;
 const FRAMING = { bust: 13, face: 8 };
 
 const statusEl = document.querySelector("#status");
+const thinkingBubble = document.querySelector("#thinking-bubble");
 const EXPRESSION_CATALOG = await loadExpressionCatalog().catch((error) => {
   statusEl.textContent = "Could not load expressions.json. Check the catalog and reload.";
   throw error;
@@ -164,6 +169,7 @@ const speechQueue = [];
 let liveRun = 0;
 let speechStarting = false;
 const liveSpeech = new LiveSpeechSession();
+const fillerSpeech = new FillerSession();
 // Linger on the last mood briefly after the final word, then ease to neutral.
 const RELAX_DELAY_MS = 600;
 /** @type {THREE.Vector3 | null} Head position used by the camera framings. */
@@ -176,6 +182,9 @@ const gaze = new GazeController();
 let gazeBones = [];
 const gazeEuler = new THREE.Euler();
 const gazeQuat = new THREE.Quaternion();
+const thinkingPose = new ThinkingPose();
+/** @type {{ bone: THREE.Bone, rest: THREE.Quaternion, posed: THREE.Quaternion }[]} */
+let thinkingBones = [];
 /** @type {{ bone: THREE.Bone, rest: THREE.Quaternion }[]} */
 let swayBones = [];
 const swayEuler = new THREE.Euler();
@@ -238,10 +247,26 @@ function applyGaze(delta) {
   if (!gazeBones.length) return;
   const angles = gaze.update(delta);
   for (const { name, bone, rest } of gazeBones) {
-    const yaw = name === "左目" || name === "右目" ? angles.eyeYaw : angles.headYaw;
-    const pitch = name === "左目" || name === "右目" ? angles.eyePitch : angles.headPitch;
+    const isEye = name === "左目" || name === "右目";
+    const yaw = isEye ? angles.eyeYaw : angles.headYaw;
+    const pitch = isEye
+      ? clampEyePitch(angles.eyePitch, thinkingPose.weight * THINKING_POSE.eyePitch)
+      : angles.headPitch;
     gazeEuler.set(pitch, yaw, 0, "YXZ");
     bone.quaternion.copy(rest).multiply(gazeQuat.setFromEuler(gazeEuler));
+  }
+}
+
+/** Cache the lowered-arm rest pose and a supported chin-rest pose. */
+function setupThinkingPose(object) {
+  thinkingBones = buildThinkingRig(object);
+}
+
+/** Blend the hand-to-chin gesture over the lowered-arm rest pose. */
+function applyThinkingPose(delta) {
+  const weight = thinkingPose.update(delta);
+  for (const { bone, rest, posed } of thinkingBones) {
+    bone.quaternion.copy(rest).slerp(posed, weight);
   }
 }
 
@@ -869,6 +894,7 @@ function toggleExpression(event) {
   const name = event.currentTarget.dataset.expression;
   const next = expressions.activeExpression === name ? "neutral" : name;
   if (expressions.setExpression(next, Number(intensityInput.value))) {
+    syncThinkingState();
     audition?.stopSweep();
     updateExpressionButtons();
   }
@@ -886,6 +912,7 @@ function changeIntensity() {
   const weight = Number(intensityInput.value);
   intensityOutput.value = weight.toFixed(2);
   expressions?.setIntensity(weight);
+  syncThinkingState();
 }
 
 intensityInput.addEventListener("input", changeIntensity);
@@ -907,6 +934,7 @@ function editPresetInSliders() {
   audition.clear();
   audition.setWeights(morphs);
   expressions.setExpression("neutral");
+  syncThinkingState();
 }
 
 editPresetButton.addEventListener("click", editPresetInSliders);
@@ -954,9 +982,17 @@ speechButton.addEventListener("click", toggleSpeech);
 function stopSpeech(message) {
   liveRun += 1;
   speechQueue.length = 0;
+  fillerSpeech.reset();
   speech?.stop();
   speechButton.textContent = "▶ Play sample";
   speechStatus.textContent = message;
+}
+
+/** Keep the thinking gesture and bubble on the same path for previews and bridge moods. */
+function syncThinkingState() {
+  const active = expressions?.activeExpression === "thinking" && Number(intensityInput.value) > 0;
+  thinkingPose.setActive(active);
+  thinkingBubble.hidden = !active;
 }
 
 /**
@@ -969,6 +1005,7 @@ function applyMood(name, weight) {
   if (!expressions.setExpression(name, weight)) console.warn("Unavailable expression", name);
   intensityInput.value = String(weight);
   intensityOutput.value = weight.toFixed(2);
+  syncThinkingState();
 }
 
 /**
@@ -979,6 +1016,12 @@ function applyMood(name, weight) {
  */
 function enqueueSpeech({ id, expression, weight, text }) {
   liveSpeech.clipQueued();
+  const fillerId = fillerSpeech.takeForAnswer();
+  if (fillerId !== null) {
+    const filler = speech.load(`${FILLER_DIR}${fillerId}.wav`, `${FILLER_DIR}${fillerId}.visemes.json`);
+    filler.catch(() => {}); // Reported when its turn comes.
+    speechQueue.push({ clip: filler, expression: "thinking", weight: 0.6, text: "Hmm…" });
+  }
   const clip = speech.load(`${LIVE_CLIP_DIR}${id}.wav`, `${LIVE_CLIP_DIR}${id}.visemes.json`);
   clip.catch(() => {}); // Reported when its turn comes.
   speechQueue.push({ clip, expression, weight, text });
@@ -1137,6 +1180,7 @@ function onModelLoaded(loaded, data) {
   });
   restArms(mesh);
   setupGaze(mesh);
+  setupThinkingPose(mesh);
   setupSway(mesh);
 
   const morphCount = mesh.morphTargetInfluences?.length ?? 0;
@@ -1175,10 +1219,12 @@ function onModelLoaded(loaded, data) {
       // Silence any reply still speaking; the bridge has already cancelled it.
       stopSpeech("");
       liveSpeech.reset();
+      applyMood("neutral", 1);
       transcript.textContent = '';
     },
     onExpression: applyMood,
     onText: (text) => { transcript.textContent = (transcript.textContent + text).slice(-50000); },
+    onFiller: ({ id }) => fillerSpeech.reserve(id),
     onSpeak: enqueueSpeech,
   });
 }
@@ -1240,9 +1286,11 @@ function animate() {
   controls.update();
   mesh?.morphTargetInfluences?.fill(0);
   expressions?.update(delta);
+  syncThinkingState();
   speech?.update(delta);
   updateBlink(now / 1000);
   updateWinks(delta);
+  applyThinkingPose(delta);
   applyGaze(delta);
   applySway(now / 1000);
   audition?.update(delta);

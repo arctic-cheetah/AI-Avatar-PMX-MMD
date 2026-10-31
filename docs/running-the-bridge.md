@@ -129,9 +129,37 @@ The worker requests Edge audio for up to two sentences ahead while RVC converts
 one at a time, and the bridge keeps up to three sentences in flight, so later
 sentences are usually ready well before they are needed. Each clip is trimmed
 to 0.05 s before and 0.25 s after the speech, which also removes breaths RVC
-adds at the end. While the LLM is reasoning, Yidhari shows the `thinking` mood. Clips are written to
+adds at the end. While the LLM is reasoning, Yidhari shows the `thinking` mood,
+looks upward and rests curled right fingers beneath her chin, with the left arm
+supporting the lowered elbow, alongside a thought bubble. The hands are held
+slightly forward for face/outfit clearance; head/neck tracking, eye tracking and
+torso sway remain available during the pose. To preview the gesture
+without the bridge, pause the mood loop and select **[thinking]**; select it again
+or set intensity to zero to release both arms. Clips are written to
 `assets/private/speech/live/` and replaced on the next run. The renderer plays
 them in order and applies each mood when its clip starts.
+
+### Optional spoken thinking filler
+
+Add `--thinking-filler` alongside `--speech` to mask the wait for the first word:
+
+```bash
+.venv/bin/python controller/bridge.py --mode llm --speech --tts kokoro \
+  --thinking-filler --applio-dir ../Applio-rocm
+```
+
+This is **off by default** because “Hmm…” is a canned utterance, not LLM output.
+At startup, after the Applio worker is warm, the bridge synthesises and aligns
+one fixed clip into `assets/private/speech/filler/`. The same cached WAV and
+viseme track are reused; no per-reply synthesis is needed. On the first reasoning
+delta of each reply, the renderer queues the filler ahead of the real answer in
+its existing serial audio queue. It plays at most once per reply and cannot
+overlap the answer. The filler is not added to the transcript or chat history.
+
+If preparation fails, the bridge logs the error and continues with the silent
+thinking gesture. If the LLM produces no reasoning delta or no answer clip, the
+filler does not play. `--thinking-filler` requires `--speech`; the flag has no
+text-only variant because it describes an audio clip.
 
 ## Voice input
 
@@ -156,7 +184,8 @@ Run regression tests:
 
 ```bash
 .venv/bin/python -m unittest discover -s tests -v
-node --test tests/renderer/
+npm ci --ignore-scripts
+node --test tests/renderer/*.test.mjs
 ```
 
 Tests cover split tags, malformed/unknown controls, bounded buffering, intensity

@@ -6,10 +6,16 @@
 export const LIMITS = Object.freeze({
   eyeYaw: 0.38,
   eyePitch: 0.22,
+  eyePitchUp: 0.12,
   headScale: 0.45,
 });
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+/** Limit the final eye pitch after mood offsets, without restricting the head. */
+export function clampEyePitch(pitch, offset = 0) {
+  return clamp(pitch + offset, -LIMITS.eyePitchUp, LIMITS.eyePitch);
+}
 
 /**
  * Clamp a normalised gaze target to the -1..1 square.
@@ -44,8 +50,9 @@ export function normalisePointer(clientX, clientY, width, height) {
 export function targetToAngles(target) {
   const { x, y } = clampTarget(target);
   const eyeYaw = x * LIMITS.eyeYaw;
-  const eyePitch = y * LIMITS.eyePitch;
-  return { eyeYaw, eyePitch, headYaw: eyeYaw * LIMITS.headScale, headPitch: eyePitch * LIMITS.headScale };
+  const pitch = y * LIMITS.eyePitch;
+  return { eyeYaw, eyePitch: clampEyePitch(pitch), headYaw: eyeYaw * LIMITS.headScale,
+    headPitch: pitch * LIMITS.headScale };
 }
 
 export class GazeController {

@@ -521,6 +521,16 @@ async def handle_connection(socket, args, catalog):
                 await send(
                     {"type": "expression", "name": THINKING, "weight": THINKING_WEIGHT}
                 )
+                filler_id = getattr(args, "filler_id", None)
+                if filler_id is not None:
+                    await send(
+                        {
+                            "type": "filler",
+                            "id": filler_id,
+                            "expression": THINKING,
+                            "weight": THINKING_WEIGHT,
+                        }
+                    )
 
         try:
             await send({"type": "start"})
@@ -632,6 +642,7 @@ async def run(args):
 
     catalog = load_catalog()
     args.speech_worker = None
+    args.filler_id = None
     if args.speech_settings is not None:
         from controller.speech import ApplioWorker
 
@@ -647,6 +658,10 @@ async def run(args):
             f"Applio worker ready: load {ready['loadSeconds']}s, warm-up {ready['warmSeconds']}s",
             flush=True,
         )
+        if args.thinking_filler:
+            from controller.filler import prepare_filler
+
+            args.filler_id = await prepare_filler(args.speech_worker)
 
     async def handler(socket):
         await handle_connection(socket, args, catalog)
@@ -723,6 +738,11 @@ def build_parser():
         help="Speak each sentence with the selected TTS source, Applio RVC and lip sync.",
     )
     parser.add_argument(
+        "--thinking-filler",
+        action="store_true",
+        help="Cache a short 'Hmm…' clip at startup and play it once when reasoning starts (requires --speech).",
+    )
+    parser.add_argument(
         "--applio-dir",
         type=Path,
         default=Path(__file__).resolve().parents[2] / "Applio",
@@ -748,6 +768,8 @@ def build_parser():
 
 def main():
     args = build_parser().parse_args()
+    if args.thinking_filler and not args.speech:
+        raise SystemExit("bridge: error: --thinking-filler requires --speech")
     args.llm_headers, args.llm_external = {}, False
     if args.mode == "llm":
         try:

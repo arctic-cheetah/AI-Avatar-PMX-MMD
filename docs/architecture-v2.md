@@ -119,9 +119,29 @@ catalog (for example `口角下げ`) still add on top unattenuated; a fuller
 compositor with per-shape rules remains to do. Channel independence is not a
 guarantee of non-conflicting geometry.
 
-Hand poses (`rest`, `loose`, `lift`, `thinking`) are planned using wrist/finger
-bones, eased over about 300 ms. Webcam tracking and full-body locomotion are out
-of scope.
+The thinking mood adds an eased chin-rest gesture: curled right fingers beneath
+the chin, elbow lowered, and the left arm crossing underneath to support it,
+plus a thought bubble and an upward eye offset (not a head tilt). The static
+pose is solved from shoulder/elbow/wrist positions with a two-segment arm solver,
+including intervening twist bones; finger curls are cached before restoring the
+exact rest rotations. Targets are tuned for Yidhari's PMX proportions, not a
+general-purpose retargeter. Both wrist targets and the raised elbow are spaced
+forward to keep fingers/gloves outside the face and outfit. Head/neck and eye
+tracking remain active at their normal limits throughout the gesture. The hand
+target remains fixed relative to the torso rather than following the head.
+Sway moves the pose with the torso. This is tuned clearance, not general mesh collision physics;
+new model proportions or animations need another clearance check.
+Missing optional bones are skipped. Gesture and bubble follow the active mood
+each frame, including expression-loop transitions, and release at zero intensity
+or on leaving thinking. Other hand poses (`rest`, `loose`, `lift`) remain planned.
+Webcam tracking and full-body locomotion are out of scope.
+
+With bridge `--speech --thinking-filler`, one fixed “Hmm…” clip is synthesised,
+trimmed and aligned once at startup under `assets/private/speech/filler/`. The
+first reasoning delta of a reply announces its cached ID; the renderer inserts
+it ahead of the first answer clip in the serial speech queue. This makes the
+filler one-shot and non-overlapping. It is opt-in because the words are not LLM
+output, and preparation failure falls back to the silent thinking gesture.
 
 ### Body sway (issue #4)
 

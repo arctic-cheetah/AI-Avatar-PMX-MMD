@@ -15,7 +15,7 @@ export function resetFrame() {
   return JSON.stringify({ type: 'reset' });
 }
 
-export function connectBridge({ catalog, onStart, onFinish, onExpression, onText, onSpeak, onReset }) {
+export function connectBridge({ catalog, onStart, onFinish, onExpression, onText, onSpeak, onFiller, onReset }) {
   const button = document.querySelector('#bridge-start');
   const status = document.querySelector('#bridge-status');
   const chatBar = document.querySelector('#chat-bar');
@@ -147,6 +147,10 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
               chatLog.scrollTop = chatLog.scrollHeight;
             }
             break;
+          case 'filler':
+            if (typeof event.id !== 'string' || !CLIP_ID.test(event.id) || !Object.hasOwn(catalog, event.expression) ||
+              typeof event.weight !== 'number' || !Number.isFinite(event.weight)) throw new Error('Invalid filler');
+            onFiller?.({ id: event.id, expression: event.expression, weight: Math.max(0, Math.min(1, event.weight)) }); break;
           case 'speak':
             // Only a generated ID crosses the socket; the renderer builds the clip URL itself.
             if (typeof event.id !== 'string' || !CLIP_ID.test(event.id) || !Object.hasOwn(catalog, event.expression) ||

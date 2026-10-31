@@ -9,7 +9,8 @@ This is a companion project, kept outside `my_code_pc` so it does not compete fo
 - 💬 **Chat:** type into the chat bar; replies stream from a local `llama-server`.
 - 🎤 **Voice input:** click **🎤 Talk**, speak, click **■ Stop**. Local Whisper on the CPU turns it into a chat prompt; audio never leaves the machine ([docs/voice-input.md](docs/voice-input.md)).
 - 😊 **Moods:** the LLM adds tags such as `[soft-smile:0.6]`, which become facial expressions from a catalog of 46 presets.
-- 🤔 **Thinking face:** while the model reasons, she looks thoughtful.
+- 🤔 **Thinking face:** while the model reasons, she looks thoughtful, with an eyes-up gesture and a thought bubble.
+- 💭 **Optional spoken filler:** `--thinking-filler` prepares one “Hmm…” clip at startup and plays it once before the real answer.
 - 🎙️ **Voice:** each sentence is synthesised locally with Kokoro TTS (`--tts kokoro`), then converted to Yidhari's voice with an Applio RVC model. Edge TTS is still available with `--tts edge`.
 - 👄 **Lip sync:** Rhubarb Lip Sync times mouth shapes from the final audio, and the renderer plays them on the audio clock.
 - 👀 **Idle life and tuning:** automatic blinking, plus wink controls and a morph test bench for tuning expressions.
@@ -182,6 +183,7 @@ The voice model and Applio settings (RVC pitch, index rate, protect, plus Kokoro
 | -------------------- | ------------------------------------- | ------------------------------------------------------------------------------ |
 | `--mode`           | `demo`                              | `demo` plays a fixed reply; `llm` talks to `llama-server`                |
 | `--speech`         | off                                   | Speak replies with TTS → RVC and lip sync                                     |
+| `--thinking-filler` | off                                  | Cache “Hmm…” at startup; play once per reasoning reply, before the answer     |
 | `--tts`            | `edge` in code; docs use `kokoro` | TTS source. **README's recommended default is `--tts kokoro`** (local) |
 | `--kokoro-voice`   | `af_heart`                          | Kokoro voice ID                                                                |
 | `--kokoro-speed`   | `1.0`                               | Kokoro speed multiplier                                                        |
@@ -231,10 +233,13 @@ The voice model and Applio settings (RVC pitch, index rate, protect, plus Kokoro
 
 ```bash
 .venv/bin/python -m unittest discover -s tests -v   # bridge, speech pipeline, trimming, alignment
-node --test tests/renderer/                          # renderer speech session
+npm ci --ignore-scripts                          # declared Three.js dependency for rig tests
+node --test tests/renderer/*.test.mjs             # renderer state, gaze, sway and thinking rig
 ```
 
-No packages are needed for the renderer tests; they use Node's built-in test runner.
+Renderer tests use Node's built-in test runner; the thinking-rig tests also use
+the matching Three.js package declared in `package.json`. They build a synthetic
+skeleton and do not require the private model pack.
 
 ## 📁 Layout
 

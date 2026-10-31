@@ -6,7 +6,7 @@ from unittest.mock import patch
 import httpx
 
 from controller.bridge import build_parser, load_catalog
-from controller.tools import ToolSession
+from controller.tools import ToolSession, tool_status
 
 
 class BingTests(unittest.IsolatedAsyncioTestCase):
@@ -69,3 +69,10 @@ class BingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(build_parser().parse_args([]).search_provider, "bing")
         for name in ("bing", "duckduckgo", "brave"):
             self.assertEqual(build_parser().parse_args(["--search-provider", name]).search_provider, name)
+
+    def test_notices_distinguish_failures_without_echoing_payloads(self):
+        codes = ["invalid_arguments", "search_blocked", "search_network_error", "search_response_invalid"]
+        notices = [tool_status({"error": "private payload", "code": code}) for code in codes]
+        self.assertEqual(len(set(notices)), len(codes))
+        self.assertTrue(all("private" not in notice for notice in notices))
+        self.assertEqual(tool_status({"results": []}), "Tool complete.")

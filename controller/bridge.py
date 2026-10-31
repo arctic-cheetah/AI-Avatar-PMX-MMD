@@ -385,7 +385,7 @@ async def completion_deltas(base_url, model, messages, on_reasoning=None, header
 async def llama_chunks(base_url, model, messages, on_reasoning=None, headers=None,
                       tool_session=None, on_tool=None):
     """Stream prose and validated moods, continuing bounded companion tool rounds."""
-    from controller.tools import MAX_TOOL_ROUNDS, ToolCalls
+    from controller.tools import MAX_TOOL_ROUNDS, ToolCalls, tool_status
 
     messages = list(messages)
     for round_number in range(MAX_TOOL_ROUNDS + 1):
@@ -417,7 +417,7 @@ async def llama_chunks(base_url, model, messages, on_reasoning=None, headers=Non
                 await on_tool({"type": "notice", "text": f"Using {function['name']}…" if function["name"] in allowed else "Rejecting unknown tool."})
             result = await tool_session.execute(function["name"], function["arguments"])
             if on_tool is not None:
-                await on_tool({"type": "notice", "text": "Tool failed or rejected." if "error" in result else "Tool complete."})
+                await on_tool({"type": "notice", "text": tool_status(result)})
             messages.append({"role": "tool", "tool_call_id": call["id"],
                              "content": json.dumps(result, ensure_ascii=False, allow_nan=False)})
             if "expression" in result:
@@ -527,7 +527,7 @@ async def handle_connection(socket, args, catalog):
 
         tool_session = ToolSession(
             catalog, search_key=getattr(args, "search_key", None),
-            search_provider=getattr(args, "search_provider", "duckduckgo") if getattr(args, "web_search", False) else None,
+            search_provider=getattr(args, "search_provider", "bing") if getattr(args, "web_search", False) else None,
         )
         system += TOOL_PROMPT
     conversation = None  # created on the first LLM request, once the window is known
@@ -770,9 +770,9 @@ def build_parser():
     parser.add_argument("--llama-url", default="http://127.0.0.1:8080")
     parser.add_argument("--model", default=None)
     parser.add_argument("--tools", action="store_true", help="Enable allowlisted companion tool calling.")
-    parser.add_argument("--web-search", action="store_true", help="Enable web_search (requires --mode llm --tools; DuckDuckGo needs no key).")
-    parser.add_argument("--search-provider", choices=("duckduckgo", "brave"), default="duckduckgo",
-                        help="Web search provider (default: keyless DuckDuckGo; Brave needs BRAVE_SEARCH_API_KEY).")
+    parser.add_argument("--web-search", action="store_true", help="Enable web_search (requires --mode llm --tools; Bing RSS needs no key).")
+    parser.add_argument("--search-provider", choices=("bing", "duckduckgo", "brave"), default="bing",
+                        help="Web search provider (default: keyless Bing RSS; Brave needs BRAVE_SEARCH_API_KEY).")
     parser.add_argument(
         "--api-key-env",
         default="OPENAI_API_KEY",

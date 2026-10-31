@@ -34,22 +34,41 @@ With speech enabled the mood belongs to the following spoken segment and is
 applied when its clip plays. Ordinary bracket tags remain supported. Tools
 never control phonemes, visemes, Rhubarb alignment, Applio or clip timing.
 
-## Optional Brave web search
+## Optional keyless DuckDuckGo web search
 
-Create a Brave Search API subscription/key, then set it in the bridge terminal:
+DuckDuckGo is the default provider and needs no API key or extra packages:
 
 ```bash
-export BRAVE_SEARCH_API_KEY='<your Brave Search API key>'
 .venv/bin/python controller/bridge.py --mode llm --tools --web-search
 ```
 
-`--web-search` requires `--tools` and a nonempty `BRAVE_SEARCH_API_KEY`; startup
-fails otherwise. It advertises `web_search` only while enabled. Search queries
-(1–300 characters) leave this machine for Brave and may incur usage charges.
-Only the search key goes to the fixed HTTPS Brave Search endpoint; the LLM key
-and extra LLM headers are never sent there. Redirects and environment proxies
-are disabled. The bridge never follows result links or accepts a model-chosen
-destination URL. No shell, file access, MCP or delegated agent is added here.
+`--web-search` requires `--mode llm --tools`. It advertises `web_search` only
+while enabled. `--search-provider duckduckgo` selects the default explicitly.
+The bridge posts the query to DuckDuckGo's fixed HTTPS HTML search endpoint,
+parses result titles/snippets, and unwraps DuckDuckGo result redirect URLs
+without visiting them. This is an unofficial HTML integration: CAPTCHA,
+throttling or layout changes can make search unavailable. The bridge reports
+those failures rather than bypassing challenges or returning a misleading
+empty result. An explicit no-results page returns an empty list.
+
+Brave remains an optional API provider:
+
+```bash
+export BRAVE_SEARCH_API_KEY='<your Brave Search API key>'
+.venv/bin/python controller/bridge.py --mode llm --tools --web-search \
+  --search-provider brave
+```
+
+Only Brave requires `BRAVE_SEARCH_API_KEY`; startup fails if it is missing
+when Brave search is enabled. A Brave key in the environment does not switch
+the default away from DuckDuckGo. Brave API queries may incur usage charges.
+There is no automatic cross-provider fallback.
+
+Search queries (1–300 characters) leave this machine for the selected
+provider. The LLM key and extra LLM headers are never sent to search providers;
+DuckDuckGo receives no API key. Redirects and environment proxies are disabled.
+The bridge never follows result links or accepts a model-chosen destination
+URL. No shell, file access, MCP or delegated agent is added here.
 
 Results have at most five entries, each bounded to a 200-character title,
 2000-character HTTP(S) URL and 500-character snippet. The response body is
@@ -90,7 +109,8 @@ node --test tests/renderer/
 ```
 
 Tests mock upstream LLM/search responses and speech synthesis, requiring no
-paid API or voice model. For live checks, ask for the current time, ask her to
+paid API or voice model. DuckDuckGo tests use HTML fixtures, including blocked
+and empty-result pages. For live checks, ask for the current time, ask her to
 remember a preference, recall it, then choose **New chat** and recall again.
 With search enabled ask for recent news with sources. With speech enabled,
 confirm a tool-assisted reply speaks and uses the selected catalog mood.

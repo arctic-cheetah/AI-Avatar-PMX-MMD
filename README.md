@@ -230,9 +230,9 @@ The voice model and Applio settings (RVC pitch, index rate, protect, plus Kokoro
 ## 🧪 Tests
 
 Optional LLM tools (`get_time`, `set_expression`, session `remember` / `recall`)
-and Brave web search are described in [LLM companion tools](docs/llm-tools.md).
-Start with `--mode llm --tools`; add `--web-search` and a
-`BRAVE_SEARCH_API_KEY` to enable search.
+and keyless DuckDuckGo web search are described in [LLM companion tools](docs/llm-tools.md).
+Start with `--mode llm --tools`; add `--web-search` to enable DuckDuckGo.
+Brave is optional via `--search-provider brave` and `BRAVE_SEARCH_API_KEY`.
 
 ```bash
 .venv/bin/python -m unittest discover -s tests -v   # bridge, speech pipeline, trimming, alignment

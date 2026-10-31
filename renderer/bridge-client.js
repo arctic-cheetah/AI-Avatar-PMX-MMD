@@ -35,7 +35,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     line.className = `chat-line chat-${who}`;
     const label = document.createElement('span');
     label.className = 'chat-who';
-    label.textContent = who === 'you' ? 'You' : 'Yidhari';
+    label.textContent = who === 'you' ? 'You' : who === 'tool' ? 'Status' : 'Yidhari';
     const body = document.createElement('span');
     line.append(label, body);
     chatLog.append(line);
@@ -154,6 +154,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
             onSpeak({ id: event.id, expression: event.expression, weight: Math.max(0, Math.min(1, event.weight)), text: event.text }); break;
           case 'notice':
             if (typeof event.text !== 'string') throw new Error('Invalid notice');
+            addLine('tool').textContent = event.text;
             status.textContent = event.text; break;
           case 'end':
             busy = false; reply = null; onFinish(); button.disabled = false; setChatEnabled(true);

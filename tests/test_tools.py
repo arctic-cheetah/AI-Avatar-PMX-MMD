@@ -5,7 +5,7 @@ import json
 import unittest
 from argparse import Namespace
 from datetime import datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import httpx
 
@@ -53,6 +53,7 @@ class ToolTests(unittest.IsolatedAsyncioTestCase):
         for weight in [True, -1, 2, float("nan"), float("inf"), "0.5"]:
             cases.append(("set_expression", json.dumps({"name": "happy", "weight": weight})))
         cases.append(("set_expression", '{"name":"unknown","weight":0.5}'))
+        cases.append(("set_expression", '{"name":"happy","weight":' + '9' * 1000 + '}'))
         for name, args in cases:
             with self.subTest(name=name, args=args):
                 self.assertIn("error", await self.tools.execute(name, args))
@@ -134,6 +135,33 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
                 await self.run_loop([script], tools)
         self.assertEqual((await tools.execute("recall", "{}"))["notes"], [])
 
+    async def test_truncated_tool_completion_never_executes(self):
+        tools = ToolSession(load_catalog())
+        script = stream({"tool_calls": [call("remember", '{"note":"tea"}')]})
+        script = script.replace("data: [DONE]", 'data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\ndata: [DONE]')
+        with self.assertRaises(ValueError):
+            await self.run_loop([script], tools)
+        self.assertEqual((await tools.execute("recall", "{}"))["notes"], [])
+
+    async def test_expression_tool_emits_validated_control_before_answer(self):
+        self.assertEqual(await self.run_loop([
+            stream({"tool_calls": [call("set_expression", '{"name":"soft-smile","weight":0.6}')]}),
+            stream({"content": "Hello."})]), ["[soft-smile:0.6]", "Hello."])
+
+    async def test_failed_search_continues_into_reply(self):
+        tools = ToolSession(load_catalog(), search_key="secret")
+        with patch.object(tools, "search", return_value={"error": "Web search unavailable"}):
+            reply = await self.run_loop([
+                stream({"tool_calls": [call("web_search", '{"query":"news"}')]}),
+                stream({"content": "Search is unavailable."})], tools)
+        self.assertEqual(reply, ["Search is unavailable."])
+
+    async def test_cancellation_during_search_propagates(self):
+        tools = ToolSession(load_catalog(), search_key="secret")
+        with patch.object(tools, "search", side_effect=asyncio.CancelledError):
+            with self.assertRaises(asyncio.CancelledError):
+                await self.run_loop([stream({"tool_calls": [call("web_search", '{"query":"news"}')]})], tools)
+
     async def test_expression_continues_through_speech_and_reset_clears_notes(self):
         events, segments, sessions = [], [], []
         ended = asyncio.Event()
@@ -149,22 +177,35 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
                 ended.clear()
                 yield '{"type":"reset"}'
                 await asyncio.wait_for(ended.wait(), 3)
+        original_llm = llama_chunks
         async def llm(*args, **kwargs):
             session = kwargs["tool_session"]
             sessions.append(session)
-            await session.execute("remember", '{"note":"tea"}')
-            yield "[soft-smile:0.6]Hello there."
+            async for chunk in original_llm(*args, **kwargs):
+                yield chunk
+        requests = []
+        def handler(request):
+            requests.append(json.loads(request.content))
+            if len(requests) == 1:
+                return httpx.Response(200, text=stream({"tool_calls": [
+                    call("set_expression", '{"name":"soft-smile","weight":0.6}'),
+                    call("remember", '{"note":"tea"}', index=1, ident="call-2")]}))
+            return httpx.Response(200, text=stream({"content": "Hello there."}))
+        original_client = httpx.AsyncClient
+        def factory(**kwargs):
+            return original_client(transport=httpx.MockTransport(handler))
         async def synth(segment, worker, run):
             segments.append(segment)
             return "a" * 16, {}
         args = Namespace(mode="llm", tools=True, web_search=False, llama_url="http://localhost", model=None,
                          context_tokens=65536, speech_worker=object())
-        with patch("controller.bridge.llama_chunks", llm), patch("controller.speech.synthesise", synth), patch("controller.speech.clear_live_clips"):
+        with patch("httpx.AsyncClient", side_effect=factory), patch("controller.bridge.llama_chunks", llm), patch("controller.speech.synthesise", synth), patch("controller.speech.clear_live_clips"):
             await handle_connection(Socket(), args, load_catalog())
         self.assertTrue(any(e["type"] == "speak" for e in events))
         self.assertEqual(segments[0].expression, "soft-smile")
         self.assertEqual(segments[0].weight, 0.6)
         self.assertEqual((await sessions[0].execute("recall", "{}"))["notes"], [])
+        self.assertTrue(any(e["type"] == "notice" for e in events))
 
     def test_cli_defaults_are_opt_in(self):
         args = build_parser().parse_args([])

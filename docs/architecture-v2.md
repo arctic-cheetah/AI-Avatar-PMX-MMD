@@ -875,8 +875,9 @@ sequenceDiagram
 
 - **Voice front:** on #23's tool loop, one tool, `delegate(task)`, runs a
   back-end agent without a UI (for example `claude -p --output-format stream-json`) and feeds its progress and result into the same summariser.
-- **Own tools:** #23, with allowlisted MCP servers and approval prompts.
-# Companion tool boundary (issue #23)
+- **Own tools:** future expansion of #23, with allowlisted MCP servers and approval prompts.
+
+## Companion tool boundary (issue #23)
 
 The bridge's opt-in OpenAI-compatible tool loop handles local time, catalog
 expressions, bounded session notes and optional fixed-endpoint Brave search.

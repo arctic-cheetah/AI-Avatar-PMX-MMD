@@ -876,3 +876,12 @@ sequenceDiagram
 - **Voice front:** on #23's tool loop, one tool, `delegate(task)`, runs a
   back-end agent without a UI (for example `claude -p --output-format stream-json`) and feeds its progress and result into the same summariser.
 - **Own tools:** #23, with allowlisted MCP servers and approval prompts.
+# Companion tool boundary (issue #23)
+
+The bridge's opt-in OpenAI-compatible tool loop handles local time, catalog
+expressions, bounded session notes and optional fixed-endpoint Brave search.
+It keeps tool protocol/results inside the active turn and routes validated
+expression controls through the existing parser and speech segmenter.
+Tools are companion actions, never phoneme/viseme timing stages: speech
+alignment and playback stay deterministic bridge/renderer operations.
+See [LLM companion tools](llm-tools.md) for schemas, limits and privacy.

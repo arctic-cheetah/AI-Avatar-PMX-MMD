@@ -34,16 +34,23 @@ With speech enabled the mood belongs to the following spoken segment and is
 applied when its clip plays. Ordinary bracket tags remain supported. Tools
 never control phonemes, visemes, Rhubarb alignment, Applio or clip timing.
 
-## Optional keyless DuckDuckGo web search
+## Optional keyless Bing web search
 
-DuckDuckGo is the default provider and needs no API key or extra packages:
+Bing RSS is the default provider and needs no API key or extra packages:
 
 ```bash
 .venv/bin/python controller/bridge.py --mode llm --tools --web-search
 ```
 
 `--web-search` requires `--mode llm --tools`. It advertises `web_search` only
-while enabled. `--search-provider duckduckgo` selects the default explicitly.
+while enabled. `--search-provider bing` selects the default explicitly.
+The bridge requests the fixed HTTPS Bing search endpoint with `format=rss`,
+parses titles, links and descriptions from RSS, and returns up to five results.
+No API key or extra packages are required. This is an unofficial RSS
+integration, separate from Microsoft's retired Search API; availability and
+result quality can vary. XML document types/entities are rejected.
+
+DuckDuckGo remains available via `--search-provider duckduckgo`.
 The bridge posts the query to DuckDuckGo's fixed HTTPS HTML search endpoint,
 parses result titles/snippets, and unwraps DuckDuckGo result redirect URLs
 without visiting them. This is an unofficial HTML integration: CAPTCHA,
@@ -61,12 +68,12 @@ export BRAVE_SEARCH_API_KEY='<your Brave Search API key>'
 
 Only Brave requires `BRAVE_SEARCH_API_KEY`; startup fails if it is missing
 when Brave search is enabled. A Brave key in the environment does not switch
-the default away from DuckDuckGo. Brave API queries may incur usage charges.
+the default away from Bing. Brave API queries may incur usage charges.
 There is no automatic cross-provider fallback.
 
 Search queries (1–300 characters) leave this machine for the selected
 provider. The LLM key and extra LLM headers are never sent to search providers;
-DuckDuckGo receives no API key. Redirects and environment proxies are disabled.
+Bing and DuckDuckGo receive no API key. Redirects and environment proxies are disabled.
 The bridge never follows result links or accepts a model-chosen destination
 URL. No shell, file access, MCP or delegated agent is added here.
 
@@ -74,7 +81,9 @@ Results have at most five entries, each bounded to a 200-character title,
 2000-character HTTP(S) URL and 500-character snippet. The response body is
 capped at 256 KiB and search has a 10-second overall deadline. Empty results
 are valid. Rate limits, timeouts and malformed responses return a sanitized
-tool error so the model can explain that search failed. Search content is
+tool error so the model can explain that search failed. Chat notices distinguish
+blocked/rate-limited searches, network failures, invalid provider responses and
+invalid tool arguments, without exposing raw provider responses. Search content is
 untrusted data; the system prompt tells the model to ignore instructions in
 results and cite source URLs. This reduces injection risk but cannot guarantee
 model compliance. Avoid searching for secrets or storing sensitive notes;
@@ -120,3 +129,12 @@ checks; automated mocks do not establish compatibility with every model.
 A live DuckDuckGo check on 1 November 2026 reached the provider but received
 HTTP 202 with a challenge page from this connection. The tool returned the
 expected sanitized failure; successful live result retrieval remains unverified.
+
+The DuckDuckGo failure above was an anti-bot challenge, not an empty search:
+the HTTP status and challenge form were observed directly. The provider did
+not disclose why this connection was challenged. Automated traffic detection,
+IP reputation and request patterns are possible triggers, not confirmed causes.
+
+A direct Bing RSS check on 1 November 2026 returned HTTP 200 and ten RSS items.
+The bridge still limits output to five. A successful request does not establish
+relevance, continued availability or end-to-end spoken response quality.

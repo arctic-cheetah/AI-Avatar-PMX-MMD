@@ -900,7 +900,7 @@ sequenceDiagram
 ## Companion tool boundary (issue #23)
 
 The bridge's opt-in OpenAI-compatible tool loop handles local time, catalog
-expressions, bounded session notes and optional fixed-endpoint DuckDuckGo search (or Brave with an API key).
+expressions, bounded session notes and optional fixed-endpoint Bing RSS search (or DuckDuckGo / Brave).
 It keeps tool protocol/results inside the active turn and routes validated
 expression controls through the existing parser and speech segmenter.
 Tools are companion actions, never phoneme/viseme timing stages: speech

@@ -22,6 +22,21 @@ TOOL_PROMPT = (
     "web search. Never claim a tool succeeded if its result reports an error. "
     "Only remember short notes relevant to this chat; do not store secrets. "
     "Use get_time for the bridge host's local time; this does not create reminders."
+    " When searching, preserve the user's subject and title. Do not invent names "
+    "or switch to another work in query rewrites. After two unhelpful searches, "
+    "stop searching and give a concise answer with honest uncertainty. Distinguish "
+    "your existing knowledge from facts verified by relevant search results. "
+    "Do not announce another search unless you are actually able to perform it."
+)
+FINAL_TOOL_PROMPT = (
+    "\nThe tool budget for this reply is exhausted. Give your final answer now "
+    "without requesting tools or promising another search. Use relevant evidence "
+    "already available. If the results do not establish an answer, say you could "
+    "not verify it; do not invent facts or cite unrelated results."
+)
+TOOL_LIMIT_FALLBACK = (
+    "I couldn't verify an answer from the information available. "
+    "Please try a more specific request."
 )
 
 

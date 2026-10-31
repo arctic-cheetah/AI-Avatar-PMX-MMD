@@ -385,28 +385,47 @@ async def completion_deltas(base_url, model, messages, on_reasoning=None, header
 async def llama_chunks(base_url, model, messages, on_reasoning=None, headers=None,
                       tool_session=None, on_tool=None):
     """Stream prose and validated moods, continuing bounded companion tool rounds."""
-    from controller.tools import MAX_TOOL_ROUNDS, ToolCalls, tool_status
+    from controller.tools import (
+        FINAL_TOOL_PROMPT, MAX_TOOL_ROUNDS, TOOL_LIMIT_FALLBACK, ToolCalls, tool_status,
+    )
 
-    messages = list(messages)
+    messages = [dict(message) for message in messages]
     for round_number in range(MAX_TOOL_ROUNDS + 1):
+        finalizing = round_number == MAX_TOOL_ROUNDS
+        if finalizing:
+            if messages and messages[0]["role"] == "system":
+                messages[0]["content"] += FINAL_TOOL_PROMPT
+            else:
+                messages.insert(0, {"role": "system", "content": FINAL_TOOL_PROMPT})
+            if on_tool is not None:
+                await on_tool({"type": "notice", "text": "Tool limit reached; finishing reply."})
         calls, content = ToolCalls(), []
+        final_calls = False
         async for delta in completion_deltas(
             base_url, model, messages, on_reasoning, headers,
-            tools=tool_session.definitions() if tool_session is not None else None,
+            tools=tool_session.definitions() if tool_session is not None and not finalizing else None,
         ):
             text = delta.get("content")
             if isinstance(text, str) and text:
                 content.append(text)
-                yield text
+                if not finalizing:
+                    yield text
             if delta.get("tool_calls"):
+                if finalizing:
+                    final_calls = True
+                    continue
                 if tool_session is None:
                     raise ValueError("Received tool calls while tools are disabled")
                 calls.feed(delta["tool_calls"])
+        if finalizing:
+            # Buffer this one response so ignored tool limits cannot leak another
+            # "one more attempt" promise into text, speech or saved history.
+            answer = "".join(content)
+            yield TOOL_LIMIT_FALLBACK if final_calls or not answer.strip() else answer
+            return
         complete = calls.complete()
         if not complete:
             return
-        if round_number == MAX_TOOL_ROUNDS:
-            raise ValueError("Tool round limit reached")
         messages.append({"role": "assistant", "content": "".join(content) or None,
                          "tool_calls": complete})
         for call in complete:

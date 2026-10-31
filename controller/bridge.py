@@ -525,7 +525,10 @@ async def handle_connection(socket, args, catalog):
     if getattr(args, "tools", False):
         from controller.tools import ToolSession, TOOL_PROMPT
 
-        tool_session = ToolSession(catalog, search_key=getattr(args, "search_key", None))
+        tool_session = ToolSession(
+            catalog, search_key=getattr(args, "search_key", None),
+            search_provider=getattr(args, "search_provider", "duckduckgo") if getattr(args, "web_search", False) else None,
+        )
         system += TOOL_PROMPT
     conversation = None  # created on the first LLM request, once the window is known
 
@@ -734,7 +737,7 @@ async def run(args):
                 if getattr(args, "tools", False):
                     upstream += "; companion tools on"
                 if getattr(args, "web_search", False):
-                    upstream += "; Brave web search on — queries leave this machine"
+                    upstream += f"; {args.search_provider} web search on — queries leave this machine"
             print(
                 f"Bridge: ws://127.0.0.1:{args.port} ({args.mode}, {speech}){upstream}; open {ORIGIN}/renderer/",
                 flush=True,
@@ -752,7 +755,9 @@ def build_parser():
     parser.add_argument("--llama-url", default="http://127.0.0.1:8080")
     parser.add_argument("--model", default=None)
     parser.add_argument("--tools", action="store_true", help="Enable allowlisted companion tool calling.")
-    parser.add_argument("--web-search", action="store_true", help="Enable Brave web_search (requires --tools and BRAVE_SEARCH_API_KEY).")
+    parser.add_argument("--web-search", action="store_true", help="Enable web_search (requires --mode llm --tools; DuckDuckGo needs no key).")
+    parser.add_argument("--search-provider", choices=("duckduckgo", "brave"), default="duckduckgo",
+                        help="Web search provider (default: keyless DuckDuckGo; Brave needs BRAVE_SEARCH_API_KEY).")
     parser.add_argument(
         "--api-key-env",
         default="OPENAI_API_KEY",
@@ -815,9 +820,10 @@ def main():
     if args.web_search:
         if args.mode != "llm" or not args.tools:
             raise SystemExit("bridge: error: --web-search requires --mode llm --tools")
-        args.search_key = os.environ.get("BRAVE_SEARCH_API_KEY", "").strip()
-        if not args.search_key:
-            raise SystemExit("bridge: error: --web-search requires BRAVE_SEARCH_API_KEY")
+        if args.search_provider == "brave":
+            args.search_key = os.environ.get("BRAVE_SEARCH_API_KEY", "").strip()
+            if not args.search_key:
+                raise SystemExit("bridge: error: Brave --web-search requires BRAVE_SEARCH_API_KEY")
     args.llm_headers, args.llm_external = {}, False
     if args.mode == "llm":
         try:

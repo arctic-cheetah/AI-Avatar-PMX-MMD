@@ -116,3 +116,7 @@ With search enabled ask for recent news with sources. With speech enabled,
 confirm a tool-assisted reply speaks and uses the selected catalog mood.
 Provider-specific formatting and real audio/search quality require these live
 checks; automated mocks do not establish compatibility with every model.
+
+A live DuckDuckGo check on 1 November 2026 reached the provider but received
+HTTP 202 with a challenge page from this connection. The tool returned the
+expected sanitized failure; successful live result retrieval remains unverified.

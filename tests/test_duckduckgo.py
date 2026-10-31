@@ -83,6 +83,32 @@ class DuckDuckGoTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("error", await enabled.execute("web_search", json.dumps({"query": query})))
                 search.assert_not_called()
 
+    async def test_connection_enables_duckduckgo_without_a_key(self):
+        import asyncio
+        from argparse import Namespace
+        from controller.bridge import handle_connection
+
+        ended = asyncio.Event()
+        seen = []
+        class Socket:
+            async def send(self, raw):
+                if json.loads(raw)["type"] in ("end", "error"):
+                    ended.set()
+            async def __aiter__(self):
+                yield '{"type":"start","prompt":"search for news"}'
+                await asyncio.wait_for(ended.wait(), 2)
+        async def llm(*args, **kwargs):
+            session = kwargs["tool_session"]
+            seen.append(session.search_provider)
+            self.assertIsNone(session.search_key)
+            self.assertIn("web_search", [t["function"]["name"] for t in session.definitions()])
+            yield "Ready."
+        args = Namespace(mode="llm", tools=True, web_search=True, search_provider="duckduckgo",
+                         search_key=None, llama_url="http://localhost", model=None, context_tokens=65536)
+        with patch("controller.bridge.llama_chunks", llm):
+            await handle_connection(Socket(), args, load_catalog())
+        self.assertEqual(seen, ["duckduckgo"])
+
 
 class SearchCliTests(unittest.TestCase):
     def test_default_provider_is_duckduckgo(self):

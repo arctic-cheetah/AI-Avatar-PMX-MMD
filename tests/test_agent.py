@@ -279,8 +279,22 @@ class SocketPathTests(unittest.TestCase):
     def test_runtime_dir_and_fallback(self):
         self.assertEqual(default_socket_path({"XDG_RUNTIME_DIR": "/run/user/1000"}, 1000),
                          Path("/run/user/1000/yidhari/agent.sock"))
-        self.assertEqual(default_socket_path({}, 1000),
-                         Path(tempfile.gettempdir()) / "yidhari-1000" / "agent.sock")
+        with tempfile.TemporaryDirectory() as root:
+            missing = Path(root) / "no-run-user"
+            self.assertEqual(default_socket_path({}, 1000, run_root=missing),
+                             Path(tempfile.gettempdir()) / "yidhari-1000" / "agent.sock")
+
+    def test_unset_runtime_dir_still_finds_run_user(self):
+        # Claude Desktop starts MCP servers without XDG_RUNTIME_DIR; they must
+        # still find the bridge's socket under /run/user/<uid>.
+        uid = os.getuid()
+        with tempfile.TemporaryDirectory() as root:
+            (Path(root) / str(uid)).mkdir(mode=0o700)
+            self.assertEqual(default_socket_path({}, uid, run_root=Path(root)),
+                             Path(root) / str(uid) / "yidhari" / "agent.sock")
+            # No /run/user directory for that uid: fall back to /tmp.
+            self.assertEqual(default_socket_path({}, uid + 1, run_root=Path(root)),
+                             Path(tempfile.gettempdir()) / f"yidhari-{uid + 1}" / "agent.sock")
 
     def test_prepare_creates_private_dir(self):
         with tempfile.TemporaryDirectory() as root:

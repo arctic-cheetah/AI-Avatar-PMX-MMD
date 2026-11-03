@@ -576,6 +576,7 @@ async def handle_connection(socket, args, catalog):
             )
         if tool_session is not None:
             tool_session.executed = False
+            tool_session.remember_client_urls(prompt)
         for attempt in range(2):
             evidence = tool_session.evidence_prompt() if tool_session is not None else ""
             schemas = json.dumps(tool_session.definitions(), ensure_ascii=False) if tool_session is not None else ""

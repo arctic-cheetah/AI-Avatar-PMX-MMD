@@ -78,6 +78,21 @@ the agent socket is a Unix domain socket that only your user can open.
          - Continue
    ```
 
+   Claude Desktop reads its own list in
+   `~/.config/Claude/claude_desktop_config.json` (Settings → Developer → Edit
+   config), not `~/.claude.json`. Add the same command there under a top-level
+   `"mcpServers"` key, then fully quit and restart the app:
+
+   ```json
+   "mcpServers": {
+     "yidhari": {
+       "command": "/home/parrot/Code/avatar-yidhari/.venv/bin/python",
+       "args": ["/home/parrot/Code/avatar-yidhari/controller/mcp_server.py",
+                "--name", "Claude Desktop"]
+     }
+   }
+   ```
+
 4. Tell the agent when to use her, in its rules file (for example `CLAUDE.md`):
 
    ```markdown
@@ -262,7 +277,11 @@ agent speaks through the newest one.
 ## Troubleshooting
 
 - **`bridge not running`:** start the bridge with `--agent`. If the bridge uses
-  `--agent-socket`, pass the same path to `mcp_server.py --socket`.
+  `--agent-socket`, pass the same path to `mcp_server.py --socket`. The
+  default path is `$XDG_RUNTIME_DIR/yidhari/agent.sock`; when a host starts the
+  MCP server without `XDG_RUNTIME_DIR` (Claude Desktop does), it uses
+  `/run/user/<uid>/yidhari/agent.sock` if that directory exists and is yours,
+  and only then `/tmp/yidhari-<uid>/agent.sock`.
 - **`no renderer`:** open [the renderer](http://127.0.0.1:8770/renderer/) and wait
   for **Connected · ready**.
 - **`Agent socket directory … is not private`:** fix the directory's owner or

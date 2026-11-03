@@ -168,15 +168,16 @@ class Conversation:
         del self.turns[: max(1, len(self.turns) // 2)]
         return True
 
-    def messages(self, system, prompt):
+    def messages(self, system, prompt, extra=""):
         """System prompt, earlier pairs, then ``prompt``. Over budget, the oldest
         pairs go until it fits in TRIM_TO of the budget, so the prefix stays
-        stable for the next few turns."""
+        stable for the next few turns. ``extra`` is counted but not sent, so
+        tool schemas and retained evidence affect trimming."""
 
         def cost(text):
             return estimate_tokens(text) + MESSAGE_OVERHEAD
 
-        used = cost(system) + cost(prompt)
+        used = cost(system) + cost(prompt) + (cost(extra) if extra else 0)
         used += sum(cost(user) + cost(reply) for user, reply in self.turns)
         if used > self.budget:
             while self.turns and used > TRIM_TO * self.budget:
@@ -386,10 +387,18 @@ async def llama_chunks(base_url, model, messages, on_reasoning=None, headers=Non
                       tool_session=None, on_tool=None):
     """Stream prose and validated moods, continuing bounded companion tool rounds."""
     from controller.tools import (
-        FINAL_TOOL_PROMPT, MAX_TOOL_ROUNDS, TOOL_LIMIT_FALLBACK, ToolCalls, tool_status,
+        FINAL_TOOL_PROMPT, MAX_TOOL_ROUNDS, TOOL_LIMIT_FALLBACK, ToolCalls,
+        evidence_event, tool_status,
     )
 
     messages = [dict(message) for message in messages]
+    if tool_session is not None:
+        evidence = tool_session.evidence_prompt()
+        if evidence and not (messages and messages[0]["role"] == "system" and evidence in messages[0]["content"]):
+            if messages and messages[0]["role"] == "system":
+                messages[0]["content"] += evidence
+            else:
+                messages.insert(0, {"role": "system", "content": evidence.lstrip()})
     for round_number in range(MAX_TOOL_ROUNDS + 1):
         finalizing = round_number == MAX_TOOL_ROUNDS
         if finalizing:
@@ -437,6 +446,9 @@ async def llama_chunks(base_url, model, messages, on_reasoning=None, headers=Non
             result = await tool_session.execute(function["name"], function["arguments"])
             if on_tool is not None:
                 await on_tool({"type": "notice", "text": tool_status(result)})
+                evidence = evidence_event(result)
+                if evidence is not None:
+                    await on_tool(evidence)
             messages.append({"role": "tool", "tool_call_id": call["id"],
                              "content": json.dumps(result, ensure_ascii=False, allow_nan=False)})
             if "expression" in result:
@@ -565,7 +577,9 @@ async def handle_connection(socket, args, catalog):
         if tool_session is not None:
             tool_session.executed = False
         for attempt in range(2):
-            messages = conversation.messages(system, prompt)
+            evidence = tool_session.evidence_prompt() if tool_session is not None else ""
+            schemas = json.dumps(tool_session.definitions(), ensure_ascii=False) if tool_session is not None else ""
+            messages = conversation.messages(system + evidence, prompt, schemas)
             try:
                 async for chunk in llama_chunks(
                     args.llama_url,

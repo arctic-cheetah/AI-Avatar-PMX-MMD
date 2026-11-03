@@ -40,7 +40,8 @@ class BingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(result["results"][0]["snippet"]), 500)
 
     async def test_empty_channel_is_valid(self):
-        self.assertEqual(await self.search(httpx.Response(200, text='<rss><channel/></rss>')), {"results": []})
+        self.assertEqual(await self.search(httpx.Response(200, text='<rss><channel/></rss>')),
+                         {"provider": "bing", "query": "avatar news", "results": []})
 
     async def test_failure_codes_are_sanitized(self):
         for response, code in [

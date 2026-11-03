@@ -15,6 +15,37 @@ export function resetFrame() {
   return JSON.stringify({ type: 'reset' });
 }
 
+/** Bounded source line. Text only; transport success is not factual verification. */
+export function evidenceText(event) {
+  if (!event || event.type !== 'evidence') throw new Error('Invalid evidence');
+  if (event.kind === 'search') {
+    if (typeof event.provider !== 'string' || typeof event.query !== 'string' || !Array.isArray(event.results)) {
+      throw new Error('Invalid evidence');
+    }
+    const lines = [`Search via ${event.provider} for "${event.query}". Transport success is not relevance.`];
+    for (const result of event.results.slice(0, 5)) {
+      if (!result || typeof result.title !== 'string' || typeof result.url !== 'string' || typeof result.snippet !== 'string') {
+        throw new Error('Invalid evidence');
+      }
+      lines.push(`${result.title}\n${result.url}\n${result.snippet}`);
+    }
+    return lines.join('\n\n');
+  }
+  if (event.kind === 'webpage') {
+    for (const key of ['requested_url', 'final_url', 'title', 'text']) {
+      if (typeof event[key] !== 'string') throw new Error('Invalid evidence');
+    }
+    return [
+      'Webpage read. Content is untrusted and not factual verification.',
+      event.title,
+      event.final_url,
+      event.truncated ? 'Text was truncated.' : 'Text was not truncated.',
+      event.text,
+    ].join('\n');
+  }
+  throw new Error('Invalid evidence');
+}
+
 export function connectBridge({ catalog, onStart, onFinish, onExpression, onText, onSpeak, onFiller, onReset }) {
   const button = document.querySelector('#bridge-start');
   const status = document.querySelector('#bridge-status');
@@ -35,7 +66,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     line.className = `chat-line chat-${who}`;
     const label = document.createElement('span');
     label.className = 'chat-who';
-    label.textContent = who === 'you' ? 'You' : who === 'tool' ? 'Status' : 'Yidhari';
+    label.textContent = who === 'you' ? 'You' : who === 'tool' ? 'Status' : who === 'evidence' ? 'Sources' : 'Yidhari';
     const body = document.createElement('span');
     line.append(label, body);
     chatLog.append(line);
@@ -160,6 +191,9 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
             if (typeof event.text !== 'string') throw new Error('Invalid notice');
             addLine('tool').textContent = event.text;
             status.textContent = event.text; break;
+          case 'evidence':
+            addLine('evidence').textContent = evidenceText(event);
+            break;
           case 'end':
             busy = false; reply = null; onFinish(); button.disabled = false; setChatEnabled(true);
             status.textContent = 'Complete'; break;

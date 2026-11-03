@@ -46,7 +46,7 @@ class DuckDuckGoTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_keyless_html_results_unwrap_links_and_strip_markup(self):
         result = await self.search(httpx.Response(200, text=HTML))
-        self.assertEqual(result, {"results": [
+        self.assertEqual(result, {"provider": "duckduckgo", "query": "avatar news", "results": [
             {"title": "Avatar news & updates", "url": "https://example.com/news?a=1&b=2", "snippet": "Latest avatar news & details."},
             {"title": "Direct result", "url": "https://example.org/direct", "snippet": "A nested snippet."},
             {"title": "Last", "url": "https://example.net/", "snippet": "Last snippet."},
@@ -61,7 +61,8 @@ class DuckDuckGoTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(results[0]["snippet"]), 500)
 
     async def test_no_results_is_valid_but_blocked_or_unknown_pages_are_errors(self):
-        self.assertEqual(await self.search(httpx.Response(200, text='<div class="no-results">No results.</div>')), {"results": []})
+        self.assertEqual(await self.search(httpx.Response(200, text='<div class="no-results">No results.</div>')),
+                         {"provider": "duckduckgo", "query": "avatar news", "results": []})
         for response in [httpx.Response(202, text="challenge"), httpx.Response(429),
                          httpx.Response(302, headers={"location": "https://unexpected.example"}),
                          httpx.Response(200, text='<form id="challenge-form">Verify human</form>'),

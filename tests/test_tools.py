@@ -246,8 +246,8 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
         tools.sources.append({"title": "Actual source", "url": "https://example.com/source", "snippet": "Actual snippet"})
         tools.record_search("bing", "actual query", list(tools.sources))
         reply = await self.run_loop([
+            stream({"tool_calls": [call("get_time")]}),
             stream({"content": "The recorded search used the actual query and source."}),
-            stream({"content": "Later reply."}),
         ], tools)
         self.assertEqual(reply, ["The recorded search used the actual query and source."])
         follow_up = self.requests[1]["messages"][0]["content"]

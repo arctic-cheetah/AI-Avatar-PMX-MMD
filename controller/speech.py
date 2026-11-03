@@ -32,6 +32,7 @@ DEFAULT_INDEX = Path("logs") / "Yidhari-zzz" / "Yidhari-zzz.index"
 CLIP_ID = re.compile(r"[0-9a-f]{16}")
 # A sentence ends at . ! ? or … (optionally followed by closing quotes) plus whitespace.
 SENTENCE_END = re.compile(r'(?<=[.!?…])["\')\]]*\s+')
+HTTP_URL = re.compile(r"https?://[^\s<>()\[\]{}\"']+", re.IGNORECASE)
 WORKER_SCRIPT = Path(__file__).with_name("applio_worker.py")
 WORKER_LOG = LIVE_DIR.parent / "applio-worker.log"
 LOG = logging.getLogger(__name__)
@@ -124,7 +125,7 @@ class Segment:
 def clean_for_tts(text: str) -> str:
     """Remove Markdown symbols, emoji and control characters; collapse whitespace."""
     kept = []
-    for char in text:
+    for char in HTTP_URL.sub(" ", text):
         category = unicodedata.category(char)
         # So: emoji and other symbols; C*: control, format and unassigned; FE0x: emoji variation selectors.
         drop = (

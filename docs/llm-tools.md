@@ -75,8 +75,9 @@ There is no automatic cross-provider fallback.
 Search queries (1–300 characters) leave this machine for the selected
 provider. The LLM key and extra LLM headers are never sent to search providers;
 Bing and DuckDuckGo receive no API key. Redirects and environment proxies are disabled.
-The bridge never follows result links or accepts a model-chosen destination
-URL. No shell, file access, MCP or delegated agent is added here.
+Search itself does not follow result links. `read_webpage`, described below,
+may later read only a retained result URL. No shell, file access, MCP or
+delegated agent is added here.
 
 Results have at most five entries, each bounded to a 200-character title,
 2000-character HTTP(S) URL and 500-character snippet. The response body is
@@ -136,7 +137,9 @@ successful reads per connection, and 20,000-character extracted-text cap.
 Each redirect response is also size-capped. Compressed bodies are decoded by
 HTTPX within the same byte cap.
 
-Only `text/html` and `application/xhtml+xml` are accepted. HTML `script`,
+Only `text/html` and `application/xhtml+xml` are accepted. A missing charset
+defaults to UTF-8; a declared charset is honored, and undecodable bytes are a
+fetch error rather than replacement text. HTML `script`,
 `style`, `noscript`, `template`, `nav`, `form`, `iframe` and SVG content are
 excluded. Text from headings, paragraphs, lists, tables and other readable
 markup is whitespace-normalized; the title, requested/final URL, timezone-aware
@@ -183,8 +186,12 @@ or end-to-end voice quality is validated by mocked tests.
    It records real provider/query/source/page provenance, is marked untrusted,
    and is counted along with the advertised tool schemas in context trimming.
 
-The chat log displays short tool status notices, never arguments, raw result
-payloads or credentials. Tool activity is not spoken. The loop permits four
+The chat log displays short tool status notices and a bounded Sources line for
+successful searches and page reads: provider, query, titles, URLs, snippets,
+page title, final URL, truncation and an explicit note that transport success
+is not relevance or verification. Sources are written with `textContent`.
+Arguments, credentials, raw provider errors and full transport bodies are not
+shown. Tool activity and source lines are not spoken. The loop permits four
 tool rounds, up to eight calls per round, and 4096 argument characters per
 call. Unknown/disabled tools, invalid JSON, extra arguments and invalid values
 return errors to the model. Broken protocol envelopes, oversized call buffers,

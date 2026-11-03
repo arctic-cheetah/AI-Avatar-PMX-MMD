@@ -221,7 +221,7 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
     async def test_relevant_search_webpage_read_and_evidence_backed_answer(self):
         tools = ToolSession(load_catalog(), search_provider="bing")
         url = "https://example.com/guide"
-        async def search(query):
+        async def search(query, site=None):
             tools.sources.append({"title": "Guide", "url": url, "snippet": "Setup"})
             tools.allowed_urls.add(url)
             return {"provider": "bing", "query": query, "results": list(tools.sources)}

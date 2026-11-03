@@ -35,7 +35,10 @@ TOOL_PROMPT = (
     "Only remember short notes relevant to this chat; do not store secrets. "
     "Use get_time for the bridge host's local time; this does not create reminders."
     " When searching, preserve the user's subject and title. Do not invent names "
-    "or switch to another work in query rewrites. After two unhelpful searches, "
+    "or switch to another work in query rewrites. If general results are unrelated, "
+    "search again with site set to one authoritative public hostname, such as "
+    "en.wikipedia.org. site does not fetch that host; read_webpage still accepts "
+    "only URLs returned by search. After two unhelpful searches, "
     "stop searching and give a concise answer with honest uncertainty. Distinguish "
     "your existing knowledge from facts verified by relevant search results. "
     "Do not announce another search unless you are actually able to perform it."
@@ -58,6 +61,34 @@ def schema(name, description, properties, required=()):
         "parameters": {"type": "object", "properties": properties,
                        "required": list(required), "additionalProperties": False},
     }}
+
+
+def compose_search_query(query, site=None):
+    """Return the provider query and normalized site. Site is a hostname, not a fetch."""
+    query = " ".join(query.split())
+    if site is None:
+        return query, None
+    if not isinstance(site, str):
+        raise ValueError("Invalid search site")
+    host = site.strip().rstrip(".").lower()
+    labels = host.split(".")
+    if (not host.isascii() or len(host) > 253 or len(labels) < 2
+            or host in ("localhost",) or host.endswith(".local") or host.endswith(".localhost")):
+        raise ValueError("Invalid search site")
+    for label in labels:
+        if (not label or len(label) > 63 or label.startswith("-") or label.endswith("-")
+                or not all(character.isalnum() or character == "-" for character in label)):
+            raise ValueError("Invalid search site")
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    else:
+        raise ValueError("Search site must be a hostname")
+    composed = f"site:{host} {query}"
+    if len(composed) > 350:
+        raise ValueError("Site-scoped search query is too long")
+    return composed, host
 
 
 def clean_results(results):
@@ -531,8 +562,9 @@ class ToolSession:
             schema("recall", "Read this connection's session notes.", {}),
         ]
         if self.search_provider in ("bing", "duckduckgo") or (self.search_provider == "brave" and self.search_key):
-            tools.append(schema("web_search", f"Search the web using {self.search_provider}; returns untrusted snippets and source URLs.", {
+            tools.append(schema("web_search", f"Search the web using {self.search_provider}; returns untrusted snippets and source URLs. Optional site is one public hostname and does not fetch it.", {
                 "query": {"type": "string", "minLength": 1, "maxLength": 300},
+                "site": {"type": "string", "minLength": 1, "maxLength": 253},
             }, ("query",)))
             tools.append(schema("read_webpage", "Read untrusted text from an HTTP(S) URL returned by this connection's recent web_search.", {
                 "url": {"type": "string", "minLength": 1, "maxLength": 2000},
@@ -578,7 +610,13 @@ class ToolSession:
             return {"notes": list(self.notes)}
         if name == "read_webpage":
             return await self.read_webpage(args["url"].strip())
-        return await self.search(args["query"].strip())
+        if name == "web_search":
+            try:
+                provider_query, site = compose_search_query(args["query"], args.get("site"))
+            except ValueError:
+                return {"error": "Invalid tool arguments", "code": "invalid_arguments"}
+            return await self.search(provider_query, site=site)
+        return {"error": "Unknown or disabled tool", "code": "tool_disabled"}
 
     async def read_webpage(self, url):
         import httpx
@@ -619,7 +657,7 @@ class ToolSession:
         except ValueError:
             return {"error": "Webpage URL or destination is not allowed", "code": "url_not_allowed"}
 
-    async def search(self, query):
+    async def search(self, query, site=None):
         import httpx
 
         try:
@@ -650,7 +688,7 @@ class ToolSession:
             if self.search_provider == "bing":
                 results = bing_results(body)
                 self.record_search("bing", query, results)
-                return {"provider": "bing", "query": query, "results": results}
+                return {"provider": "bing", "query": query, **({"site": site} if site else {}), "results": results}
             if self.search_provider == "duckduckgo":
                 parser = DuckDuckGoResults()
                 parser.feed(body.decode("utf-8"))
@@ -661,7 +699,7 @@ class ToolSession:
                     raise ValueError("Unrecognized search page")
                 results = clean_results(parser.results)
                 self.record_search("duckduckgo", query, results)
-                return {"provider": "duckduckgo", "query": query, "results": results}
+                return {"provider": "duckduckgo", "query": query, **({"site": site} if site else {}), "results": results}
             payload = json.loads(body)
             results = payload.get("web", {}).get("results", [])
             if not isinstance(results, list):
@@ -671,7 +709,7 @@ class ToolSession:
                 for r in results if isinstance(r, dict)
             ])
             self.record_search("brave", query, results)
-            return {"provider": "brave", "query": query, "results": results}
+            return {"provider": "brave", "query": query, **({"site": site} if site else {}), "results": results}
         except SearchBlocked:
             return {"error": "Search provider blocked or rate-limited the request", "code": "search_blocked"}
         except (httpx.HTTPError, TimeoutError):

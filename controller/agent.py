@@ -445,12 +445,21 @@ class AgentRouter:
         return "ok"
 
 
-def default_socket_path(environ=None, uid=None):
+def default_socket_path(environ=None, uid=None, run_root=Path("/run/user")):
+    """$XDG_RUNTIME_DIR, else /run/user/<uid> if it is ours (some hosts, such as
+    Claude Desktop, start MCP servers without XDG_RUNTIME_DIR), else /tmp."""
     environ = os.environ if environ is None else environ
     uid = os.getuid() if uid is None else uid
     runtime = environ.get("XDG_RUNTIME_DIR")
     if runtime:
         return Path(runtime) / "yidhari" / "agent.sock"
+    run_user = Path(run_root) / str(uid)
+    try:
+        info = os.lstat(run_user)
+    except OSError:
+        info = None
+    if info is not None and stat.S_ISDIR(info.st_mode) and info.st_uid == uid:
+        return run_user / "yidhari" / "agent.sock"
     return Path(tempfile.gettempdir()) / f"yidhari-{uid}" / "agent.sock"
 
 

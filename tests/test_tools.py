@@ -218,6 +218,67 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(asyncio.CancelledError):
                 await self.run_loop([stream({"tool_calls": [call("web_search", '{"query":"news"}')]})], tools)
 
+    async def test_relevant_search_webpage_read_and_evidence_backed_answer(self):
+        tools = ToolSession(load_catalog(), search_provider="bing")
+        url = "https://example.com/guide"
+        async def search(query):
+            tools.sources.append({"title": "Guide", "url": url, "snippet": "Setup"})
+            tools.allowed_urls.add(url)
+            return {"provider": "bing", "query": query, "results": list(tools.sources)}
+        async def read(url):
+            return {"requested_url": url, "final_url": url, "title": "Guide",
+                    "text": "Install the bridge first.", "retrieved_at": "2026-11-03T12:00:00+00:00",
+                    "truncated": False, "trust": "untrusted_content"}
+        with patch.object(tools, "search", side_effect=search), patch.object(tools, "read_webpage", side_effect=read):
+            reply = await self.run_loop([
+                stream({"tool_calls": [call("web_search", '{"query":"avatar setup"}')]}),
+                stream({"tool_calls": [call("read_webpage", json.dumps({"url": url}), ident="call-2")]}),
+                stream({"content": "Install the bridge first. [Source](https://example.com/guide)"}),
+            ], tools)
+        self.assertEqual(reply, ["Install the bridge first. [Source](https://example.com/guide)"])
+        tool_result = json.loads(self.requests[2]["messages"][-1]["content"])
+        self.assertEqual(tool_result["final_url"], url)
+        self.assertEqual(tool_result["trust"], "untrusted_content")
+        self.assertIn("Install the bridge first.", tool_result["text"])
+
+    async def test_follow_up_uses_bridge_evidence_not_model_reconstruction(self):
+        tools = ToolSession(load_catalog(), search_provider="bing")
+        tools.sources.append({"title": "Actual source", "url": "https://example.com/source", "snippet": "Actual snippet"})
+        tools.record_search("bing", "actual query", list(tools.sources))
+        reply = await self.run_loop([
+            stream({"content": "The recorded search used the actual query and source."}),
+            stream({"content": "Later reply."}),
+        ], tools)
+        self.assertEqual(reply, ["The recorded search used the actual query and source."])
+        follow_up = self.requests[1]["messages"][0]["content"]
+        self.assertIn("actual query", follow_up)
+        self.assertIn("Actual source", follow_up)
+        self.assertIn("https://example.com/source", follow_up)
+        self.assertIn("untrusted", follow_up)
+
+    async def test_retained_evidence_is_included_in_context_accounting(self):
+        tools = ToolSession(load_catalog(), search_provider="bing")
+        for index in range(30):
+            tools.record_search("bing", "query " + str(index), [
+                {"title": "Source " + str(index), "url": "https://example.com/" + str(index), "snippet": "x" * 500}
+            ])
+        messages = [{"role": "system", "content": "System " + "s" * 63000},
+                    {"role": "user", "content": "What did the search return?"}]
+        requests = []
+        def handler(request):
+            requests.append(json.loads(request.content))
+            return httpx.Response(200, text=stream({"content": "Recorded evidence only."}))
+        original = httpx.AsyncClient
+        def factory(**kwargs):
+            return original(transport=httpx.MockTransport(handler))
+        with patch("httpx.AsyncClient", side_effect=factory):
+            reply = [chunk async for chunk in llama_chunks("http://localhost", None, messages, tool_session=tools)]
+        self.assertEqual(reply, ["Recorded evidence only."])
+        self.assertLessEqual(len(tools.evidence()), 8)
+        prompt = requests[0]["messages"][0]["content"]
+        self.assertIn("query 29", prompt)
+        self.assertNotIn("query 0\n", prompt)
+
     async def test_expression_continues_through_speech_and_reset_clears_notes(self):
         events, segments, sessions = [], [], []
         ended = asyncio.Event()
@@ -258,10 +319,51 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
         with patch("httpx.AsyncClient", side_effect=factory), patch("controller.bridge.llama_chunks", llm), patch("controller.speech.synthesise", synth), patch("controller.speech.clear_live_clips"):
             await handle_connection(Socket(), args, load_catalog())
         self.assertTrue(any(e["type"] == "speak" for e in events))
+        self.assertTrue(all("http" not in s.text for s in segments))
         self.assertEqual(segments[0].expression, "soft-smile")
         self.assertEqual(segments[0].weight, 0.6)
         self.assertEqual((await sessions[0].execute("recall", "{}"))["notes"], [])
         self.assertTrue(any(e["type"] == "notice" for e in events))
+
+    async def test_webpage_answer_keeps_chat_url_but_speech_skips_it(self):
+        events, segments = [], []
+        ended = asyncio.Event()
+        class Socket:
+            async def send(self, raw):
+                event = json.loads(raw)
+                events.append(event)
+                if event["type"] in ("end", "error"):
+                    ended.set()
+            async def __aiter__(self):
+                yield '{"type":"start","prompt":"Read the guide"}'
+                await asyncio.wait_for(ended.wait(), 3)
+        url = "https://example.com/guide"
+        tools = ToolSession(load_catalog(), search_provider="bing")
+        tools.sources.append({"title": "Guide", "url": url, "snippet": "Setup"})
+        tools.allowed_urls.add(url)
+        async def read_webpage(url):
+            return {"requested_url": url, "final_url": url, "title": "Guide",
+                    "text": "Install the bridge first.", "retrieved_at": "2026-11-03T12:00:00+00:00",
+                    "truncated": False, "trust": "untrusted_content"}
+        def handler(request):
+            if len([e for e in events if e["type"] == "notice"]) < 2:
+                return httpx.Response(200, text=stream({"tool_calls": [call("read_webpage", json.dumps({"url": url}))]}))
+            return httpx.Response(200, text=stream({"content": "Install the bridge first. https://example.com/guide"}))
+        original_client = httpx.AsyncClient
+        def factory(**kwargs):
+            return original_client(transport=httpx.MockTransport(handler))
+        async def synth(segment, worker, run):
+            segments.append(segment)
+            return "b" * 16, {}
+        args = Namespace(mode="llm", tools=True, web_search=True, search_provider="bing", llama_url="http://localhost",
+                         model=None, context_tokens=65536, speech_worker=object())
+        with patch("httpx.AsyncClient", side_effect=factory), patch("controller.tools.ToolSession.read_webpage", side_effect=read_webpage), patch("controller.speech.synthesise", synth), patch("controller.speech.clear_live_clips"):
+            await handle_connection(Socket(), args, load_catalog())
+        self.assertIn(url, "".join(e["text"] for e in events if e["type"] == "say"))
+        self.assertNotIn(url, " ".join(s.text for s in segments))
+        self.assertIn("Install the bridge first.", " ".join(s.text for s in segments))
+        self.assertTrue(any(e["type"] == "speak" for e in events))
+        self.assertFalse(any(e["type"] == "error" for e in events))
 
     def test_cli_defaults_are_opt_in(self):
         args = build_parser().parse_args([])

@@ -171,6 +171,20 @@ class WebpageTests(unittest.IsolatedAsyncioTestCase):
         result = await self.read(handler, url=ARTICLE + "/0")
         self.assertEqual(result["code"], "too_many_redirects")
 
+    async def test_fetch_failure_stays_a_tool_error(self):
+        with patch("controller.tools.fetch_webpage", side_effect=NotImplementedError):
+            result = await self.tools.execute("read_webpage", json.dumps({"url": ARTICLE}))
+        self.assertEqual(result["code"], "webpage_network_error")
+        self.assertNotIn("NotImplementedError", json.dumps(result))
+
+    def test_pinned_transport_uses_a_concrete_backend(self):
+        import httpcore
+        from controller.tools import PinnedAddressTransport
+        transport = PinnedAddressTransport("93.184.216.34")
+        backend = transport.pool._network_backend.backend
+        self.assertIsInstance(backend, httpcore.AnyIOBackend)
+        self.assertIsNot(backend.connect_tcp, httpcore.AsyncNetworkBackend.connect_tcp)
+
     async def test_connection_uses_only_the_validated_public_ip(self):
         from controller.tools import PinnedAddressBackend
         backend = AsyncMock()

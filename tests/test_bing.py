@@ -60,6 +60,39 @@ class BingTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("error", result)
                 self.assertNotIn("private details", json.dumps(result))
 
+    async def test_client_url_can_be_searched_without_opening_an_arbitrary_fetch(self):
+        seen = []
+        def handler(request):
+            seen.append(request.url.params["q"])
+            return httpx.Response(200, text=(
+                "<rss><channel><item><title>Wiki</title>"
+                "<link>https://en.wikipedia.org/wiki/My_Dress-Up_Darling</link>"
+                "<description>Anime</description></item></channel></rss>"))
+        original = httpx.AsyncClient
+        tools = ToolSession(load_catalog(), search_provider="bing")
+        tools.remember_client_urls("Please read https://en.wikipedia.org/wiki/My_Dress-Up_Darling.")
+        with patch("httpx.AsyncClient", side_effect=lambda **kwargs: original(transport=httpx.MockTransport(handler))):
+            result = await tools.execute("web_search", json.dumps({
+                "query": "confirm this page",
+                "url": "https://en.wikipedia.org/wiki/My_Dress-Up_Darling",
+            }))
+        self.assertEqual(seen, ["https://en.wikipedia.org/wiki/My_Dress-Up_Darling"])
+        self.assertEqual(result["client_url"], "https://en.wikipedia.org/wiki/My_Dress-Up_Darling")
+        self.assertIn("https://en.wikipedia.org/wiki/My_Dress-Up_Darling", tools.allowed_urls)
+        rejected = await tools.execute("web_search", json.dumps({
+            "query": "other", "url": "https://example.com/not-from-the-user"}))
+        self.assertEqual(rejected["code"], "invalid_arguments")
+        self.assertEqual(
+            (await tools.execute("read_webpage", '{"url":"https://example.com/not-from-the-user"}'))["code"],
+            "url_not_allowed")
+        async def fake_fetch(url, allowed):
+            self.assertIn("https://en.wikipedia.org/wiki/My_Dress-Up_Darling", allowed)
+            return {"requested_url": url, "final_url": url, "retrieved_at": "2026-11-04T00:00:00+11:00",
+                    "redirects": 0, "body": b"<html><p>Wakana Gojo</p></html>", "encoding": "utf-8"}
+        with patch("controller.tools.fetch_webpage", side_effect=fake_fetch):
+            page = await tools.execute("read_webpage", '{"url":"https://en.wikipedia.org/wiki/My_Dress-Up_Darling/"}')
+        self.assertEqual(page["text"], "Wakana Gojo")
+
     async def test_site_scopes_the_provider_query_without_allowing_a_direct_fetch(self):
         seen = []
         def handler(request):

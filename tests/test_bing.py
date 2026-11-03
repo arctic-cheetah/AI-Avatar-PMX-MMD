@@ -60,6 +60,34 @@ class BingTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("error", result)
                 self.assertNotIn("private details", json.dumps(result))
 
+    async def test_site_scopes_the_provider_query_without_allowing_a_direct_fetch(self):
+        seen = []
+        def handler(request):
+            seen.append(request.url.params["q"])
+            self.assertEqual(str(request.url).split("?")[0], "https://www.bing.com/search")
+            return httpx.Response(200, text=(
+                "<rss><channel><item><title>Wiki</title>"
+                "<link>https://en.wikipedia.org/wiki/Example</link>"
+                "<description>A page</description></item></channel></rss>"))
+        original = httpx.AsyncClient
+        def factory(**kwargs):
+            return original(transport=httpx.MockTransport(handler))
+        tools = ToolSession(load_catalog(), search_provider="bing")
+        with patch("httpx.AsyncClient", side_effect=factory):
+            result = await tools.execute("web_search", '{"query":"Marin Kitagawa","site":"EN.Wikipedia.org"}')
+        self.assertEqual(seen, ["site:en.wikipedia.org Marin Kitagawa"])
+        self.assertEqual(result["site"], "en.wikipedia.org")
+        self.assertEqual(result["query"], "site:en.wikipedia.org Marin Kitagawa")
+        self.assertIn("https://en.wikipedia.org/wiki/Example", tools.allowed_urls)
+        self.assertNotIn("https://en.wikipedia.org/", tools.allowed_urls)
+        self.assertEqual(
+            (await tools.execute("read_webpage", '{"url":"https://en.wikipedia.org/wiki/Other"}'))["code"],
+            "url_not_allowed")
+        for site in ["https://en.wikipedia.org/wiki/Example", "localhost", "127.0.0.1",
+                     "evil.com/path", "user@evil.com", "not a host", "", "a" * 254]:
+            rejected = await tools.execute("web_search", json.dumps({"query": "news", "site": site}))
+            self.assertEqual(rejected["code"], "invalid_arguments", site)
+
     async def test_bing_advertised_and_argument_errors_distinct(self):
         tools = ToolSession(load_catalog(), search_provider="bing")
         self.assertIn("web_search", [t["function"]["name"] for t in tools.definitions()])

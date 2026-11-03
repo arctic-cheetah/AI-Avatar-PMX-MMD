@@ -21,7 +21,7 @@ an unsupported schema. Legacy `function_call` responses are unsupported.
 | `set_expression` | `{"name":"soft-smile","weight":0.6}` | Catalog expression and finite weight from 0 to 1; weight defaults to 1 |
 | `remember` | `{"note":"Prefers tea"}` | Store one trimmed note, 1–500 characters |
 | `recall` | `{}` | Return the session's notes, oldest first |
-| `web_search` | `{"query":"latest astronomy news"}` | Provider, query and up to five titles, URLs and snippets; separately enabled below |
+| `web_search` | `{"query":"Marin Kitagawa","site":"en.wikipedia.org"}` | Provider, actual query and up to five titles, URLs and snippets. `site` is an optional public hostname; omitted searches stay general |
 | `read_webpage` | `{"url":"https://example.com/article"}` | Readable text and provenance for a URL returned by this connection's recent searches; enabled with web search |
 
 Notes are held only in memory for one WebSocket connection, capped at 20
@@ -73,7 +73,17 @@ the default away from Bing. Brave API queries may incur usage charges.
 There is no automatic cross-provider fallback.
 
 Search queries (1–300 characters) leave this machine for the selected
-provider. The LLM key and extra LLM headers are never sent to search providers;
+provider. An optional `site` argument must be one public hostname, such as
+`en.wikipedia.org`. The bridge lowercases it and sends `site:hostname` plus
+the original query. It rejects schemes, paths, credentials, spaces, IP
+addresses and local names. `site` does not fetch that host and does not add
+it to the page allowlist; `read_webpage` can still read only URLs the provider
+actually returned. Bing does not guarantee that every result stays on the
+named host. A check on 4 November 2026 found general anime queries returning
+unrelated government or bicycle pages, while `site:en.wikipedia.org` returned
+relevant Wikipedia and wiki pages for the same subjects. That is a retrieval
+observation, not a promise that `site:` will always be honored.
+The LLM key and extra LLM headers are never sent to search providers;
 Bing and DuckDuckGo receive no API key. Redirects and environment proxies are disabled.
 Search itself does not follow result links. `read_webpage`, described below,
 may later read only a retained result URL. No shell, file access, MCP or
@@ -247,7 +257,8 @@ does not establish search relevance. The LLM must judge relevance; the bridge
 does not have a semantic relevance filter or a guaranteed alternate provider.
 
 The tool prompt asks the model to preserve the user's subject, avoid invented
-names in query rewrites, and stop after two unhelpful searches. This is model
+names in query rewrites, use `site` for an authoritative hostname when general
+results are unrelated, and stop after two unhelpful searches. This is model
 guidance, not an enforced per-search counter; the four-round bridge limit is
 the enforced safeguard. It prevents runaway tool use and now ends gracefully,
 but cannot guarantee the model's answer is correct or useful. Failed/truncated

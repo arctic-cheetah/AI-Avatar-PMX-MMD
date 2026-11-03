@@ -79,9 +79,12 @@ the original query. It rejects schemes, paths, credentials, spaces, IP
 addresses and local names. `site` does not fetch that host and does not add
 it to the page allowlist. A `url` argument is accepted only when that exact
 public HTTP(S) URL appears in the current user message. The bridge then searches
-for that client-provided URL instead of the model's rewritten query. It does not
-fetch the URL by itself. `read_webpage` can still read only URLs the provider
-actually returned, including a trailing-slash equivalent of a returned URL.
+for that client-provided URL instead of the model's rewritten query.
+`read_webpage` may also read a public HTTP(S) URL from the current user message
+directly. Same-host redirects are revalidated; other hosts still have to be
+search results. A query that begins with `site:en.wikipedia.org`, or a
+Wikipedia article URL, is sent to Wikipedia's search API rather than Bing,
+because Bing RSS was not honoring those requests.
 A fetch failure, including an internal transport error, is a sanitized tool
 error. It does not abort the reply. Bing does not guarantee that every result stays on the
 named host. A check on 4 November 2026 found general anime queries returning

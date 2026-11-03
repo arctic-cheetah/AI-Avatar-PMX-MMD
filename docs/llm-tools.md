@@ -21,7 +21,7 @@ an unsupported schema. Legacy `function_call` responses are unsupported.
 | `set_expression` | `{"name":"soft-smile","weight":0.6}` | Catalog expression and finite weight from 0 to 1; weight defaults to 1 |
 | `remember` | `{"note":"Prefers tea"}` | Store one trimmed note, 1–500 characters |
 | `recall` | `{}` | Return the session's notes, oldest first |
-| `web_search` | `{"query":"Marin Kitagawa","site":"en.wikipedia.org"}` | Provider, actual query and up to five titles, URLs and snippets. `site` is an optional public hostname; omitted searches stay general |
+| `web_search` | `{"query":"confirm this","url":"https://en.wikipedia.org/wiki/Example"}` | Provider, actual query and up to five titles, URLs and snippets. Optional `site` is one public hostname. Optional `url` must be an HTTP(S) URL in the current user message |
 | `read_webpage` | `{"url":"https://example.com/article"}` | Readable text and provenance for a URL returned by this connection's recent searches; enabled with web search |
 
 Notes are held only in memory for one WebSocket connection, capped at 20
@@ -77,8 +77,13 @@ provider. An optional `site` argument must be one public hostname, such as
 `en.wikipedia.org`. The bridge lowercases it and sends `site:hostname` plus
 the original query. It rejects schemes, paths, credentials, spaces, IP
 addresses and local names. `site` does not fetch that host and does not add
-it to the page allowlist; `read_webpage` can still read only URLs the provider
-actually returned. Bing does not guarantee that every result stays on the
+it to the page allowlist. A `url` argument is accepted only when that exact
+public HTTP(S) URL appears in the current user message. The bridge then searches
+for that client-provided URL instead of the model's rewritten query. It does not
+fetch the URL by itself. `read_webpage` can still read only URLs the provider
+actually returned, including a trailing-slash equivalent of a returned URL.
+A fetch failure, including an internal transport error, is a sanitized tool
+error. It does not abort the reply. Bing does not guarantee that every result stays on the
 named host. A check on 4 November 2026 found general anime queries returning
 unrelated government or bicycle pages, while `site:en.wikipedia.org` returned
 relevant Wikipedia and wiki pages for the same subjects. That is a retrieval

@@ -62,14 +62,19 @@ flowchart LR
 - Toggling camera off stops all media tracks immediately.
 - If permission is denied, the model fails to load, or no eye bones
   exist, gaze degrades silently to centre and the toggle reports why.
-- Angles are clamped (eyes ≈ ±0.38 rad yaw / ±0.22 pitch, head ≈ 45% of
-  eye travel) to avoid uncanny over-rotation.
+- Eye angles are clamped to ±0.38 rad yaw, 0.12 rad upward and 0.22 rad
+  downward pitch. The final pitch is clamped again **after** adding the thinking
+  offset, so cursor/camera tracking and the mood cannot stack into an eye roll.
+  Head/neck keep their existing range (45% of the original ±0.22 rad vertical
+  target), independently of this eye-only cap.
 
 ## 🧪 Testing
 
-- `node --test tests/renderer/` — pure-logic tests: centre is neutral,
-  extremes clamp, smoothing converges without overshoot, camera-over-
-  cursor priority, stale-source fallback to centre.
+- `node --test tests/renderer/gaze-tracking.test.mjs` — pure-logic tests:
+  centre is neutral, extremes and combined thinking offsets clamp, both input
+  sources respect the upward eye cap, head range is preserved, smoothing
+  converges without overshoot, camera-over-cursor priority, and stale-source
+  fallback to centre.
 - Webcam + visual bone motion are manual checks (no camera in CI):
   toggle each source, move cursor / face, confirm eyes lead and head
   follows, and that OrbitControls drag still works while tracking.

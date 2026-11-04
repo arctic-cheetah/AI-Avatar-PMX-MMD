@@ -55,7 +55,7 @@ export function agentEvent(event, catalog) {
   throw new Error('Unknown agent event');
 }
 
-export function connectBridge({ catalog, onStart, onFinish, onExpression, onText, onSpeak, onReset, onAgentSay, onAgentMood }) {
+export function connectBridge({ catalog, onStart, onFinish, onExpression, onText, onSpeak, onFiller, onReset, onAgentSay, onAgentMood }) {
   const button = document.querySelector('#bridge-start');
   const status = document.querySelector('#bridge-status');
   const chatBar = document.querySelector('#chat-bar');
@@ -84,7 +84,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     line.className = `chat-line chat-${who}`;
     const label = document.createElement('span');
     label.className = 'chat-who';
-    label.textContent = who === 'you' ? 'You' : who === 'agent' ? `Yidhari · for ${source}` : 'Yidhari';
+    label.textContent = who === 'you' ? 'You' : who === 'tool' ? 'Status' : who === 'agent' ? `Yidhari · for ${source}` : 'Yidhari';
     const body = document.createElement('span');
     line.append(label, body);
     chatLog.append(line);
@@ -217,6 +217,10 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
               chatLog.scrollTop = chatLog.scrollHeight;
             }
             break;
+          case 'filler':
+            if (typeof event.id !== 'string' || !CLIP_ID.test(event.id) || !Object.hasOwn(catalog, event.expression) ||
+              typeof event.weight !== 'number' || !Number.isFinite(event.weight)) throw new Error('Invalid filler');
+            onFiller?.({ id: event.id, expression: event.expression, weight: Math.max(0, Math.min(1, event.weight)) }); break;
           case 'speak':
             // Only a generated ID crosses the socket; the renderer builds the clip URL itself.
             if (typeof event.id !== 'string' || !CLIP_ID.test(event.id) || !Object.hasOwn(catalog, event.expression) ||
@@ -247,6 +251,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
           }
           case 'notice':
             if (typeof event.text !== 'string') throw new Error('Invalid notice');
+            addLine('tool').textContent = event.text;
             status.textContent = event.text; break;
           case 'end':
             busy = false; reply = null; onFinish(); button.disabled = false; setChatEnabled(true);

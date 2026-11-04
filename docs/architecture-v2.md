@@ -912,3 +912,13 @@ expression controls through the existing parser and speech segmenter.
 Tools are companion actions, never phoneme/viseme timing stages: speech
 alignment and playback stay deterministic bridge/renderer operations.
 See [LLM companion tools](llm-tools.md) for schemas, limits and privacy.
+
+Run it with a local `llama-server` on `127.0.0.1:8080`. Bing RSS is the default and needs no key; search queries leave this machine.
+
+```bash
+.venv/bin/python controller/bridge.py --mode llm --tools --web-search \
+  --speech --tts kokoro --kokoro-speed 1.0 --kokoro-threads 2 \
+  --applio-dir ../Applio-rocm
+```
+
+Open `http://127.0.0.1:8770/renderer/`. A pasted public `https://` URL in the current message may be read directly. `site:en.wikipedia.org` at the start of a search uses Wikipedia's API instead of Bing. Sources stay visible in chat and are not spoken. Reset or disconnect clears the evidence log.

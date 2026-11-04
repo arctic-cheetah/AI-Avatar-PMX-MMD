@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from controller.bridge import ORIGIN, TagParser, handle_connection, load_catalog
-from controller.speech import ApplioSettings, ApplioWorker, Segmenter, clean_for_tts
+from controller.speech import ApplioSettings, ApplioWorker, Segment, Segmenter, clean_for_tts
 
 
 def segments(chunks):
@@ -123,7 +123,7 @@ class SpeechBridgeTests(unittest.IsolatedAsyncioTestCase):
         )
 
 
-async def run_llm(worker, chunks_with_reasoning):
+async def run_llm(worker, chunks_with_reasoning, filler_id=None):
     """Run one LLM-mode generation over a fake stream; return the events sent."""
     from websockets.asyncio.server import serve
     from websockets.asyncio.client import connect
@@ -145,6 +145,7 @@ async def run_llm(worker, chunks_with_reasoning):
         prompt="Hi",
         context_tokens=65536,
         speech_worker=worker,
+        filler_id=filler_id,
     )
 
     async def handler(ws):
@@ -181,6 +182,25 @@ class ThinkingMoodTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             [e["expression"] for e in events if e["type"] == "speak"], ["happy"]
         )
+
+    async def test_filler_is_opt_in_and_sent_once_per_reasoning_reply(self):
+        stream = [("reasoning", ""), ("reasoning", ""), ("content", "[happy] Hello.")]
+        without_filler = await run_llm(object(), stream)
+        self.assertEqual([e for e in without_filler if e["type"] == "filler"], [])
+
+        with_filler = await run_llm(object(), stream, filler_id="0123456789abcdef")
+        fillers = [e for e in with_filler if e["type"] == "filler"]
+        self.assertEqual(len(fillers), 1)
+        self.assertEqual(fillers[0]["id"], "0123456789abcdef")
+        self.assertEqual(fillers[0]["expression"], "thinking")
+        self.assertLess(
+            with_filler.index(fillers[0]),
+            next(i for i, e in enumerate(with_filler) if e["type"] == "speak"),
+        )
+
+    async def test_filler_does_not_speak_when_reasoning_is_absent(self):
+        events = await run_llm(object(), [("content", "Hello.")], filler_id="0123456789abcdef")
+        self.assertEqual([e for e in events if e["type"] == "filler"], [])
 
     async def test_speech_mode_clears_thinking_when_nothing_spoken(self):
         # Reasoning, then an answer with nothing speakable: no clip will replace the thinking face.

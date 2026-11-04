@@ -147,8 +147,12 @@ with `--agent-socket PATH`) and `controller/mcp_server.py` forwards the agent's
 `say`, `report`, `ask` and `set_mood` tool calls to it. While an `ask` is
 open, the next chat message answers it instead of starting a reply. `report` summaries use the
 same LLM as chat, local or cloud. Agent speech shares the renderer's
-speech lane with chat; a chat message cancels it. Setup for Claude Code and
-Continue is in [agent-voice.md](agent-voice.md).
+speech lane with chat; a chat message cancels it. Setup for Claude Code,
+Claude Desktop, Codex and Continue is in [agent-voice.md](agent-voice.md):
+
+```bash
+.venv/bin/python controller/bridge.py --mode llm --agent --speech --tts kokoro
+```
 
 ## Troubleshooting and tests
 

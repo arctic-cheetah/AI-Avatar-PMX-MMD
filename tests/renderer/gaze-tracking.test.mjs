@@ -1,9 +1,11 @@
-// Run with: node --test tests/renderer/
+// Run with: node --test tests/renderer/gaze-tracking.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { THINKING_POSE } from "../../renderer/thinking-pose.js";
 import {
   GazeController,
   clampTarget,
+  clampEyePitch,
   normalisePointer,
   targetToAngles,
   LIMITS,
@@ -36,6 +38,37 @@ test("angles clamp at the eye/head limits and head follows at a fraction", () =>
   assert.ok(Math.abs(angles.headYaw) < Math.abs(angles.eyeYaw));
   assert.ok(Math.abs(angles.headPitch) < Math.abs(angles.eyePitch));
   assert.equal(angles.headYaw, angles.eyeYaw * LIMITS.headScale);
+});
+
+test("upward eye travel stops safely without reducing head tracking", () => {
+  const angles = targetToAngles(normalisePointer(500, -5000, 1000, 800));
+  assert.equal(angles.eyePitch, -LIMITS.eyePitchUp);
+  assert.equal(angles.headPitch, -LIMITS.eyePitch * LIMITS.headScale);
+  assert.equal(clampEyePitch(0.05), 0.05);
+  assert.equal(clampEyePitch(10), LIMITS.eyePitch);
+  assert.equal(clampEyePitch(-10), -LIMITS.eyePitchUp);
+});
+
+test("the combined thinking offset and gaze cannot exceed the eye pitch limits", () => {
+  for (const y of [-1, -0.5, 0, 0.5, 1]) {
+    for (const weight of [0, 0.25, 0.5, 1]) {
+      const { eyePitch } = targetToAngles({ x: 0, y });
+      const pitch = clampEyePitch(eyePitch, THINKING_POSE.eyePitch * weight);
+      assert.ok(pitch >= -LIMITS.eyePitchUp && pitch <= LIMITS.eyePitch);
+    }
+  }
+  assert.equal(clampEyePitch(-LIMITS.eyePitchUp, THINKING_POSE.eyePitch), -LIMITS.eyePitchUp);
+});
+
+test("cursor and camera sources both obey the upward eye limit", () => {
+  for (const source of ["cursor", "camera"]) {
+    const gaze = new GazeController({ rate: 1000 });
+    if (source === "cursor") gaze.setCursor({ x: 1, y: -1 }, true);
+    else gaze.setCamera({ x: 1, y: -1 }, true, 1000);
+    const angles = gaze.update(1, 1000);
+    assert.equal(angles.eyePitch, -LIMITS.eyePitchUp);
+    assert.equal(angles.eyeYaw, LIMITS.eyeYaw);
+  }
 });
 
 test("controller eases toward the target without overshoot", () => {

@@ -339,14 +339,16 @@ async def sse_data(lines):
         yield "\n".join(data)
 
 
-async def llama_chunks(base_url, model, messages, on_reasoning=None, headers=None):
-    """Yield content deltas. Reasoning text is never forwarded; ``on_reasoning``
-    is awaited for each reasoning delta so the avatar can look thoughtful."""
+async def completion_deltas(base_url, model, messages, on_reasoning=None, headers=None,
+                            tools=None):
+    """One SSE request. Tool fragments remain data until a complete stream."""
     import httpx
 
     payload = {"stream": True, "max_tokens": MAX_TOKENS, "messages": messages}
     if model:
         payload["model"] = model
+    if tools:
+        payload["tools"] = tools
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(120, connect=10), trust_env=False
     ) as client:
@@ -369,15 +371,78 @@ async def llama_chunks(base_url, model, messages, on_reasoning=None, headers=Non
                     raise ValueError("Invalid LLM stream or upstream error")
                 choices = event.get("choices", [])
                 if choices:
+                    if tools and choices[0].get("finish_reason") in ("length", "content_filter"):
+                        raise ValueError("Tool-enabled completion was truncated or filtered")
                     delta = choices[0].get("delta", {})
                     if on_reasoning is not None and (
                         delta.get("reasoning_content") or delta.get("reasoning")
                     ):
                         await on_reasoning()
-                    content = delta.get("content")
-                    if isinstance(content, str) and content:
-                        yield content
+                    yield delta
             raise ValueError("LLM stream ended without [DONE]")
+
+
+async def llama_chunks(base_url, model, messages, on_reasoning=None, headers=None,
+                      tool_session=None, on_tool=None):
+    """Stream prose and validated moods, continuing bounded companion tool rounds."""
+    from controller.tools import (
+        FINAL_TOOL_PROMPT, MAX_TOOL_ROUNDS, TOOL_LIMIT_FALLBACK, ToolCalls, tool_status,
+    )
+
+    messages = [dict(message) for message in messages]
+    for round_number in range(MAX_TOOL_ROUNDS + 1):
+        finalizing = round_number == MAX_TOOL_ROUNDS
+        if finalizing:
+            if messages and messages[0]["role"] == "system":
+                messages[0]["content"] += FINAL_TOOL_PROMPT
+            else:
+                messages.insert(0, {"role": "system", "content": FINAL_TOOL_PROMPT})
+            if on_tool is not None:
+                await on_tool({"type": "notice", "text": "Tool limit reached; finishing reply."})
+        calls, content = ToolCalls(), []
+        final_calls = False
+        async for delta in completion_deltas(
+            base_url, model, messages, on_reasoning, headers,
+            tools=tool_session.definitions() if tool_session is not None and not finalizing else None,
+        ):
+            text = delta.get("content")
+            if isinstance(text, str) and text:
+                content.append(text)
+                if not finalizing:
+                    yield text
+            if delta.get("tool_calls"):
+                if finalizing:
+                    final_calls = True
+                    continue
+                if tool_session is None:
+                    raise ValueError("Received tool calls while tools are disabled")
+                calls.feed(delta["tool_calls"])
+        if finalizing:
+            # Buffer this one response so ignored tool limits cannot leak another
+            # "one more attempt" promise into text, speech or saved history.
+            answer = "".join(content)
+            yield TOOL_LIMIT_FALLBACK if final_calls or not answer.strip() else answer
+            return
+        complete = calls.complete()
+        if not complete:
+            return
+        messages.append({"role": "assistant", "content": "".join(content) or None,
+                         "tool_calls": complete})
+        for call in complete:
+            function = call["function"]
+            # Status strings are bridge-authored; never echo untrusted names/arguments.
+            allowed = {t["function"]["name"] for t in tool_session.definitions()}
+            if on_tool is not None:
+                await on_tool({"type": "notice", "text": f"Using {function['name']}…" if function["name"] in allowed else "Rejecting unknown tool."})
+            result = await tool_session.execute(function["name"], function["arguments"])
+            if on_tool is not None:
+                await on_tool({"type": "notice", "text": tool_status(result)})
+            messages.append({"role": "tool", "tool_call_id": call["id"],
+                             "content": json.dumps(result, ensure_ascii=False, allow_nan=False)})
+            if "expression" in result:
+                expression = result["expression"]
+                # Reuse tag parsing and speech mood timing; never send raw morphs.
+                yield f"[{expression['name']}:{expression['weight']}]"
 
 
 async def demo_chunks():
@@ -475,6 +540,15 @@ async def handle_connection(socket, args, catalog):
 
     worker = getattr(args, "speech_worker", None)
     system = system_prompt(catalog)
+    tool_session = None
+    if getattr(args, "tools", False):
+        from controller.tools import ToolSession, TOOL_PROMPT
+
+        tool_session = ToolSession(
+            catalog, search_key=getattr(args, "search_key", None),
+            search_provider=getattr(args, "search_provider", "bing") if getattr(args, "web_search", False) else None,
+        )
+        system += TOOL_PROMPT
     conversation = None  # created on the first LLM request, once the window is known
 
     async def send(event):
@@ -509,6 +583,8 @@ async def handle_connection(socket, args, catalog):
             conversation = Conversation(
                 await context_window(args.llama_url, getattr(args, "context_tokens", None))
             )
+        if tool_session is not None:
+            tool_session.executed = False
         for attempt in range(2):
             messages = conversation.messages(system, prompt)
             try:
@@ -518,12 +594,13 @@ async def handle_connection(socket, args, catalog):
                     messages,
                     on_reasoning,
                     headers=getattr(args, "llm_headers", None),
+                    **({"tool_session": tool_session, "on_tool": send} if tool_session is not None else {}),
                 ):
                     reply.append(chunk)
                     yield chunk
                 return
             except ContextOverflow:
-                if reply or attempt or not conversation.shrink():
+                if reply or attempt or (tool_session is not None and tool_session.executed) or not conversation.shrink():
                     raise
                 LOG.warning("Context overflow; retrying with older history dropped")
 
@@ -542,6 +619,16 @@ async def handle_connection(socket, args, catalog):
                 await send(
                     {"type": "expression", "name": THINKING, "weight": THINKING_WEIGHT}
                 )
+                filler_id = getattr(args, "filler_id", None)
+                if filler_id is not None:
+                    await send(
+                        {
+                            "type": "filler",
+                            "id": filler_id,
+                            "expression": THINKING,
+                            "weight": THINKING_WEIGHT,
+                        }
+                    )
 
         if stage is not None:
             stage.chat_started()
@@ -640,6 +727,8 @@ async def handle_connection(socket, args, catalog):
                     stage.cancel_agent()
                 if conversation is not None:
                     conversation.clear()
+                if tool_session is not None:
+                    tool_session.clear()
                 await send({"type": "reset"})
                 continue
             if task is not None and not task.done():
@@ -662,6 +751,7 @@ async def run(args):
 
     catalog = load_catalog()
     args.speech_worker = None
+    args.filler_id = None
     if args.speech_settings is not None:
         from controller.speech import ApplioWorker
 
@@ -677,6 +767,10 @@ async def run(args):
             f"Applio worker ready: load {ready['loadSeconds']}s, warm-up {ready['warmSeconds']}s",
             flush=True,
         )
+        if args.thinking_filler:
+            from controller.filler import prepare_filler
+
+            args.filler_id = await prepare_filler(args.speech_worker)
 
     async def handler(socket):
         await handle_connection(socket, args, catalog)
@@ -723,6 +817,10 @@ async def run(args):
                 )
                 if getattr(args, "llm_external", False):
                     upstream += " — prompts and history leave this machine"
+                if getattr(args, "tools", False):
+                    upstream += "; companion tools on"
+                if getattr(args, "web_search", False):
+                    upstream += f"; {args.search_provider} web search on — queries leave this machine"
             print(
                 f"Bridge: ws://127.0.0.1:{args.port} ({args.mode}, {speech}){upstream}; open {ORIGIN}/renderer/",
                 flush=True,
@@ -743,6 +841,10 @@ def build_parser():
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--llama-url", default="http://127.0.0.1:8080")
     parser.add_argument("--model", default=None)
+    parser.add_argument("--tools", action="store_true", help="Enable allowlisted companion tool calling.")
+    parser.add_argument("--web-search", action="store_true", help="Enable web_search (requires --mode llm --tools; Bing RSS needs no key).")
+    parser.add_argument("--search-provider", choices=("bing", "duckduckgo", "brave"), default="bing",
+                        help="Web search provider (default: keyless Bing RSS; Brave needs BRAVE_SEARCH_API_KEY).")
     parser.add_argument(
         "--api-key-env",
         default="OPENAI_API_KEY",
@@ -774,6 +876,11 @@ def build_parser():
         "--speech",
         action="store_true",
         help="Speak each sentence with the selected TTS source, Applio RVC and lip sync.",
+    )
+    parser.add_argument(
+        "--thinking-filler",
+        action="store_true",
+        help="Cache a short 'Hmm…' clip at startup and play it once when reasoning starts (requires --speech).",
     )
     parser.add_argument(
         "--applio-dir",
@@ -816,6 +923,16 @@ def main():
         from controller.agent import default_socket_path
 
         args.agent_socket = default_socket_path()
+    args.search_key = None
+    if args.web_search:
+        if args.mode != "llm" or not args.tools:
+            raise SystemExit("bridge: error: --web-search requires --mode llm --tools")
+        if args.search_provider == "brave":
+            args.search_key = os.environ.get("BRAVE_SEARCH_API_KEY", "").strip()
+            if not args.search_key:
+                raise SystemExit("bridge: error: Brave --web-search requires BRAVE_SEARCH_API_KEY")
+    if args.thinking_filler and not args.speech:
+        raise SystemExit("bridge: error: --thinking-filler requires --speech")
     args.llm_headers, args.llm_external = {}, False
     if args.mode == "llm":
         try:

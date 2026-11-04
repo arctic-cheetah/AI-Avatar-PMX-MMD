@@ -35,6 +35,12 @@ test("malformed agent events are rejected", () => {
   ]) assert.throws(() => agentEvent(event, CATALOG));
 });
 
+test("agent reports keep the full text and a known status for the collapsible bubble", () => {
+  assert.deepEqual(agentEvent({ type: "agent", kind: "report", source: "Claude Code", status: "done", text: "line 1\nline 2" }, CATALOG),
+    { kind: "report", source: "Claude Code", status: "done", text: "line 1\nline 2" });
+  assert.throws(() => agentEvent({ type: "agent", kind: "report", source: "Agent", status: "panic", text: "x" }, CATALOG));
+});
+
 test("tool notices stay in the chat log without becoming reply or speech text", (t) => {
   const previousDocument = globalThis.document;
   const previousSocket = globalThis.WebSocket;

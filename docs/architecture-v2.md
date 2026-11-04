@@ -905,7 +905,8 @@ With search enabled, `read_webpage` fetches only retained search-result URLs,
 pins validated public IP addresses, revalidates redirects and extracts bounded
 HTML text. Search and page provenance stays in a bounded per-connection
 untrusted evidence log for follow-ups; reset/disconnect clears it, and it is
-included in prompt-token accounting.
+included in prompt-token accounting as a user message before the current
+prompt, never as part of the system prompt.
 It keeps tool protocol/results inside the active turn and routes validated
 expression controls through the existing parser and speech segmenter.
 Tools are companion actions, never phoneme/viseme timing stages: speech

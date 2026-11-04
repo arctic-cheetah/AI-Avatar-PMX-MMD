@@ -251,16 +251,14 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
         ], tools)
         self.assertEqual(reply, ["The recorded search used the actual query and source."])
         follow_up = self.requests[1]["messages"]
-        self.assertEqual([message["role"] for message in follow_up], ["user", "user", "assistant", "tool", "user", "user"])
-        self.assertNotIn("actual query", follow_up[0]["content"])
-        self.assertEqual(follow_up[0]["content"], "hi")
-        self.assertIn("actual query", follow_up[-2]["content"])
-        self.assertIn("Actual source", follow_up[-2]["content"])
-        self.assertIn("https://example.com/source", follow_up[-2]["content"])
-        self.assertIn("untrusted", follow_up[-2]["content"])
-        self.assertEqual(follow_up[-1]["content"], "Later reply.")
-        self.assertTrue(all(message["role"] != "system" or "actual query" not in message["content"]
-                            for message in follow_up))
+        self.assertEqual([message["role"] for message in follow_up], ["user", "user", "assistant", "tool"])
+        self.assertIn("actual query", follow_up[0]["content"])
+        self.assertIn("Actual source", follow_up[0]["content"])
+        self.assertIn("https://example.com/source", follow_up[0]["content"])
+        self.assertIn("untrusted", follow_up[0]["content"])
+        self.assertEqual(follow_up[1]["content"], "hi")
+        self.assertNotIn("actual query", follow_up[1]["content"])
+        self.assertTrue(all(message["role"] != "system" for message in follow_up))
 
     async def test_retained_evidence_is_included_in_context_accounting(self):
         tools = ToolSession(load_catalog(), search_provider="bing")

@@ -169,7 +169,9 @@ fetch-limit exhaustion have separate sanitized error codes. There is no PDF,
 media or screenshot extraction.
 
 Retrieved text remains untrusted data, including when retained for later turns.
-Instructions in a page do not change system/tool rules, become session notes,
+It is sent as a separate user-role evidence message, not appended to the system
+prompt, so an instruction in a page does not inherit system authority on the
+next turn. Instructions in a page do not change system/tool rules, become session notes,
 expand the source allowlist or authorize further actions. The model is asked
 to cite only claims supported by relevant page content. A successful fetch and
 parse does not establish factual accuracy or search relevance.
@@ -200,9 +202,12 @@ or end-to-end voice quality is validated by mocked tests.
 4. Feed ordinary answer text and validated expression controls through the
    existing text/speech pipeline. Only the completed spoken/text reply is
    retained in conversation history; tool protocol messages stay in this turn.
-5. On later turns, prepend a bounded JSON evidence block to the system prompt.
-   It records real provider/query/source/page provenance, is marked untrusted,
-   and is counted along with the advertised tool schemas in context trimming.
+5. On later turns, place one bounded evidence message after history and
+   immediately before the current user prompt. Its role is `user`, never
+   `system`: page text and snippets must not gain system authority or change
+   the stable system prefix. It records real provider/query/source/page
+   provenance, is explicitly untrusted data, and is counted with the advertised
+   tool schemas in context trimming.
 
 The chat log displays short tool status notices and a bounded Sources line for
 successful searches and page reads: provider, query, titles, URLs, snippets,

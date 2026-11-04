@@ -250,11 +250,17 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
             stream({"content": "The recorded search used the actual query and source."}),
         ], tools)
         self.assertEqual(reply, ["The recorded search used the actual query and source."])
-        follow_up = self.requests[1]["messages"][0]["content"]
-        self.assertIn("actual query", follow_up)
-        self.assertIn("Actual source", follow_up)
-        self.assertIn("https://example.com/source", follow_up)
-        self.assertIn("untrusted", follow_up)
+        follow_up = self.requests[1]["messages"]
+        self.assertEqual([message["role"] for message in follow_up], ["user", "user", "assistant", "tool", "user", "user"])
+        self.assertNotIn("actual query", follow_up[0]["content"])
+        self.assertEqual(follow_up[0]["content"], "hi")
+        self.assertIn("actual query", follow_up[-2]["content"])
+        self.assertIn("Actual source", follow_up[-2]["content"])
+        self.assertIn("https://example.com/source", follow_up[-2]["content"])
+        self.assertIn("untrusted", follow_up[-2]["content"])
+        self.assertEqual(follow_up[-1]["content"], "Later reply.")
+        self.assertTrue(all(message["role"] != "system" or "actual query" not in message["content"]
+                            for message in follow_up))
 
     async def test_retained_evidence_is_included_in_context_accounting(self):
         tools = ToolSession(load_catalog(), search_provider="bing")
@@ -275,9 +281,14 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
             reply = [chunk async for chunk in llama_chunks("http://localhost", None, messages, tool_session=tools)]
         self.assertEqual(reply, ["Recorded evidence only."])
         self.assertLessEqual(len(tools.evidence()), 8)
-        prompt = requests[0]["messages"][0]["content"]
-        self.assertIn("query 29", prompt)
-        self.assertNotIn("query 0\n", prompt)
+        prompt = requests[0]["messages"]
+        self.assertEqual(prompt[0]["content"], "System " + "s" * 63000)
+        self.assertNotIn("query 29", prompt[0]["content"])
+        self.assertIn("query 29", prompt[-2]["content"])
+        self.assertNotIn("query 0\n", prompt[-2]["content"])
+        self.assertEqual(prompt[-1]["content"], "What did the search return?")
+        self.assertTrue(all(message["role"] != "system" or "Source " not in message["content"]
+                            for message in prompt))
 
     async def test_expression_continues_through_speech_and_reset_clears_notes(self):
         events, segments, sessions = [], [], []

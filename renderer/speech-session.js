@@ -10,10 +10,16 @@ export class LiveSpeechSession {
     this.reset();
   }
 
-  /** A new response started. */
+  /** A new response started. It also clears any rest mood set by an agent. */
   reset() {
     this.spoke = false;
     this.finished = false;
+    this.restMood = { name: 'neutral', weight: 1 };
+  }
+
+  /** A coding agent chose the mood to rest in after speech, instead of neutral (#27). */
+  setRestMood(name, weight) {
+    this.restMood = { name, weight };
   }
 
   /** The bridge announced a clip for this response. */

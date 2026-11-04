@@ -38,3 +38,12 @@ test("the last clip ending before the response finishes waits for the finish", (
   session.responseFinished();
   assert.equal(session.shouldRelax(true), true);
 });
+
+test("an agent rest mood replaces neutral after speech, until a chat reply starts", () => {
+  const session = new LiveSpeechSession();
+  assert.deepEqual(session.restMood, { name: "neutral", weight: 1 });
+  session.setRestMood("thinking", 0.6);
+  assert.deepEqual(session.restMood, { name: "thinking", weight: 0.6 });
+  session.reset();
+  assert.deepEqual(session.restMood, { name: "neutral", weight: 1 });
+});

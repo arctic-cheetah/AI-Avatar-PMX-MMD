@@ -2,7 +2,7 @@
 
 Tracked in [#27](https://github.com/arctic-cheetah/AI-Avatar-PMX-MMD/issues/27).
 Yidhari becomes the voice and face of a coding agent (Claude Code first, then
-Continue or VS Code agent mode). The agent calls her tools through a small stdio
+Claude Desktop, Codex, Continue or any other MCP host). The agent calls her tools through a small stdio
 MCP server, `controller/mcp_server.py`. The server forwards each call to the
 running bridge over an owner-only Unix socket.
 
@@ -12,7 +12,7 @@ Built in steps:
 | ---- | ---------------------- | --------------- |
 | A    | `say`, `set_mood`      | ✅ this guide   |
 | B    | `report` (summariser)  | ✅ this guide   |
-| C    | `ask`, Stop hook       | planned         |
+| C    | `ask`, Stop and Notification hooks | ✅ this guide |
 
 `say` and `set_mood` never call an LLM. `report` summaries use the same upstream
 as chat (`--llama-url`, `--model`, `--api-key-env`), so they work with the local
@@ -47,26 +47,104 @@ the agent socket is a Unix domain socket that only your user can open.
    .venv/bin/python -m pip install -r requirements.txt
    ```
 
-2. Start the renderer and the bridge with `--agent`. Every other bridge flag
-   still works: local or cloud LLM, `--speech`, `--tts kokoro`.
+2. Start the renderer and the bridge with `--agent`. Run both from the same
+   checkout, in two terminals. `--agent` adds to the usual bridge flags, so
+   pick the LLM you want for chat and report summaries:
 
    ```bash
+   # Terminal 1: renderer (add --stt for the 🎤 Talk button)
    .venv/bin/python renderer/serve.py
+   ```
+
+   ```bash
+   # Terminal 2, local llama-server on 127.0.0.1:8080, with voice:
    .venv/bin/python controller/bridge.py --mode llm --agent --speech --tts kokoro
+
+   # ...or a cloud or proxy LLM (summaries then leave this machine):
+   export OPENAI_API_KEY='sk-…'
+   .venv/bin/python controller/bridge.py --mode llm --agent --speech --tts kokoro \
+     --llama-url https://your-proxy.example/v1 --model your-model-name
+
+   # ...or text only, without voice (bubbles and moods only):
+   .venv/bin/python controller/bridge.py --mode llm --agent
    ```
 
    The bridge prints `Agent socket: /run/user/1000/yidhari/agent.sock`.
-   Open the renderer and wait for **Connected · ready**.
+   Open [the renderer](http://127.0.0.1:8770/renderer/) and wait for
+   **Connected · ready**. To check the socket before you connect an agent, run
+   the one-line `say` test under [Troubleshooting](#troubleshooting).
 
-3. Register the MCP server with Claude Code (once per machine):
+   With llama-server, start it with `-np 2` so a report summary does not wait
+   behind a chat reply.
+
+3. Connect your coding agent (once per machine). Each host starts
+   `mcp_server.py` itself; you never run it by hand. Use absolute paths, and
+   give each host its own `--name`: it is the label on her bubbles
+   (`Yidhari · for Codex`).
+
+   ### Claude Code (CLI and VS Code extension)
 
    ```bash
-   claude mcp add yidhari -- \
+   claude mcp add --scope user yidhari -- \
      /home/parrot/Code/avatar-yidhari/.venv/bin/python \
      /home/parrot/Code/avatar-yidhari/controller/mcp_server.py --name "Claude Code"
+   claude mcp list   # yidhari: ... ✔ Connected
    ```
 
-   Continue uses the same command in its `mcpServers` config:
+   `--scope user` makes her available in every project. If `claude mcp list`
+   shows the same name in two scopes, remove the stale one, for example
+   `claude mcp remove yidhari -s local`. Start a new session to load the tools.
+   Claude Code can also run the [hooks](#hooks-speak-even-when-the-model-forgets),
+   so she speaks even when the model forgets to call `report`.
+
+   ### Claude Desktop
+
+   Claude Desktop reads its own list in
+   `~/.config/Claude/claude_desktop_config.json` (Settings → Developer → Edit
+   config), not `~/.claude.json`. Add a top-level `"mcpServers"` key, then fully
+   quit and restart the app (closing the window is not enough):
+
+   ```json
+   "mcpServers": {
+     "yidhari": {
+       "command": "/home/parrot/Code/avatar-yidhari/.venv/bin/python",
+       "args": ["/home/parrot/Code/avatar-yidhari/controller/mcp_server.py",
+                "--name", "Claude Desktop"]
+     }
+   }
+   ```
+
+   Settings → Developer should then list `yidhari` as running.
+
+   ### Codex (CLI and ChatGPT desktop)
+
+   The Codex CLI and the ChatGPT desktop app share `~/.codex/config.toml`, so
+   one entry serves both. The ChatGPT app bundles the CLI at
+   `/usr/lib/chatgpt/resources/codex` when `codex` is not on your `PATH`:
+
+   ```bash
+   CODEX=$(command -v codex || echo /usr/lib/chatgpt/resources/codex)
+   "$CODEX" mcp add yidhari -- \
+     /home/parrot/Code/avatar-yidhari/.venv/bin/python \
+     /home/parrot/Code/avatar-yidhari/controller/mcp_server.py --name "Codex"
+   "$CODEX" mcp list
+   ```
+
+   Or edit `~/.codex/config.toml` directly. Raise `tool_timeout_sec` so that
+   `ask` can wait for your reply (up to 600 s plus a margin):
+
+   ```toml
+   [mcp_servers.yidhari]
+   command = "/home/parrot/Code/avatar-yidhari/.venv/bin/python"
+   args = ["/home/parrot/Code/avatar-yidhari/controller/mcp_server.py", "--name", "Codex"]
+   tool_timeout_sec = 660
+   ```
+
+   Restart Codex, or quit and reopen the ChatGPT app. Codex has no Claude Code
+   style Stop or Notification hooks for `agent_notify.py`, so the rules in step
+   4 are what remind it to report.
+
+   ### Continue
 
    ```yaml
    mcpServers:
@@ -78,7 +156,16 @@ the agent socket is a Unix domain socket that only your user can open.
          - Continue
    ```
 
-4. Tell the agent when to use her, in its rules file (for example `CLAUDE.md`):
+   ### Other MCP hosts
+
+   Any host that starts stdio MCP servers works with the same command and
+   arguments. If the host does not pass `XDG_RUNTIME_DIR` to the server, the
+   socket path falls back as described under [Troubleshooting](#troubleshooting).
+   If the bridge uses `--agent-socket`, add the same `--socket PATH` to `args`.
+
+4. Tell the agent when to use her, in its rules file: `~/.claude/CLAUDE.md` or
+   the project's `CLAUDE.md` for Claude Code and Claude Desktop projects,
+   `~/.codex/AGENTS.md` or the project's `AGENTS.md` for Codex:
 
    ```markdown
    ## Voice (Yidhari MCP)
@@ -86,8 +173,13 @@ the agent socket is a Unix domain socket that only your user can open.
      you finish it. Plain speech only: no code, paths, hashes or URLs.
    - When a task finishes or fails, call `report` with your full final message
      and `kind` `done` or `error`.
+   - When you need my decision, call `ask` with a short question and wait for
+     the reply; treat `no answer` as "not now".
    - Call `set_mood` with `thinking` while you work for a long time.
    ```
+
+   The tools work without the rules too, but agents then call them only when
+   asked.
 
 Options for `mcp_server.py`: `--name` is the label on her chat bubbles (default
 `Coding agent`), `--socket` overrides the socket path. The bridge takes
@@ -99,7 +191,15 @@ Options for `mcp_server.py`: `--name` is the label on her chat bubbles (default
 | ---------- | --------------------------------------------- | ------------------------------------------------- | ---------------------------------------- |
 | `say`      | `text` (≤ 500 chars), optional `mood`, `weight` | Logs the text in the chat, then speaks it as written | `queued` at once; never waits for playback |
 | `report`   | `text` (≤ 16 KiB), `kind`: `progress`, `done` (default) or `error` | Logs the full text in a collapsible bubble; the LLM rewrites it as 1–3 spoken sentences with moods | `queued` at once |
+| `ask`      | `question` (≤ 500 chars), optional `timeout` (s, default 120, max 600) | Logs and speaks the question; your next chat message (typed or spoken) is the answer | Your reply (≤ 4000 chars), or `no answer` after the timeout |
 | `set_mood` | `name`, optional `weight`                     | Sets her resting face without speaking            | `ok`                                     |
+
+The agent sees every mood: `mcp_server.py` loads
+[expressions.json](../renderer/expressions.json) at start, lists each name in the
+`mood`/`name` parameter schema (an enum), and puts every name with its
+description in the `set_mood` tool description. Restart the agent session after
+changing the catalog, since hosts read tool lists once per session. An unknown
+mood is refused before it reaches the bridge.
 
 `say` text goes through the same tag parser as LLM replies, so inline tags such
 as `[relieved]` work and unknown brackets are dropped. `mood` is the mood for
@@ -152,9 +252,70 @@ Other results:
 | Result               | Meaning                                                           |
 | -------------------- | ----------------------------------------------------------------- |
 | `no renderer`        | No browser is connected to the bridge                             |
-| `busy`               | Rate limit (1 `say` per second) or 10 agent items already queued  |
+| `busy`               | Rate limit (1 `say` per second) or 10 agent items already queued; for `ask`, another question is still open |
+| `skipped`            | A hook report arrived within 2 minutes of the agent's own `report` |
 | `error: …`           | Invalid tool call, for example an unknown mood or text too long   |
 | `bridge not running` | Nothing listens on the socket; start the bridge with `--agent`    |
+
+## Asking you a question
+
+While an `ask` is open, the chat bar shows `Answer <agent>…` and your next
+message (typed, or spoken with **🎤 Talk**) goes back to the agent as the tool
+result instead of starting a chat reply. Only one question can be open at a
+time. When it times out, the chat bar returns to normal. **New chat** or closing
+the renderer ends it with `no answer`.
+
+The reply is plain text for the agent. It never approves the agent host's own
+permission prompts: those still appear in the agent host.
+
+MCP hosts may stop waiting for a tool call before the `ask` timeout. If yours
+does, pass a smaller `timeout`. In Claude Code, the `MCP_TOOL_TIMEOUT`
+environment variable (milliseconds) sets the limit.
+
+## Hooks: speak even when the model forgets
+
+MCP is a pull protocol: she hears only what the agent passes to a tool. To make
+her speak even when the model forgets to call `report`, add
+`controller/agent_notify.py` as a Claude Code hook, in `~/.claude/settings.json`
+or the project's `.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/parrot/Code/avatar-yidhari/.venv/bin/python /home/parrot/Code/avatar-yidhari/controller/agent_notify.py stop --name 'Claude Code'"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/parrot/Code/avatar-yidhari/.venv/bin/python /home/parrot/Code/avatar-yidhari/controller/agent_notify.py notification --name 'Claude Code'"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+- **`stop`:** sends the agent's final message as a `report` (kind `done`). It
+  uses `last_assistant_message` when the host sends it; otherwise it reads the
+  trailing assistant text from `transcript_path`. The bridge skips it
+  (`skipped`) if the agent already called `report` in the last 2 minutes, so
+  she does not say it twice.
+- **`notification`:** speaks the host's notice with a `worried` face, for
+  example "Claude needs your permission to use Bash". She only tells you;
+  you still approve in Claude Code.
+- The hook always exits 0, prints nothing and gives up after 5 s, so it never
+  blocks the agent, even when the bridge is down.
 
 ## Chat and agent share one speech lane
 
@@ -191,7 +352,11 @@ agent speaks through the newest one.
 ## Troubleshooting
 
 - **`bridge not running`:** start the bridge with `--agent`. If the bridge uses
-  `--agent-socket`, pass the same path to `mcp_server.py --socket`.
+  `--agent-socket`, pass the same path to `mcp_server.py --socket`. The
+  default path is `$XDG_RUNTIME_DIR/yidhari/agent.sock`; when a host starts the
+  MCP server without `XDG_RUNTIME_DIR` (Claude Desktop does), it uses
+  `/run/user/<uid>/yidhari/agent.sock` if that directory exists and is yours,
+  and only then `/tmp/yidhari-<uid>/agent.sock`.
 - **`no renderer`:** open [the renderer](http://127.0.0.1:8770/renderer/) and wait
   for **Connected · ready**.
 - **`Agent socket directory … is not private`:** fix the directory's owner or

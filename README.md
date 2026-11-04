@@ -13,7 +13,7 @@ This is a companion project, kept outside `my_code_pc` so it does not compete fo
 - 💭 **Optional spoken filler:** `--thinking-filler` prepares one “Hmm…” clip at startup and plays it once before the real answer.
 - 🎙️ **Voice:** each sentence is synthesised locally with Kokoro TTS (`--tts kokoro`), then converted to Yidhari's voice with an Applio RVC model. Edge TTS is still available with `--tts edge`.
 - 👄 **Lip sync:** Rhubarb Lip Sync times mouth shapes from the final audio, and the renderer plays them on the audio clock.
-- 👀 **Idle life and tuning:** automatic blinking, plus wink controls and a morph test bench for tuning expressions.
+- 🔎 **Web search:** with `--tools --web-search`, she can search Bing and read a returned page, or a public URL you paste in the current message. Sources stay in the chat; speech does not read raw URLs.
 - 🌊 **Slow sway:** her upper body drifts on gentle sine waves with a breathing motion, and settles back to still when toggled off — see [docs/body-sway.md](docs/body-sway.md).
 - 👁️ **Gaze tracking:** her eyes (and gently, her head) follow your mouse cursor and/or your face on webcam — see [docs/gaze-tracking.md](docs/gaze-tracking.md). The webcam only starts when you toggle it on, and frames never leave the browser.
 
@@ -169,7 +169,16 @@ The transcript shows up as your chat bubble and goes down the same `{"type":"sta
    ```
 
    If you do not have `../Applio-rocm`, omit `--applio-dir` to use the CPU Applio install at `../Applio` (and optionally add `--rvc-threads 4`). Wait for `Applio worker ready…`, then chat as usual. She speaks each sentence as soon as it is ready, with her mouth following the audio.
-5. **Edge fallback (optional):** to compare against the online Edge source instead, start with `--tts edge`:
+5. **Web search (optional):** with `llama-server` already running, add `--tools --web-search`. Bing RSS needs no API key. Search queries leave this machine; the LLM key is not sent to Bing.
+
+   ```bash
+   .venv/bin/python controller/bridge.py --mode llm --tools --web-search \
+     --speech --tts kokoro --kokoro-speed 1.0 --kokoro-threads 2 \
+     --applio-dir ../Applio-rocm
+   ```
+
+   Then open `http://127.0.0.1:8770/renderer/` and ask for something recent, or paste a public `https://` URL and ask her to read it. A Wikipedia-scoped question can start with `site:en.wikipedia.org`. Chat shows a Sources line; speech does not read raw URLs aloud. **New chat** clears search evidence. Full limits and the fetch boundary are in [docs/llm-tools.md](docs/llm-tools.md).
+6. **Edge fallback (optional):** to compare against the online Edge source instead, start with `--tts edge`:
 
    ```bash
    .venv/bin/python controller/bridge.py --mode llm --speech --tts edge
@@ -198,6 +207,9 @@ The voice model and Applio settings (RVC pitch, index rate, protect, plus Kokoro
 | `--llm-header`     | none                                  | Extra upstream header `Name: Value`; repeatable (never `Authorization`)         |
 | `--allow-no-key`   | off                                   | Allow a non-loopback URL with no API key (keyless proxies only)                |
 | `--context-tokens` | `/props` or 65536                     | Model context window; pass it for non-loopback servers (not probed)            |
+| `--tools`          | off                                   | Allowlisted companion tools (`get_time`, moods, session notes, search)    |
+| `--web-search`     | off                                   | Advertise `web_search` and `read_webpage`; requires `--mode llm --tools`  |
+| `--search-provider`| `bing`                                | `bing` (no key), `duckduckgo`, or `brave` (`BRAVE_SEARCH_API_KEY`)        |
 | `--prompt`         | a greeting                            | Prompt for **Start default response**                                    |
 | `--port`           | `8765`                              | Bridge WebSocket port                                                          |
 
@@ -233,7 +245,7 @@ The voice model and Applio settings (RVC pitch, index rate, protect, plus Kokoro
 
 Optional LLM tools (`get_time`, `set_expression`, session `remember` / `recall`)
 and keyless Bing RSS web search are described in [LLM companion tools](docs/llm-tools.md).
-Start with `--mode llm --tools`; add `--web-search` to enable Bing RSS.
+The spoken web-search command is step 5 under [Voice and lip sync](#-voice-and-lip-sync).
 DuckDuckGo remains available via `--search-provider duckduckgo`.
 Brave is optional via `--search-provider brave` and `BRAVE_SEARCH_API_KEY`.
 

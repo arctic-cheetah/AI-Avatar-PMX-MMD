@@ -897,12 +897,28 @@ sequenceDiagram
   back-end agent without a UI (for example `claude -p --output-format stream-json`) and feeds its progress and result into the same summariser.
 - **Own tools:** future expansion of #23, with allowlisted MCP servers and approval prompts.
 
-## Companion tool boundary (issue #23)
+## Companion tool boundary (issues #23 and #48)
 
 The bridge's opt-in OpenAI-compatible tool loop handles local time, catalog
 expressions, bounded session notes and optional fixed-endpoint Bing RSS search (or DuckDuckGo / Brave).
+With search enabled, `read_webpage` fetches only retained search-result URLs,
+pins validated public IP addresses, revalidates redirects and extracts bounded
+HTML text. Search and page provenance stays in a bounded per-connection
+untrusted evidence log for follow-ups; reset/disconnect clears it, and it is
+included in prompt-token accounting as a user message before the current
+prompt, never as part of the system prompt.
 It keeps tool protocol/results inside the active turn and routes validated
 expression controls through the existing parser and speech segmenter.
 Tools are companion actions, never phoneme/viseme timing stages: speech
 alignment and playback stay deterministic bridge/renderer operations.
 See [LLM companion tools](llm-tools.md) for schemas, limits and privacy.
+
+Run it with a local `llama-server` on `127.0.0.1:8080`. Bing RSS is the default and needs no key; search queries leave this machine.
+
+```bash
+.venv/bin/python controller/bridge.py --mode llm --tools --web-search \
+  --speech --tts kokoro --kokoro-speed 1.0 --kokoro-threads 2 \
+  --applio-dir ../Applio-rocm
+```
+
+Open `http://127.0.0.1:8770/renderer/`. A pasted public `https://` URL in the current message may be read directly. `site:en.wikipedia.org` at the start of a search uses Wikipedia's API instead of Bing. Sources stay visible in chat and are not spoken. Reset or disconnect clears the evidence log.

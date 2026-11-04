@@ -6,7 +6,7 @@ from unittest.mock import patch
 import httpx
 
 from controller.bridge import build_parser, load_catalog
-from controller.tools import ToolSession, tool_status
+from controller.tools import ToolSession, tool_status, url_is_allowed
 
 
 class BingTests(unittest.IsolatedAsyncioTestCase):
@@ -40,7 +40,8 @@ class BingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(result["results"][0]["snippet"]), 500)
 
     async def test_empty_channel_is_valid(self):
-        self.assertEqual(await self.search(httpx.Response(200, text='<rss><channel/></rss>')), {"results": []})
+        self.assertEqual(await self.search(httpx.Response(200, text='<rss><channel/></rss>')),
+                         {"provider": "bing", "query": "avatar news", "results": []})
 
     async def test_failure_codes_are_sanitized(self):
         for response, code in [
@@ -58,6 +59,70 @@ class BingTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(result["code"], code)
                 self.assertIn("error", result)
                 self.assertNotIn("private details", json.dumps(result))
+
+    async def test_client_url_can_be_searched_without_opening_an_arbitrary_fetch(self):
+        seen = []
+        def handler(request):
+            seen.append(request.url.params["q"])
+            return httpx.Response(200, text=(
+                "<rss><channel><item><title>Wiki</title>"
+                "<link>https://en.wikipedia.org/wiki/My_Dress-Up_Darling</link>"
+                "<description>Anime</description></item></channel></rss>"))
+        original = httpx.AsyncClient
+        tools = ToolSession(load_catalog(), search_provider="bing")
+        tools.remember_client_urls("Please read https://en.wikipedia.org/wiki/My_Dress-Up_Darling and https://example.com/guide.")
+        with patch("httpx.AsyncClient", side_effect=lambda **kwargs: original(transport=httpx.MockTransport(handler))):
+            result = await tools.execute("web_search", json.dumps({
+                "query": "confirm this page",
+                "url": "https://example.com/guide",
+            }))
+        self.assertEqual(seen, ["https://example.com/guide"])
+        self.assertEqual(result["client_url"], "https://example.com/guide")
+        rejected = await tools.execute("web_search", json.dumps({
+            "query": "other", "url": "https://example.com/not-from-the-user"}))
+        self.assertEqual(rejected["code"], "invalid_arguments")
+        self.assertEqual(
+            (await tools.execute("read_webpage", '{"url":"https://example.com/not-from-the-user"}'))["code"],
+            "url_not_allowed")
+        async def fake_fetch(url, allowed, client_urls=()):
+            self.assertTrue(url_is_allowed(url, client_urls))
+            return {"requested_url": url, "final_url": url, "retrieved_at": "2026-11-04T00:00:00+11:00",
+                    "redirects": 0, "body": b"<html><p>Wakana Gojo</p></html>", "encoding": "utf-8"}
+        with patch("controller.tools.fetch_webpage", side_effect=fake_fetch):
+            page = await tools.execute("read_webpage", '{"url":"https://en.wikipedia.org/wiki/My_Dress-Up_Darling/"}')
+        self.assertEqual(page["text"], "Wakana Gojo")
+
+    async def test_site_scopes_the_provider_query_without_allowing_a_direct_fetch(self):
+        seen = []
+        def handler(request):
+            seen.append(str(request.url))
+            self.assertNotEqual(request.url.host, "www.bing.com")
+            return httpx.Response(200, json={"query": {"search": [
+                {"title": "Example", "snippet": "A page"}]}})
+        original = httpx.AsyncClient
+        def factory(**kwargs):
+            return original(transport=httpx.MockTransport(handler))
+        tools = ToolSession(load_catalog(), search_provider="bing")
+        with patch("httpx.AsyncClient", side_effect=factory):
+            result = await tools.execute("web_search", '{"query":"Marin Kitagawa","site":"EN.Wikipedia.org"}')
+            inline = await tools.execute("web_search", '{"query":"site:en.wikipedia.org Marin Kitagawa"}')
+            named = await tools.execute("web_search", '{"query":"https://en.wikipedia.org/wiki/Marin_Kitagawa"}')
+        self.assertEqual(str(seen[0]).split("?")[0], "https://en.wikipedia.org/w/api.php")
+        self.assertEqual(result["provider"], "wikipedia")
+        self.assertEqual(result["site"], "en.wikipedia.org")
+        self.assertEqual(result["query"], "Marin Kitagawa")
+        self.assertEqual(inline["provider"], "wikipedia")
+        self.assertEqual(inline["results"][0]["url"], "https://en.wikipedia.org/wiki/Example")
+        self.assertEqual(named["results"][0]["url"], "https://en.wikipedia.org/wiki/Marin_Kitagawa")
+        self.assertIn("https://en.wikipedia.org/wiki/Example", tools.allowed_urls)
+        self.assertNotIn("https://en.wikipedia.org/", tools.allowed_urls)
+        self.assertEqual(
+            (await tools.execute("read_webpage", '{"url":"https://en.wikipedia.org/wiki/Other"}'))["code"],
+            "url_not_allowed")
+        for site in ["https://en.wikipedia.org/wiki/Example", "localhost", "127.0.0.1",
+                     "evil.com/path", "user@evil.com", "not a host", "", "a" * 254]:
+            rejected = await tools.execute("web_search", json.dumps({"query": "news", "site": site}))
+            self.assertEqual(rejected["code"], "invalid_arguments", site)
 
     async def test_bing_advertised_and_argument_errors_distinct(self):
         tools = ToolSession(load_catalog(), search_provider="bing")

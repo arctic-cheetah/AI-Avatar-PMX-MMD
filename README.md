@@ -245,7 +245,7 @@ The voice model and Applio settings (RVC pitch, index rate, protect, plus Kokoro
 
 Optional LLM tools (`get_time`, `set_expression`, session `remember` / `recall`)
 and keyless Bing RSS web search are described in [LLM companion tools](docs/llm-tools.md).
-The spoken web-search command is in [Web search](#-web-search) above.
+The spoken web-search command is step 5 under [Voice and lip sync](#-voice-and-lip-sync).
 DuckDuckGo remains available via `--search-provider duckduckgo`.
 Brave is optional via `--search-provider brave` and `BRAVE_SEARCH_API_KEY`.
 

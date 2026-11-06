@@ -48,6 +48,11 @@ written reply complete; speech complements it rather than replacing it.
 
 This convention was requested by the user on 7 November 2026.
 
+Reaffirmed on 7 November 2026: explain concepts aloud through the Yidhari
+avatar whenever it is available, alongside a complete written explanation.
+Use `say` for the explanation itself when a short closing summary would omit
+the teaching content; split longer explanations into concise spoken parts.
+
 ## Creating tickets
 
 When opening a github issue ticket. Use emoji's to denote visualise the issue.

@@ -35,7 +35,9 @@ MAX_TOKENS = 1024 * 2
 MIN_CONTEXT = 65536  # smallest context window assumed or accepted (tokens)
 CONTEXT_MARGIN = 512  # tokens kept spare beyond the estimate
 MESSAGE_OVERHEAD = 8  # estimated chat-template tokens per message
-TRIM_TO = 0.75  # trim history below this share of the budget to keep the prompt cache warm
+TRIM_TO = (
+    0.75  # trim history below this share of the budget to keep the prompt cache warm
+)
 MAX_TURNS = 100  # user/assistant pairs kept per connection
 LOG = logging.getLogger(__name__)
 
@@ -125,7 +127,7 @@ class TagParser:
 
 def system_prompt(catalog):
     return (
-        "You are Yidhari, a warm, concise companion. Answer the user. "
+        "You are Yidhari, a warm, lovable, concise companion. Answer the user. Act like a waifu"
         "Place optional emotion tags BEFORE the text they affect, one mood at a time. "
         "Use [name] or [name:0.6], intensity 0 to 1. Use tags sparingly. "
         "Use [neutral] to clear the mood. Square brackets are reserved for controls; "
@@ -243,8 +245,9 @@ class LlmConfig:
     headers: dict = field(default_factory=dict)
 
 
-def resolve_llm_config(base_url, model, api_key_env, extra_headers,
-                       allow_no_key=False, environ=None):
+def resolve_llm_config(
+    base_url, model, api_key_env, extra_headers, allow_no_key=False, environ=None
+):
     """Validate the upstream once at startup; fail fast rather than per-chat.
     The key value itself is never logged or returned beyond the header."""
     environ = os.environ if environ is None else environ
@@ -259,9 +262,7 @@ def resolve_llm_config(base_url, model, api_key_env, extra_headers,
         )
     external = not is_loopback_url(base_url)
     if external and not model:
-        raise argparse.ArgumentTypeError(
-            "a non-loopback --llama-url requires --model"
-        )
+        raise argparse.ArgumentTypeError("a non-loopback --llama-url requires --model")
     headers = {}
     for name, value in extra_headers or []:
         if name.lower() == "authorization":
@@ -300,13 +301,17 @@ async def context_window(base_url, override=None):
     if not is_loopback_url(base_url):
         LOG.warning(
             "Not probing external %s/props; assuming %d tokens (set "
-            "--context-tokens for your model)", base_url.rstrip("/"), MIN_CONTEXT
+            "--context-tokens for your model)",
+            base_url.rstrip("/"),
+            MIN_CONTEXT,
         )
         return MIN_CONTEXT
     import httpx
 
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(10), trust_env=False) as client:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(10), trust_env=False
+        ) as client:
             response = await client.get(base_url.rstrip("/") + "/props")
             response.raise_for_status()
             n_ctx = response.json()["default_generation_settings"]["n_ctx"]
@@ -315,13 +320,16 @@ async def context_window(base_url, override=None):
     if not isinstance(n_ctx, int) or isinstance(n_ctx, bool) or n_ctx <= 0:
         LOG.warning(
             "Could not read the context window from %s/props; assuming %d tokens "
-            "(set --context-tokens to override)", base_url.rstrip("/"), MIN_CONTEXT
+            "(set --context-tokens to override)",
+            base_url.rstrip("/"),
+            MIN_CONTEXT,
         )
         return MIN_CONTEXT
     if n_ctx < MIN_CONTEXT:
         LOG.warning(
             "llama-server context is %d tokens; start it with -c %d or more for chat history",
-            n_ctx, MIN_CONTEXT,
+            n_ctx,
+            MIN_CONTEXT,
         )
     return n_ctx
 
@@ -339,8 +347,9 @@ async def sse_data(lines):
         yield "\n".join(data)
 
 
-async def completion_deltas(base_url, model, messages, on_reasoning=None, headers=None,
-                            tools=None):
+async def completion_deltas(
+    base_url, model, messages, on_reasoning=None, headers=None, tools=None
+):
     """One SSE request. Tool fragments remain data until a complete stream."""
     import httpx
 
@@ -371,8 +380,13 @@ async def completion_deltas(base_url, model, messages, on_reasoning=None, header
                     raise ValueError("Invalid LLM stream or upstream error")
                 choices = event.get("choices", [])
                 if choices:
-                    if tools and choices[0].get("finish_reason") in ("length", "content_filter"):
-                        raise ValueError("Tool-enabled completion was truncated or filtered")
+                    if tools and choices[0].get("finish_reason") in (
+                        "length",
+                        "content_filter",
+                    ):
+                        raise ValueError(
+                            "Tool-enabled completion was truncated or filtered"
+                        )
                     delta = choices[0].get("delta", {})
                     if on_reasoning is not None and (
                         delta.get("reasoning_content") or delta.get("reasoning")
@@ -382,11 +396,22 @@ async def completion_deltas(base_url, model, messages, on_reasoning=None, header
             raise ValueError("LLM stream ended without [DONE]")
 
 
-async def llama_chunks(base_url, model, messages, on_reasoning=None, headers=None,
-                      tool_session=None, on_tool=None):
+async def llama_chunks(
+    base_url,
+    model,
+    messages,
+    on_reasoning=None,
+    headers=None,
+    tool_session=None,
+    on_tool=None,
+):
     """Stream prose and validated moods, continuing bounded companion tool rounds."""
     from controller.tools import (
-        FINAL_TOOL_PROMPT, MAX_TOOL_ROUNDS, TOOL_LIMIT_FALLBACK, ToolCalls, tool_status,
+        FINAL_TOOL_PROMPT,
+        MAX_TOOL_ROUNDS,
+        TOOL_LIMIT_FALLBACK,
+        ToolCalls,
+        tool_status,
     )
 
     messages = [dict(message) for message in messages]
@@ -398,12 +423,22 @@ async def llama_chunks(base_url, model, messages, on_reasoning=None, headers=Non
             else:
                 messages.insert(0, {"role": "system", "content": FINAL_TOOL_PROMPT})
             if on_tool is not None:
-                await on_tool({"type": "notice", "text": "Tool limit reached; finishing reply."})
+                await on_tool(
+                    {"type": "notice", "text": "Tool limit reached; finishing reply."}
+                )
         calls, content = ToolCalls(), []
         final_calls = False
         async for delta in completion_deltas(
-            base_url, model, messages, on_reasoning, headers,
-            tools=tool_session.definitions() if tool_session is not None and not finalizing else None,
+            base_url,
+            model,
+            messages,
+            on_reasoning,
+            headers,
+            tools=(
+                tool_session.definitions()
+                if tool_session is not None and not finalizing
+                else None
+            ),
         ):
             text = delta.get("content")
             if isinstance(text, str) and text:
@@ -426,19 +461,38 @@ async def llama_chunks(base_url, model, messages, on_reasoning=None, headers=Non
         complete = calls.complete()
         if not complete:
             return
-        messages.append({"role": "assistant", "content": "".join(content) or None,
-                         "tool_calls": complete})
+        messages.append(
+            {
+                "role": "assistant",
+                "content": "".join(content) or None,
+                "tool_calls": complete,
+            }
+        )
         for call in complete:
             function = call["function"]
             # Status strings are bridge-authored; never echo untrusted names/arguments.
             allowed = {t["function"]["name"] for t in tool_session.definitions()}
             if on_tool is not None:
-                await on_tool({"type": "notice", "text": f"Using {function['name']}…" if function["name"] in allowed else "Rejecting unknown tool."})
+                await on_tool(
+                    {
+                        "type": "notice",
+                        "text": (
+                            f"Using {function['name']}…"
+                            if function["name"] in allowed
+                            else "Rejecting unknown tool."
+                        ),
+                    }
+                )
             result = await tool_session.execute(function["name"], function["arguments"])
             if on_tool is not None:
                 await on_tool({"type": "notice", "text": tool_status(result)})
-            messages.append({"role": "tool", "tool_call_id": call["id"],
-                             "content": json.dumps(result, ensure_ascii=False, allow_nan=False)})
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": call["id"],
+                    "content": json.dumps(result, ensure_ascii=False, allow_nan=False),
+                }
+            )
             if "expression" in result:
                 expression = result["expression"]
                 # Reuse tag parsing and speech mood timing; never send raw morphs.
@@ -545,8 +599,13 @@ async def handle_connection(socket, args, catalog):
         from controller.tools import ToolSession, TOOL_PROMPT
 
         tool_session = ToolSession(
-            catalog, search_key=getattr(args, "search_key", None),
-            search_provider=getattr(args, "search_provider", "bing") if getattr(args, "web_search", False) else None,
+            catalog,
+            search_key=getattr(args, "search_key", None),
+            search_provider=(
+                getattr(args, "search_provider", "bing")
+                if getattr(args, "web_search", False)
+                else None
+            ),
         )
         system += TOOL_PROMPT
     conversation = None  # created on the first LLM request, once the window is known
@@ -581,7 +640,9 @@ async def handle_connection(socket, args, catalog):
         nonlocal conversation
         if conversation is None:
             conversation = Conversation(
-                await context_window(args.llama_url, getattr(args, "context_tokens", None))
+                await context_window(
+                    args.llama_url, getattr(args, "context_tokens", None)
+                )
             )
         if tool_session is not None:
             tool_session.executed = False
@@ -594,13 +655,22 @@ async def handle_connection(socket, args, catalog):
                     messages,
                     on_reasoning,
                     headers=getattr(args, "llm_headers", None),
-                    **({"tool_session": tool_session, "on_tool": send} if tool_session is not None else {}),
+                    **(
+                        {"tool_session": tool_session, "on_tool": send}
+                        if tool_session is not None
+                        else {}
+                    ),
                 ):
                     reply.append(chunk)
                     yield chunk
                 return
             except ContextOverflow:
-                if reply or attempt or (tool_session is not None and tool_session.executed) or not conversation.shrink():
+                if (
+                    reply
+                    or attempt
+                    or (tool_session is not None and tool_session.executed)
+                    or not conversation.shrink()
+                ):
                     raise
                 LOG.warning("Context overflow; retrying with older history dropped")
 
@@ -716,7 +786,9 @@ async def handle_connection(socket, args, catalog):
                     ):
                         raise ValueError("Invalid answer")
                     if not stage.answer(request["id"], text):
-                        LOG.warning("Dropped answer for an ask that is no longer pending")
+                        LOG.warning(
+                            "Dropped answer for an ask that is no longer pending"
+                        )
                     continue
                 if request["type"] == "reset":
                     prompt = None
@@ -823,9 +895,11 @@ async def run(args):
             upstream = ""
             if args.mode == "llm":
                 host = urlsplit(args.llama_url).netloc or args.llama_url
-                auth = "key sent" if getattr(args, "llm_headers", {}).get(
-                    "Authorization"
-                ) else "no key"
+                auth = (
+                    "key sent"
+                    if getattr(args, "llm_headers", {}).get("Authorization")
+                    else "no key"
+                )
                 place = "external" if getattr(args, "llm_external", False) else "local"
                 upstream = (
                     f"; LLM {host} model={args.model or 'server default'} "
@@ -857,10 +931,22 @@ def build_parser():
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--llama-url", default="http://127.0.0.1:8080")
     parser.add_argument("--model", default=None)
-    parser.add_argument("--tools", action="store_true", help="Enable allowlisted companion tool calling.")
-    parser.add_argument("--web-search", action="store_true", help="Enable web_search (requires --mode llm --tools; Bing RSS needs no key).")
-    parser.add_argument("--search-provider", choices=("bing", "duckduckgo", "brave"), default="bing",
-                        help="Web search provider (default: keyless Bing RSS; Brave needs BRAVE_SEARCH_API_KEY).")
+    parser.add_argument(
+        "--tools",
+        action="store_true",
+        help="Enable allowlisted companion tool calling.",
+    )
+    parser.add_argument(
+        "--web-search",
+        action="store_true",
+        help="Enable web_search (requires --mode llm --tools; Bing RSS needs no key).",
+    )
+    parser.add_argument(
+        "--search-provider",
+        choices=("bing", "duckduckgo", "brave"),
+        default="bing",
+        help="Web search provider (default: keyless Bing RSS; Brave needs BRAVE_SEARCH_API_KEY).",
+    )
     parser.add_argument(
         "--api-key-env",
         default="OPENAI_API_KEY",
@@ -946,15 +1032,20 @@ def main():
         if args.search_provider == "brave":
             args.search_key = os.environ.get("BRAVE_SEARCH_API_KEY", "").strip()
             if not args.search_key:
-                raise SystemExit("bridge: error: Brave --web-search requires BRAVE_SEARCH_API_KEY")
+                raise SystemExit(
+                    "bridge: error: Brave --web-search requires BRAVE_SEARCH_API_KEY"
+                )
     if args.thinking_filler and not args.speech:
         raise SystemExit("bridge: error: --thinking-filler requires --speech")
     args.llm_headers, args.llm_external = {}, False
     if args.mode == "llm":
         try:
             config = resolve_llm_config(
-                args.llama_url, args.model, args.api_key_env,
-                args.llm_header, allow_no_key=args.allow_no_key,
+                args.llama_url,
+                args.model,
+                args.api_key_env,
+                args.llm_header,
+                allow_no_key=args.allow_no_key,
             )
         except argparse.ArgumentTypeError as error:
             raise SystemExit(f"bridge: error: {error}") from None

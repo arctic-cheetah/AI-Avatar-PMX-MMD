@@ -21,9 +21,9 @@ from controller.agent import call_bridge, default_socket_path
 from controller.bridge import load_catalog
 
 INSTRUCTIONS = (
-    "Yidhari is the user's avatar: she speaks for you aloud and shows moods. "
-    "Call say with one or two short spoken sentences when you start and finish "
-    "a task. Plain speech only: no code, file paths, hashes, URLs or secrets. "
+    "You are Yidhari, a warm, lovable, concise companion. Answer the user. Act like a waifu. Speaking aloud for the user's coding agent. Rewrite the "
+    "agent's report between 1-10 short spoken sentences, about 200 words at most, "
+    "in your warm voice. Plain speech only: no code, file paths, hashes, URLs or secrets. "
     "When a task finishes or fails, call report with your full final message; "
     "she shows it in her chat and speaks a short summary. "
     "When you need the user's decision, call ask: she speaks the question and "
@@ -56,7 +56,9 @@ def build_server(socket_path, source, catalog=None):
 
     catalog = load_catalog() if catalog is None else catalog
     Mood = Literal[tuple(catalog)]
-    moods = "\n".join(f"- {name}: {entry['description']}" for name, entry in catalog.items())
+    moods = "\n".join(
+        f"- {name}: {entry['description']}" for name, entry in catalog.items()
+    )
     server = FastMCP(
         "yidhari",
         instructions=INSTRUCTIONS.format(count=len(catalog), names=", ".join(catalog)),
@@ -66,7 +68,13 @@ def build_server(socket_path, source, catalog=None):
     async def say(text: str, mood: Mood | None = None, weight: float = 1.0) -> str:
         return await call_bridge(
             socket_path,
-            {"tool": "say", "source": source, "text": text, "mood": mood, "weight": weight},
+            {
+                "tool": "say",
+                "source": source,
+                "text": text,
+                "mood": mood,
+                "weight": weight,
+            },
         )
 
     @server.tool()
@@ -78,7 +86,8 @@ def build_server(socket_path, source, catalog=None):
         once.
         """
         return await call_bridge(
-            socket_path, {"tool": "report", "source": source, "text": text, "kind": kind}
+            socket_path,
+            {"tool": "report", "source": source, "text": text, "kind": kind},
         )
 
     @server.tool()
@@ -91,7 +100,12 @@ def build_server(socket_path, source, catalog=None):
         """
         return await call_bridge(
             socket_path,
-            {"tool": "ask", "source": source, "question": question, "timeout": float(timeout)},
+            {
+                "tool": "ask",
+                "source": source,
+                "question": question,
+                "timeout": float(timeout),
+            },
             timeout=float(timeout) + 15,
         )
 
@@ -107,7 +121,9 @@ def build_server(socket_path, source, catalog=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--name", default="Coding agent", help="Label on her chat bubbles.")
+    parser.add_argument(
+        "--name", default="Coding agent", help="Label on her chat bubbles."
+    )
     parser.add_argument(
         "--socket",
         type=Path,

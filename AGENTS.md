@@ -48,6 +48,12 @@ written reply complete; speech complements it rather than replacing it.
 
 This convention was requested by the user on 7 November 2026.
 
+## Creating tickets
+
+When opening a github issue ticket. Use emoji's to denote visualise the issue.
+Then precisely and concisely describe the issue. Estimate the type of tag required.
+Assign difficulty tags, priority level tags and a type tag to denote the scope of work required and any other tags if necessary. The convention of the tags is seen on the github repo and refer to it. The max number of tags that an issue can have is 4.
+
 ## Remembered pull request convention
 
 When opening a pull request that solves an issue, use the issue's current title

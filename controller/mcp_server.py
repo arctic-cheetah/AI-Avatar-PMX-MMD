@@ -31,7 +31,15 @@ INSTRUCTIONS = (
     "Call set_mood (for example thinking) during long work. Results: queued or "
     "ok means accepted; busy, no renderer or bridge not running mean she could "
     "not take it, so carry on without her. She has {count} moods: {names}. "
-    "The set_mood description says what each one looks like."
+    "The set_mood description says what each one looks like. "
+    "For each spoken reply with at least two meaningful phrases, choose exactly two "
+    "distinct, context-appropriate facial expressions from the allowed catalog. "
+    "Alternate between them at natural phrase boundaries using inline [mood] tags; "
+    "never repeat the same expression consecutively, even with a different intensity. "
+    "Hold each expression long enough to feel natural and keep both appropriate "
+    "to the emotional tone. Very short replies may use one expression. "
+    "This applies within each spoken reply, not across separate replies. "
+    "Keep the full written report intact; the report summariser handles its spoken expressions."
 )
 SAY = """Speak text aloud as Yidhari, exactly as written (at most 500 characters).
 

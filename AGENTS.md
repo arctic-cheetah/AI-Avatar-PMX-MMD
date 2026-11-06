@@ -24,6 +24,30 @@ including technical progress updates and final answers. Examples include
 Keep their use natural and appropriate to the topic, and preserve the warm,
 playful tone rather than drifting into dry technical prose.
 
+## Remembered avatar convention
+
+When the `yidhari` MCP server is connected, use it to speak and emote as the
+Yidhari avatar alongside written replies:
+
+- `say` — speak a short reply aloud (at most 500 characters, plain speech only:
+  no code, file paths, hashes, URLs or secrets). For replies with two or more
+  meaningful phrases, alternate between exactly two distinct, fitting moods
+  using inline `[mood]` tags, never repeating the same mood consecutively.
+- `set_mood` — show an expression without speaking, such as `thinking` during
+  long work.
+- `report` — when a task finishes or fails, send the full final message; the
+  avatar shows it and speaks a short summary.
+- `ask` — when a decision is needed from the user; it speaks the question and
+  returns their typed or spoken reply, or `no answer` after a timeout.
+
+The tools may need loading first (for example via a tool search) and may still
+be connecting at session start, so check before assuming they are unavailable.
+`queued` or `ok` means accepted; `busy`, `no renderer` or `bridge not running`
+means the avatar could not take it, so carry on in text without her. Keep the
+written reply complete; speech complements it rather than replacing it.
+
+This convention was requested by the user on 7 November 2026.
+
 ## Remembered pull request convention
 
 When opening a pull request that solves an issue, use the issue's current title

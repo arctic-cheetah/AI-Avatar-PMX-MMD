@@ -251,7 +251,10 @@ How it works, without touching Kokoro's model:
 **Pronunciation fix (always on with Kokoro):** espeak phonemizes `Aww` as
 `ɔːwə` ("aw-wuh", heard as "awah") and `Awww` as `ɔːʊwə`. The Kokoro worker
 replaces those with one long vowel, `ɔːɔː` (about 0.25 s, no dip in loudness),
-before synthesis. A plain `Aw` (`ɔː`, about 0.15 s) is left alone. This is a
+before synthesis. Other spellings an LLM likes (`Awwww!`, `Aaww!`, `aWWW!`, `Awwh`)
+are first rewritten to `Aww` (keeping its capital), since espeak turns them into
+`ɔːʊˌʊwə`, `ɑːwə` or even spells out the letters. A plain `Aw` (`ɔː`, about
+0.15 s) is left alone. This is a
 Kokoro front-end issue, so retraining the RVC voice would not change it.
 
 **Word lifts:** with `--word-lifts` (Kokoro only, off by default), two kinds
@@ -265,7 +268,8 @@ of word get a smaller rise-fall bump of `--word-lift-bend` semitones (default
 
 - the word right before `?` gets a **rise** instead of a rise-fall: Kokoro
   ends questions on a fall ("Is that so?" drops about 8 st), so it gets
-  `--question-rise-bend` semitones (default 8, ±12) peaking 70 % of the way
+  `--question-rise-bend` semitones (default 9, ±12; raised from 8 after listening
+  asked for 10–20 Hz more, about one semitone at her ~230 Hz ending) peaking 70 % of the way
   through the word. Measured on RVC, 4 st peaking at the very end only touched
   the last voiced blip, while 8 st at 70 % turned "so" (202 → 152 Hz) into a
   dip and rise (204 → 192 → 207 → 241 Hz). A question's last word rises even if

@@ -18,7 +18,7 @@ This is a companion project, kept outside `my_code_pc` so it does not compete fo
 - 👀 **Idle life and tuning:** automatic blinking, plus wink controls and a morph test bench for tuning expressions.
 - 🌊 **Slow sway:** her upper body drifts on gentle sine waves with a breathing motion, and settles back to still when toggled off — see [docs/body-sway.md](docs/body-sway.md).
 - 👁️ **Gaze tracking:** her eyes (and gently, her head) follow your mouse cursor and/or your face on webcam — see [docs/gaze-tracking.md](docs/gaze-tracking.md). The webcam only starts when you toggle it on, and frames never leave the browser.
-- 📌 **Pop-out window:** click **📌 Pop out** to float her portrait in an always-on-top picture-in-picture window while you work in other apps; speech, moods and agent voice keep working (Chrome/Edge 116+) — see [docs/pop-out-window.md](docs/pop-out-window.md).
+- 📌 **Pop-out window:** click **📌 Pop out** to float her portrait in an always-on-top picture-in-picture window while you work in other apps (Chrome/Edge 116+; Firefox gets a popup window you pin with the window manager). **💬** adds the chat and settings panel beside her; speech, moods and agent voice keep working — see [docs/pop-out-window.md](docs/pop-out-window.md).
 
 ## 🧭 How it works
 
@@ -314,7 +314,7 @@ avatar-yidhari/
 | [gaze-tracking.md](docs/gaze-tracking.md)                         | Cursor + webcam gaze tracking design (issue #6)         |
 | [body-sway.md](docs/body-sway.md)                               | Slow sine-wave body sway design (issue #4)              |
 | [animation-transitions.md](docs/animation-transitions.md)         | Smooth, interruptible transitions and layer rules (#54) |
-| [pop-out-window.md](docs/pop-out-window.md)                       | Always-on-top floating window, platform limits (#52)    |
+| [pop-out-window.md](docs/pop-out-window.md)                       | Floating window, Firefox popup, platform limits (#52)   |
 | [shared-expression-catalog.md](docs/shared-expression-catalog.md) | Mood presets used by the LLM                            |
 | [issue-labels.md](docs/issue-labels.md)                           | Issue priority, difficulty and emoji labels             |
 

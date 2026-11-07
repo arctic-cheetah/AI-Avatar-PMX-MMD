@@ -186,6 +186,12 @@ word per sentence in single asterisks, like `*really*`, and the voice adds a
 short pause before it (`--emphasis-pause`, default 0.12 s, 0–0.3).
 
 - The asterisks are never spoken; `**bold**` and `a * b` are not emphasis.
+- Only a **single word** counts: multi-word spans such as the roleplay action
+  `*giggles softly*` are not emphasis (they are still read out, as before). A
+  one-word action like `*giggles*` cannot be told apart from `*really*`.
+- At most three marked words per sentence are used; extra marks are ignored
+  rather than failing the sentence. The prompt rule is added only with
+  `--tts kokoro`, since Edge never pauses for emphasis.
 - The Kokoro worker phonemizes the sentence itself and checks that its words
   line up one-to-one with the text's. Kokoro reports when each phoneme is
   spoken, so the pause is spliced into the space before the word, with 5 ms

@@ -4,10 +4,20 @@ import argparse
 import asyncio
 import json
 from pathlib import Path
-import shutil
 import time
+import wave
 
-from controller.speech import ApplioSettings, ApplioWorker, ROOT, Segment, synthesise
+from controller.speech import ApplioSettings, ApplioWorker, ROOT, Segmenter, synthesise
+
+
+def join_wavs(paths: list[Path], output: Path) -> None:
+    """Concatenate same-format WAV clips into ``output``."""
+    with wave.open(str(output), 'wb') as joined:
+        for index, path in enumerate(paths):
+            with wave.open(str(path), 'rb') as clip:
+                if index == 0:
+                    joined.setparams(clip.getparams())
+                joined.writeframes(clip.readframes(clip.getnframes()))
 
 
 async def audition(args) -> None:
@@ -15,7 +25,11 @@ async def audition(args) -> None:
                              kokoro_speed=args.speed, kokoro_threads=args.threads,
                              kokoro_clause_pause=args.clause_pause,
                              sentence_tail=args.sentence_tail, fragment_tail=args.fragment_tail,
-                             mood_prosody=args.mood_prosody, rvc_threads=args.rvc_threads)
+                             mood_prosody=args.mood_prosody,
+                             punctuation_cadence=args.punctuation_cadence,
+                             ellipsis_tail=args.ellipsis_tail, exclaim_tail=args.exclaim_tail,
+                             question_tail=args.question_tail, exclaim_gain=args.exclaim_gain,
+                             rvc_threads=args.rvc_threads)
     settings.check()
     worker = ApplioWorker(settings)
     directory = args.output_dir.resolve()
@@ -25,25 +39,29 @@ async def audition(args) -> None:
         print(json.dumps({'worker': ready, 'kokoro': worker.kokoro.ready}), flush=True)
         texts = args.text or ['Good evening! I am ready to keep you company.',
                               'We can test my new local voice together.']
+        settings_used = {'voice': args.voice, 'speed': args.speed,
+                         'clausePause': args.clause_pause, 'sentenceTail': args.sentence_tail,
+                         'fragmentTail': args.fragment_tail, 'moodProsody': args.mood_prosody,
+                         'punctuationCadence': args.punctuation_cadence}
         for mood, weight in args.mood or [('soft-smile', 0.6)]:
             for number, text in enumerate(texts, 1):
-                started = time.perf_counter()
-                clip, metrics = await synthesise(Segment(text, mood, weight), worker,
-                                                 'kokoro-audition', directory)
-                # A readable copy, so clips can be compared by mood without reading results.json.
-                named = directory / f'{mood}-{weight:g}-{number}.wav'
-                shutil.copyfile(directory / f'{clip}.wav', named)
-                result = {'text': text, 'mood': mood, 'weight': weight, 'named': str(named),
-                          'audio': str(directory / f'{clip}.wav'),
-                          'visemes': str(directory / f'{clip}.visemes.json'),
-                          'wallSeconds': round(time.perf_counter() - started, 3), **metrics}
-                result['settings'] = {'voice': args.voice, 'speed': args.speed,
-                                      'clausePause': args.clause_pause,
-                                      'sentenceTail': args.sentence_tail,
-                                      'fragmentTail': args.fragment_tail,
-                                      'moodProsody': args.mood_prosody}
-                results.append(result)
-                print(json.dumps(result), flush=True)
+                # Split like the live bridge, so each sentence gets its own clip and tail.
+                segmenter = Segmenter(expression=mood, weight=weight)
+                segments = segmenter.feed({'type': 'say', 'text': text}) + segmenter.finish()
+                clips = []
+                for segment in segments:
+                    started = time.perf_counter()
+                    clip, metrics = await synthesise(segment, worker, 'kokoro-audition', directory)
+                    clips.append(directory / f'{clip}.wav')
+                    result = {'text': text, 'segment': segment.text, 'mood': mood, 'weight': weight,
+                              'audio': str(clips[-1]),
+                              'visemes': str(directory / f'{clip}.visemes.json'),
+                              'wallSeconds': round(time.perf_counter() - started, 3), **metrics,
+                              'settings': settings_used}
+                    results.append(result)
+                    print(json.dumps(result), flush=True)
+                # One readable file per line, its clips back to back as the renderer plays them.
+                join_wavs(clips, directory / f'{mood}-{weight:g}-{number}.wav')
     finally:
         await worker.close()
     directory.mkdir(parents=True, exist_ok=True)
@@ -76,6 +94,12 @@ def main() -> None:
     parser.add_argument('--rvc-threads', type=int, default=4)
     parser.add_argument('--mood', type=mood_arg, action='append',
                         help='Mood for every --text, as name or name:weight; repeat to compare.')
+    parser.add_argument('--punctuation-cadence', action='store_true',
+                        help='Per-ending gaps, louder !, slower ellipses, dashes as pauses.')
+    parser.add_argument('--ellipsis-tail', type=float, default=0.6)
+    parser.add_argument('--exclaim-tail', type=float, default=0.3)
+    parser.add_argument('--question-tail', type=float, default=0.4)
+    parser.add_argument('--exclaim-gain', type=float, default=3.0)
     parser.add_argument('--mood-prosody', action='store_true',
                         help='Apply mood-driven speed, pauses and RVC pitch.')
     parser.add_argument('--output-dir', type=Path, default=ROOT / 'assets/private/speech/kokoro-audition')

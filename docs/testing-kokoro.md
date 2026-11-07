@@ -72,13 +72,14 @@ clip to the speech plus a short tail. So two different knobs shape cadence:
 | Knob | Where it acts | Default | Range |
 | --- | --- | ---: | ---: |
 | `--clause-pause` (bridge: `--kokoro-clause-pause`) | Kokoro, inside a sentence: pause at commas, semicolons, dashes | 0.25 s | 0–0.5 s |
-| `--sentence-tail` | Trim, after a full sentence: the gap before the next clip | 0.4 s | 0–0.6 s |
-| `--fragment-tail` | Trim, after a fragment split by a mood tag: keeps it flowing | 0.1 s | 0–0.6 s |
+| `--sentence-tail` | Trim, after a full sentence: the gap before the next clip | 0.4 s | 0–0.8 s |
+| `--fragment-tail` | Trim, after a fragment split by a mood tag: keeps it flowing | 0.1 s | 0–0.8 s |
 
 Kokoro's own `sentence_pause` is deliberately not exposed: with one sentence
 per request it would only add silence that the trimmer removes. The tails
-apply to Edge clips as well. Tails above about 0.3 s may bring back the soft
-RVC breath that the trimmer exists to remove, so listen for it.
+apply to Edge clips as well. Long tails keep any soft RVC breath that follows
+the speech, so listen for it; past the source's own silence (about 0.5 s for
+Kokoro) the tail is padded with digital silence (#84).
 
 `--voice` also accepts a weighted blend of up to four voices with the same
 accent (all `a…` or all `b…`), for example `af_heart:0.7,af_bella:0.3`.
@@ -146,6 +147,36 @@ Audition moods directly; `--mood` takes `name` or `name:weight` and repeats:
 Each `results.json` entry records the mood, weight and applied prosody. On the
 avatar, add `--mood-prosody` to the bridge command and listen especially at
 mood changes in the middle of a sentence, where two clips meet.
+
+## 2c. Punctuation-driven cadence (#84)
+
+Based on listening to Yidhari's English voice actor: she lingers on ellipses,
+an exclamation rises with happy moods and falls with negative ones, and dashes
+read as a breath, and an exclamation is louder. `--punctuation-cadence` (off by default until auditioned)
+turns on all of the following:
+
+| Rule | What happens | Default |
+| --- | --- | --- |
+| Gap by ending | Trim tail chosen by the clip's last mark: `…`/`...` `--ellipsis-tail`, `!` (incl. `?!`) `--exclaim-tail`, `?` `--question-tail`, `.` `--sentence-tail` | 0.6 / 0.3 / 0.4 / 0.4 s |
+| Ellipsis pace | A sentence ending in `…` is spoken ×0.96 | on |
+| Exclamation volume | A clip ending in `!` (incl. `?!`) is made louder by `--exclaim-gain` dB (0–6). A soft limiter (≈3 ms look-ahead, 50 ms release) then holds brief peaks at −1 dBFS, so the boost is not lost to the little headroom RVC clips have. An earlier extra ±1 semitone on `!` was too strong when listened to (7 Nov 2026) and was removed; mood pitch still applies | +3 dB |
+| Dashes | `—`, `–` and spaced ` - ` become a comma, so Kokoro's clause pause applies; `1–5` becomes "1 to 5" and hyphenated words are kept. A dash at the end of a clip (`So it goes —`) stays as a comma, and a clip ending in `,` `;` `:` keeps a tail equal to `--kokoro-clause-pause` | on |
+
+- Tails range 0–0.8 s. Kokoro leaves about 0.5 s of silence after speech,
+  so a longer tail is padded with digital silence instead of being capped.
+- Punctuation prosody stacks with `--mood-prosody` (speed multiplies, pitch
+  and gain add) inside the same clamps: speed ±8 %, pitch ±2 semitones,
+  gain 0–6 dB. The gain is applied to the final WAV after trimming, so lip
+  sync is aligned on the louder audio.
+- An ellipsis touching the next word (`Wait...what?!`) now always splits the
+  sentence there, like `Wait... what?!`; this needs no flag.
+
+```bash
+.venv/bin/python -m controller.audition_kokoro --mood-prosody --punctuation-cadence \
+  --mood excited --mood sad --mood thinking \
+  --text "Yay — we did it!" --text "Hmm… I am not sure." --text "Really?" \
+  --output-dir assets/private/speech/kokoro-audition/issue-84
+```
 
 ## 3. Test on the avatar
 

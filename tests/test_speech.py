@@ -81,7 +81,7 @@ class ApplioSettingsTests(unittest.TestCase):
 
     def test_tail_range_checked_before_files(self):
         for field in ("sentence_tail", "fragment_tail"):
-            for value in (-0.01, 0.61, float("nan"), float("inf")):
+            for value in (-0.01, 0.81, float("nan"), float("inf")):
                 with self.subTest(field=field, value=value), self.assertRaises(ValueError):
                     ApplioSettings(applio_dir=Path("/nonexistent"), **{field: value}).check()
 

@@ -1091,13 +1091,13 @@ def build_parser():
     parser.add_argument(
         "--drawl-bend",
         type=float,
-        default=-3.0,
+        default=-2.0,
         help="Semitones at a drawled word's dip (-12 to 12).",
     )
     parser.add_argument(
         "--drawl-hold",
         type=float,
-        default=0.3,
+        default=0.0,
         help="Seconds a drawled word's own vowel is held (0-0.45).",
     )
     parser.add_argument(

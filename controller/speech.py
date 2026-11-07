@@ -105,8 +105,8 @@ class ApplioSettings:
     word_lifts: bool = True  # Kokoro: lift endearments in address and the word before ! (#84)
     word_lift_bend: float = 4.0  # semitones at the lift's peak
     dynamic_emphasis: bool = False  # Kokoro: deeper, drawn-out "buuut"; brighter *word* (#83)
-    drawl_bend: float = -3.0  # semitones at a drawl's dip
-    drawl_hold: float = 0.3  # seconds a drawled word's own vowel is held (<= 0.45 avoids stutter)
+    drawl_bend: float = -2.0  # semitones at a drawl's dip (slightly deeper; listened 8 Nov 2026)
+    drawl_hold: float = 0.0  # off: short vowels break up when held; awaits ONNX per-token speed (#83)
     quote_voice: bool = True  # Kokoro: pause before and a slight pitch dip across quotes (#84)
     quote_bend: float = -2.0  # semitones at the quote's dip
     question_rise_bend: float = 9.0  # semitones a question's last word rises (peak at 70 %)

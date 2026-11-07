@@ -138,8 +138,8 @@ def main() -> None:
     parser.add_argument('--quote-voice', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--quote-bend', type=float, default=-2.0)
     parser.add_argument('--dynamic-emphasis', action=argparse.BooleanOptionalAction, default=False)
-    parser.add_argument('--drawl-bend', type=float, default=-3.0)
-    parser.add_argument('--drawl-hold', type=float, default=0.3)
+    parser.add_argument('--drawl-bend', type=float, default=-2.0)
+    parser.add_argument('--drawl-hold', type=float, default=0.0)
     parser.add_argument('--plain-voice', action='store_true',
                         help='Turn every expressive voice part off.')
     parser.add_argument('--mood-prosody', action=argparse.BooleanOptionalAction, default=True,

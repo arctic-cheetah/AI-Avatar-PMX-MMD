@@ -316,9 +316,9 @@ emphasis pause before its first word and one gentle pitch dip of
 `--quote-bend` semitones (default −2, ±12) across all of its words, bent into
 the F0 curve like the contours in §2e. Unbalanced quotes are ignored.
 
-A different pace for just the quoted words is not included: Kokoro's speed
-is one number per sentence, so it would mean splitting the sentence into
-separate clips, which risks audible joins.
+A different pace for just the quoted words is not included yet. The stock
+model takes one speed per sentence, but a patched copy can take one per token
+(see §2h), so a quotation's pace can follow once that lands.
 
 ```bash
 .venv/bin/python -m controller.audition_kokoro --quote-voice \
@@ -366,8 +366,102 @@ Holding Kokoro's own vowel looked better on that measure, but listening still
 heard "boot", and one take broke up: the steady part of "but" is only about
 20 ms, so reaching 0.3 s repeats it many times, which RVC turns buzzy. So a
 natural "buuut" needs Kokoro itself to say the vowel longer, i.e. per-token
-speed in the ONNX model (#83 scope 2). Until then a drawl is only the slightly
+speed in the ONNX model (#83 scope 2, §2h). Until then a drawl is only the slightly
 deeper tone, and loudness stays with the exclamation gain.
+
+## 2h. Per-token speed (#83 scope 2)
+
+**Verdict (spike, 8 Nov 2026): feasible without re-exporting the model.**
+Kokoro can say one sound longer by itself, so a drawl no longer has to repeat
+pitch periods (§2g). Not wired into the worker yet; the plan is below.
+
+### How speed works inside the model
+
+`speed` has exactly one consumer in the v1.0 graph (opset 17, 4543 nodes):
+
+```text
+duration = Squeeze(Cast(Clip(Round(ReduceSum(Sigmoid(duration_proj)) / speed), min=1)))
+```
+
+`duration` is the model's second output: whole frames per token, including the
+padding token at each end. One frame is 600 samples (**25 ms** at 24 kHz). The
+`Div` broadcasts, but ONNX Runtime refuses a vector because the input is
+declared as `[1]` (`Got: 28 Expected: 1`). Changing that declared shape
+to a dynamic `[n]` is the only change needed:
+
+```python
+# Needs the onnx package (setup only, not at synthesis time).
+import onnx
+
+model = onnx.load('models/kokoro/kokoro-v1.0.onnx')
+speed = next(i for i in model.graph.input if i.name == 'speed')
+dim = speed.type.tensor_type.shape.dim[0]
+dim.ClearField('dim_value')
+dim.dim_param = 'speed_len'
+onnx.save(model, 'models/kokoro/kokoro-v1.0-pertoken.onnx')
+```
+
+The patched model then takes one speed for every entry of `input_ids` (the
+padding tokens included, so phoneme token `i` is speed index `i + 1`):
+
+```python
+speed = np.ones(input_ids.shape[1], np.float32)
+speed[3] = 0.2  # bˌʌt: index 3 is ʌ (0 = padding, 1 = b, 2 = ˌ)
+waveform, duration = session.run(None, {'input_ids': input_ids, 'style': style, 'speed': speed})
+```
+
+### Measurements
+
+"But I really did try." (`bˌʌt aɪ ɹˈiəli dˈɪd tɹˈaɪ.`), voice
+`af_heart:0.7,af_bella:0.3`, Kokoro only (no RVC), CPU:
+
+| Clip | Speed | `ʌ` frames | Clip length | Listening |
+| --- | --- | ---: | ---: | --- |
+| baseline | 1.0 everywhere | 1 (25 ms) | 1.925 s | ✅ |
+| vowel ×0.33 | `ʌ` only | 3 (75 ms) | 1.975 s | ✅ |
+| vowel ×0.2 | `ʌ` only | 5 (125 ms) | 2.025 s | ✅ |
+| vowel ×0.125 | `ʌ` only | 8 (200 ms) | 2.100 s | ❌ a bit broken |
+| word ×0.5 | `b ˌ ʌ t` | 2 each (200 ms word) | 2.025 s | ✅ |
+
+- Only the chosen tokens change. Every other token keeps its frame count.
+- The patched model with a scalar speed gives the same durations as the stock
+  model, and an all-ones vector gives the same durations as a scalar.
+- The decoder is **not deterministic**: it uses `RandomNormalLike` and
+  `RandomUniformLike`, so two identical runs differ (max sample difference
+  about 0.04). Tests must compare `duration`, not waveforms.
+- About 0.24–0.31 s per call, the same as a scalar speed.
+- Lesson from listening: up to about **5 frames on one vowel** sounds natural.
+  For a longer drawl, spread the slowdown over the whole word (word ×0.5
+  reached 200 ms and sounded fine) instead of slowing one token further.
+
+Crossfaded clip splits, the other option in #83, are not needed.
+
+### Implementation plan
+
+1. **Model setup:** `controller.setup_kokoro` writes `kokoro-v1.0-pertoken.onnx`
+   from the checked download as above and checks that its `speed` input is
+   dynamic. `onnx` joins `requirements-kokoro.txt` for setup only.
+2. **Worker** (`controller/kokoro_worker.py`):
+   - A `Kokoro` subclass whose inference step sends a speed vector for each
+     clause batch. The wrapper's own `_infer` only takes one number.
+   - A new request field `stretch: [[word index, factor], …]`, at most
+     `MAX_SPANS` words, mapped from a spoken word to its stressed vowel token,
+     or to all of its tokens for a longer stretch.
+   - Clamps: at most about 5 frames (125 ms) on one token, and a limit on
+     the seconds added per word.
+   - Without the patched model the worker uses the stock one, ignores
+     `stretch` and reports `stretchSkipped`.
+   - `wordSpans` already come from `duration`, so RVC bends follow the
+     longer word without extra work.
+3. **Controller** (`controller/speech.py`): drawls send `stretch` instead of
+   `drawl_hold`; a word's factor multiplies the sentence speed, so the global
+   pace from #92 still applies. Quotations (§2f) can get their own pace too.
+4. **Tests (red → green):** request validation, word-to-token mapping (with the
+   padding offset), building the speed vector, the fallback, and a duration
+   test against the real model that is skipped when the model is not installed.
+5. **Listening:** Kokoro-only and Kokoro → RVC clips at ×0.33 / ×0.2 on the
+   vowel and ×0.5 on the word, then pick the default and decide whether it
+   joins the on-by-default voice.
 
 ## 3. Test on the avatar
 

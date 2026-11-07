@@ -460,14 +460,23 @@ function installPanelResizer() {
 
   syncOrientation();
 
+  // The size the user chose. A small window (such as the pop-out) clamps
+  // what is shown, but must not overwrite this choice.
+  /** @type {number | null} */
+  let preferred = null;
+
   try {
     const saved = Number(localStorage.getItem(PANEL_WIDTH_KEY));
-    if (Number.isFinite(saved) && saved > 0) apply(saved);
+    if (Number.isFinite(saved) && saved > 0) {
+      preferred = saved;
+      apply(saved);
+    }
   } catch {
     // Storage can be blocked; the CSS default width still applies.
   }
 
   const persist = (size) => {
+    preferred = size;
     try {
       localStorage.setItem(PANEL_WIDTH_KEY, String(size));
     } catch {
@@ -520,8 +529,7 @@ function installPanelResizer() {
   });
 
   const refresh = () => {
-    const saved = Number(handle.getAttribute("aria-valuenow"));
-    if (handle.hasAttribute("aria-valuenow") && Number.isFinite(saved)) apply(saved);
+    if (preferred !== null) apply(preferred);
     else syncOrientation();
   };
   // The main window's own changes; onPopOut() wires the floating window's.

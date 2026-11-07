@@ -177,8 +177,11 @@ turns on all of the following:
   and gain add) inside the same clamps: speed ±8 %, pitch ±2 semitones,
   gain 0–6 dB. The gain is applied to the final WAV after trimming, so lip
   sync is aligned on the louder audio.
-- An ellipsis touching the next word (`Wait...what?!`) now always splits the
-  sentence there, like `Wait... what?!`; this needs no flag.
+- An ellipsis touching the next word (`Wait...what?!`) always splits the
+  sentence there, like `Wait... what?!`; this needs no flag. It costs one extra
+  clip (a Kokoro → RVC → align round trip) for such sentences.
+- When a tail is padded past the clip's own silence, the last 20 ms of audio
+  fade out first, so RVC's residual tail never stops abruptly into digital silence.
 
 ```bash
 .venv/bin/python -m controller.audition_kokoro --mood-prosody --punctuation-cadence \
@@ -207,7 +210,8 @@ short pause before it (`--emphasis-pause`, default 0.12 s, 0–0.3).
   fades so it does not click.
 - If the words do not line up (numbers such as `1999` expand to several
   words), the sentence is spoken without the pause; the clip metrics show
-  `emphasisPauses`. With `--punctuation-cadence`, a sentence whose dashes
+  `emphasisPauses`, and `emphasisSkipped` says why none was made (`misaligned`,
+  `no-timings`, `first-word` or `not-found`). With `--punctuation-cadence`, a sentence whose dashes
   change the word count (`1–5` → "1 to 5") also skips the pause.
 - The chat log still shows the asterisks, as it does for other Markdown.
 - Stronger stress or loudness on the word itself is research in #83.

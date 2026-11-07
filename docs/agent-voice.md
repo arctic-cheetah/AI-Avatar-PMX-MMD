@@ -179,7 +179,10 @@ the agent socket is a Unix domain socket that only your user can open.
    ```
 
    The tools work without the rules too, but agents then call them only when
-   asked.
+   asked. In this project, [AGENTS.md](../AGENTS.md) requires a spoken thought
+   or summary on every user-facing reply. Speech is concise and precise, not
+   merely short. If the host does not inject the MCP tools, the fallback is
+   one `say` through the agent socket.
 
 Options for `mcp_server.py`: `--name` is the label on her chat bubbles (default
 `Coding agent`), `--socket` overrides the socket path. The bridge takes

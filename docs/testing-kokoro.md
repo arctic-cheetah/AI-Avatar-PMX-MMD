@@ -263,10 +263,13 @@ of word get a smaller rise-fall bump of `--word-lift-bend` semitones (default
   and "honey cake" are left alone);
 - the word right before `!`: "We did *it*!".
 
-- the word right before `?` gets a **rise to the end** instead of a rise-fall
-  (Kokoro ends questions on a fall: "Is that so?" drops about 8 st), also by
-  `--word-lift-bend`. A question's last word rises even if it is an
-  endearment ("Are you okay, *honey*?").
+- the word right before `?` gets a **rise** instead of a rise-fall: Kokoro
+  ends questions on a fall ("Is that so?" drops about 8 st), so it gets
+  `--question-rise-bend` semitones (default 8, ±12) peaking 70 % of the way
+  through the word. Measured on RVC, 4 st peaking at the very end only touched
+  the last voiced blip, while 8 st at 70 % turned "so" (202 → 152 Hz) into a
+  dip and rise (204 → 192 → 207 → 241 Hz). A question's last word rises even if
+  it is an endearment ("Are you okay, *honey*?").
 
 Kokoro's last phoneme often absorbs trailing silence ("so?" is voiced for
 0.85–1.05 s but its timing runs to 1.425 s), so word spans are trimmed to the

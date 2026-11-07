@@ -201,7 +201,7 @@ for limits and listening checks.
 | `--kokoro-threads` | `2`                                 | CPU ONNX threads for the Kokoro worker                                         |
 | `--mood-prosody`   | off                                 | Let each sentence's mood tag nudge Kokoro speed/pauses and RVC pitch (clamped) |
 | `--interjection-contours` | off                          | Kokoro: "Aww"/"Ooh" rise then fall via an RVC pitch bend (`--interjection-bend` 8 st; optional `--interjection-hold`) |
-| `--word-lifts`     | off                                 | Kokoro: endearments in address ("sweetheart!") and the word before `!` get a rise-fall lift, the word before `?` a rise (`--word-lift-bend` 4 st) |
+| `--word-lifts`     | off                                 | Kokoro: endearments in address ("sweetheart!") and the word before `!` get a rise-fall lift, the word before `?` a rise (`--word-lift-bend` 4 st, `--question-rise-bend` 8 st) |
 | `--emphasis`       | off                                 | Kokoro: `*word*` from the LLM adds a short pause before the word (`--emphasis-pause` 0.12 s) |
 | `--punctuation-cadence` | off                            | Gap by ending (`--ellipsis-tail` 0.6, `--exclaim-tail` 0.3, `--question-tail` 0.4 s), louder `!` (`--exclaim-gain` 3 dB), slower `…`, dashes as pauses |
 | `--applio-dir`     | `../Applio`                         | Applio install to launch; `../Applio-rocm` enables ROCm GPU RVC              |

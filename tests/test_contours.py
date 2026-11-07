@@ -65,7 +65,8 @@ class BendMathTests(unittest.TestCase):
 
     def test_bend_validation(self):
         validate_bends([[0.1, 0.4, 2.0]])
-        for bad in ('x', [[0.4, 0.1, 2]], [[-0.1, 0.4, 2]], [[0.1, 0.4, 4.5]], [[0.1, 0.4]],
+        validate_bends([[0.1, 0.4, 12.0]])  # one octave is the limit (listening, 7 Nov 2026)
+        for bad in ('x', [[0.4, 0.1, 2]], [[-0.1, 0.4, 2]], [[0.1, 0.4, 12.5]], [[0.1, 0.4]],
                     [[0.1, 0.4, float('nan')]], [[0.1, 0.4, True]], [[0, 1, 1]] * 5, [[0.1, 61, 1]]):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 validate_bends(bad)
@@ -270,18 +271,26 @@ class SynthesiseContourTests(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn('contours', sent)
 
     def test_listened_default_bend(self):
-        # Listening (7 Nov 2026): Aww needed more lift to sound convincing.
-        self.assertEqual(ApplioSettings().interjection_bend, 4.0)
+        # Listening (7 Nov 2026): Aww needed far more lift; bend 8 peaks about one
+        # octave up (Kokoro adds ~4 st itself) while RVC still voices it cleanly.
+        self.assertEqual(ApplioSettings().interjection_bend, 8.0)
+        self.assertEqual(ApplioSettings().interjection_hold, 0.8)
 
     def test_settings_and_flags(self):
-        for value in (-4.1, 4.1, float('nan')):
+        for value in (-12.1, 12.1, float('nan')):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 ApplioSettings(applio_dir=Path('/nonexistent'), interjection_bend=value).check()
+        for value in (-0.1, 1.3, float('nan')):
+            with self.subTest(hold=value), self.assertRaises(ValueError):
+                ApplioSettings(applio_dir=Path('/nonexistent'), interjection_hold=value).check()
         defaults = speech_settings(build_parser().parse_args(['--speech']))
-        self.assertEqual((defaults.interjection_contours, defaults.interjection_bend), (False, 4.0))
+        self.assertEqual((defaults.interjection_contours, defaults.interjection_bend,
+                          defaults.interjection_hold), (False, 8.0, 0.8))
         settings = speech_settings(build_parser().parse_args(
-            ['--speech', '--interjection-contours', '--interjection-bend', '3']))
-        self.assertEqual((settings.interjection_contours, settings.interjection_bend), (True, 3.0))
+            ['--speech', '--interjection-contours', '--interjection-bend', '3',
+             '--interjection-hold', '0.6']))
+        self.assertEqual((settings.interjection_contours, settings.interjection_bend,
+                          settings.interjection_hold), (True, 3.0, 0.6))
 
 
 if __name__ == '__main__':
@@ -332,3 +341,65 @@ class AwwPronunciationTests(unittest.TestCase):
         synthesizer = self.synthesizer('ˈɔːwə, ðæt ɪz sˌoʊ swˈiːt.')
         synthesizer.synthesize('Aww, that is so sweet.', 'out.wav', spans=[0])
         self.assertEqual(synthesizer.model.create_timed.call_args.args[0], 'ˈɔːɔː, ðæt ɪz sˌoʊ swˈiːt.')
+
+
+class AwwHoldTests(unittest.TestCase):
+    """Listening: Aww should last about 0.6-1 s; Kokoro tops out near 0.45 s before it splits."""
+
+    def periodic(self, rate=8000, seconds=1.0, hz=200):
+        return [0.5 * math.sin(2 * math.pi * hz * i / rate) for i in range(int(rate * seconds))]
+
+    def test_hold_repeats_whole_periods_to_reach_the_target(self):
+        from controller.kokoro_worker import hold_vowel
+        rate, samples = 8000, self.periodic()
+        out, added = hold_vowel(list(samples), rate, 0.3, 0.5, 0.8)
+        self.assertAlmostEqual(added, 0.6, delta=0.02)
+        self.assertEqual(len(out), len(samples) + round(added * rate))
+        self.assertEqual(out[:int(0.3 * rate)], samples[:int(0.3 * rate)])
+        self.assertEqual(out[-int(0.4 * rate):], samples[-int(0.4 * rate):])
+        period = rate // 200
+        for at in range(int(0.4 * rate), int(0.95 * rate), period * 7):
+            a, b = out[at:at + period], out[at + period:at + 2 * period]
+            corr = sum(x * y for x, y in zip(a, b)) / math.sqrt(sum(x * x for x in a) * sum(y * y for y in b))
+            self.assertGreater(corr, 0.98, f'held vowel stays periodic at {at / rate:.3f} s')
+
+    def test_short_target_or_unpitched_span_is_left_alone(self):
+        from controller.kokoro_worker import hold_vowel
+        rate, samples = 8000, self.periodic()
+        self.assertEqual(hold_vowel(list(samples), rate, 0.3, 0.5, 0.15), (samples, 0.0))
+        silence = [0.0] * 8000
+        self.assertEqual(hold_vowel(list(silence), rate, 0.3, 0.5, 0.8), (silence, 0.0))
+
+    def test_hold_validation(self):
+        from controller.kokoro_worker import validate_holds
+        validate_holds([[0, 0.8]])
+        for bad in ('x', [[0]], [[True, 0.8]], [[-1, 0.8]], [[0, 0.0]], [[0, 1.6]], [[0, 0.8]] * 5):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                validate_holds(bad)
+
+    def test_synthesize_holds_aww_and_stretches_its_span(self):
+        synthesizer = KokoroSpanTests.synthesizer(self)
+        tone = self.periodic(rate=24000, seconds=1.75, hz=220)
+        synthesizer.model.create_timed.return_value = (tone, 24000, REALLY)
+        metrics = synthesizer.synthesize('I really like it.', 'out.wav', spans=[1], holds=[[1, 0.8]])
+        written = synthesizer.soundfile.write.call_args.args[1]
+        added = len(written) / 24000 - 1.75
+        self.assertAlmostEqual(added, 0.8 - (0.85 - 0.625), delta=0.02)
+        start, end = metrics['wordSpans'][0]
+        self.assertEqual(start, 0.625)
+        self.assertAlmostEqual(end - start, 0.8, delta=0.02)
+        self.assertAlmostEqual(metrics['sourceSeconds'], 1.75 + added, places=2)
+
+    async def run_request(self, settings, text):
+        return await SynthesiseContourTests.run_segment(self, settings, Segment(text, 'tender', 1.0))
+
+    def test_only_aww_words_are_held(self):
+        settings = ApplioSettings(tts_provider='kokoro', interjection_contours=True)
+        sent, _ = asyncio.run(self.run_request(settings, 'Aww, that is so sweet.'))
+        self.assertEqual(sent['holds'], ((0, 0.8),))
+        sent, _ = asyncio.run(self.run_request(settings, 'Ooh! Nice.'))
+        self.assertNotIn('holds', sent)
+        sent, _ = asyncio.run(self.run_request(
+            ApplioSettings(tts_provider='kokoro', interjection_contours=True, interjection_hold=0.0),
+            'Aww, that is so sweet.'))
+        self.assertNotIn('holds', sent)

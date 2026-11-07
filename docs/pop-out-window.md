@@ -73,26 +73,47 @@ flowchart LR
 
 | Browser | Pop out | Stays on top |
 | --- | --- | --- |
-| Chrome / Chromium / Edge 116+ (desktop) | ✅ Picture-in-picture window | ✅ By itself (see Wayland below) |
+| Chrome / Chromium / Edge 116+ (desktop) | ✅ Picture-in-picture window | ✅ On X11 by itself; 📌 on Wayland pin it (below) |
 | Firefox | ✅ Popup window | 📌 Pin it with the window manager |
-| Electron-based browsers (VS Code, the Claude app's browser pane) | ⚠️ Popup only if the host allows `window.open()`; otherwise the status line explains why | 📌 Window manager, if it opens |
+| VS Code's built-in browser | ✅ Popup window | 📌 Pin it with the window manager |
+| Other Electron hosts (the Claude app's browser pane) | ⚠️ Only if the host allows `window.open()`; otherwise the status line explains why | 📌 Window manager, if it opens |
 | Mobile browsers | ❌ Not available | — |
 
-Verified on 8 November 2026: the picture-in-picture window works in Chrome
-on the project machine (Ubuntu 24.04).
+Verified on 8 November 2026 on the project machine (Ubuntu 24.04, GNOME 46,
+Wayland session): the picture-in-picture window in Chrome and the popup
+window in Firefox and VS Code's browser all open, follow resizing and
+return. Under Wayland none of them stays on top by itself; **Super+T**
+(set up below) pins each of them.
 
 The page must be opened from `http://127.0.0.1:8770`, and the window can
 only be opened from a click; browsers refuse it otherwise. If Firefox blocks
 the popup, allow pop-ups for `127.0.0.1:8770` (the icon at the left of the
 address bar) and click again.
 
-## 📌 Keeping a popup window on top
+## 📌 Keeping the floating window on top
 
-A web page cannot keep an ordinary window above other windows, so with the
-popup fallback you pin it yourself:
+A web page cannot keep an ordinary window above other windows, and under
+Wayland not even a picture-in-picture window can place itself there. Ask the
+window manager instead:
 
-- **GNOME (X11 and Wayland):** right-click the window's title bar, or press
-  Alt+Space, and choose **Always on Top**.
+- **Ubuntu / GNOME, with a shortcut (verified):** GNOME's
+  *Toggle window always appearing on top* action has no key by default. Bind
+  it to Super+T (unused by default on Ubuntu 24.04) once:
+
+  ```bash
+  gsettings set org.gnome.desktop.wm.keybindings toggle-above "['<Super>t']"
+  ```
+
+  Then click the floating window and press **Super+T** to pin it; press it
+  again to unpin. It works for any window, in X11 and Wayland sessions. To
+  remove the shortcut again:
+
+  ```bash
+  gsettings reset org.gnome.desktop.wm.keybindings toggle-above
+  ```
+
+- **GNOME, without a shortcut:** with the floating window focused, press
+  Alt+Space (or right-click its title bar) and tick **Always on Top**.
 - **KDE Plasma:** right-click the title bar → **More Actions** → **Keep
   Above Others**.
 - **Windows:** no built-in option; PowerToys' Always on Top (Win+Ctrl+T)
@@ -101,8 +122,10 @@ popup fallback you pin it yourself:
 
 ## ⚠️ Operating-system and window-manager limits
 
-- **Picture-in-picture is always on top and cannot be switched off.** The
-  browser offers web pages no pin switch. The toggle is therefore
+- **The page has no pin switch.** Browsers offer web pages no way to set or
+  clear always-on-top. Where picture-in-picture stays on top by itself
+  (X11), it cannot be unpinned; everywhere else the window manager's
+  shortcut both pins and unpins. The page's own toggle is
   **Pop out ↔ Return**.
 - **One floating window at a time.** The page never asks for a second one.
 - **Size and position:** the page asks for 360 × 480 for the portrait
@@ -112,11 +135,13 @@ popup fallback you pin it yourself:
 - **Linux, X11:** the window manager is asked to keep a picture-in-picture
   window above others; GNOME and KDE on X11 honour this.
 - **Linux, Wayland (Ubuntu 24.04 GNOME default):** the Wayland protocol does
-  not let applications place their own windows above others. Whether a
-  picture-in-picture window stays on top depends on Chrome's backend: Chrome
-  on XWayland should behave as on X11, while native-Wayland Chrome may open
-  it as an ordinary window. If it does not stay on top, use GNOME's
-  **Always on Top** as above, or run Chrome with `--ozone-platform=x11`.
+  not let applications place their own windows above others. Chrome's
+  default native-Wayland backend opens the picture-in-picture window as an
+  ordinary window (seen on GNOME 46), so pin it with **Super+T** or
+  **Always on Top** as above. Running Chrome on XWayland
+  (`--ozone-platform=x11`, or `chrome://flags/#ozone-platform-hint` set to
+  X11) should let it pin itself as on X11, at the cost of some native
+  Wayland features; this was not tested.
 - **Full-screen applications:** a full-screen window (a video player, a game
   or an editor in full-screen mode) may cover the floating window; this
   depends on the window manager and is not guaranteed by the browser. Use a

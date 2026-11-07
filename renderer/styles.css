@@ -34,6 +34,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 :focus-visible { outline: 2px solid #e1b5ed; outline-offset: 2px; }
 .button-grid, .toolbar { display: flex; flex-wrap: wrap; gap: 7px; margin: 10px 0; }
 .slider-row { display: flex; gap: 8px; align-items: center; margin: 12px 0; }
+#voice-volume-value { min-width: 4.5em; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 input[type='range'] { flex: 1; min-width: 0; accent-color: #bc8fc8; width: 100%; }
 input[type='search'], input[type='text'], textarea { min-width: 0; max-width: 100%; padding: 8px; border: 1px solid #78677f; border-radius: 6px; background: #17121c; color: var(--ink); }
 textarea { width: 100%; }

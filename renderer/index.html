@@ -36,6 +36,15 @@
     <section aria-labelledby="bridge-heading">
       <h2 id="bridge-heading">Chat</h2>
       <p class="note">Use the bar above the portrait to talk; replies stream here. Add --speech to the bridge for voice and lip sync.</p>
+      <div class="slider-row">
+        <label for="voice-volume">Voice volume</label>
+        <input id="voice-volume" type="range" min="-24" max="18" step="1" value="0"
+               aria-describedby="voice-volume-help">
+        <output id="voice-volume-value" for="voice-volume">0 dB</output>
+      </div>
+      <button id="voice-volume-reset" type="button">Reset voice volume</button>
+      <p id="voice-volume-help" class="note">0 dB is baseline. Boost up to +18 dB with peak protection.
+        Saved in this browser; applies to chat, samples and agent speech. Lower the boost if the voice sounds compressed.</p>
       <div id="chat-box">
         <div id="chat-box-bar">
           <button id="chat-drag" type="button" aria-label="Drag chat box" hidden>Chat</button>

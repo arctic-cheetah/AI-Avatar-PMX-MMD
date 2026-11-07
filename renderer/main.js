@@ -32,6 +32,7 @@ import { MorphAudition, buildMorphInventory } from "./morph-audition.js";
 import { AuditionPanel } from "./audition-panel.js";
 import { connectBridge } from "./bridge-client.js";
 import { SpeechPlayer, loadSpeechShapes } from "./speech-player.js";
+import { VoiceVolume, bindVoiceVolume } from "./voice-volume.js";
 import { LiveSpeechSession } from "./speech-session.js";
 import { FillerSession } from "./filler-session.js";
 import { ThinkingPose, THINKING_POSE } from "./thinking-pose.js";
@@ -69,6 +70,12 @@ const SPEECH_SHAPES = await loadSpeechShapes().catch((error) => {
 const canvas = document.querySelector("#view");
 const speechButton = document.querySelector("#speech-button");
 const speechStatus = document.querySelector("#speech-status");
+const voiceVolume = new VoiceVolume();
+bindVoiceVolume(voiceVolume, {
+  input: document.querySelector('#voice-volume'),
+  output: document.querySelector('#voice-volume-value'),
+  reset: document.querySelector('#voice-volume-reset'),
+});
 const expressionControls = document.querySelector("#expression-controls");
 const winkButtons = document.querySelectorAll("#wink-controls button[data-wink]");
 const loopButton = document.querySelector("#loop-button");
@@ -1132,7 +1139,7 @@ function onModelLoaded(loaded, data) {
   expressions = new ExpressionController(mesh, EXPRESSION_CATALOG);
   expressions.startLoop(3, Number(intensityInput.value));
   audition = new MorphAudition(mesh, buildMorphInventory(data, mesh));
-  speech = new SpeechPlayer(mesh, SPEECH_SHAPES);
+  speech = new SpeechPlayer(mesh, SPEECH_SHAPES, voiceVolume);
   speech.onEnded = () => {
     if (speechQueue.length > 0) {
       playNextSpeech();

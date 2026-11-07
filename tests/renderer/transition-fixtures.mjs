@@ -133,7 +133,8 @@ const moodChannels = (subject, delta) => {
 function speakingSubject() {
   const face = syntheticFace();
   const expressions = new ExpressionController(face, SYNTHETIC_CATALOG);
-  const speech = new SpeechPlayer(face, SYNTHETIC_SHAPES, { connect: async () => null });
+  // `shout` stands in for the PMX's open-mouth mood shapes.
+  const speech = new SpeechPlayer(face, SYNTHETIC_SHAPES, { connect: async () => null }, { yields: ["shout"] });
   const pose = new ThinkingPose();
   const clock = { now: 0 };
   speech.context = {

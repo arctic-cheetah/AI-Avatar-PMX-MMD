@@ -381,6 +381,8 @@ class Stage:
             for segment in segments[:limit]:
                 queue.put_nowait(segment)
             queue.put_nowait(None)
+            # The bubble was sent when this item was queued. The turn opens now.
+            await self.send({"type": "turn"})
             await speak_segments(queue, self.send, self.worker, secrets.token_hex(8))
         except asyncio.CancelledError:
             raise

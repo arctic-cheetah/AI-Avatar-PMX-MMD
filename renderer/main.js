@@ -34,7 +34,7 @@ import { connectBridge } from "./bridge-client.js";
 import { SpeechPlayer, loadSpeechShapes } from "./speech-player.js";
 import { VoiceVolume, bindVoiceVolume } from "./voice-volume.js";
 import { LiveSpeechSession } from "./speech-session.js";
-import { LastSpeechReplay } from "./speech-replay.js";
+import { LastSpeechReplay, dropQueuedReplay, replayQueueItems } from "./speech-replay.js";
 import { FillerSession } from "./filler-session.js";
 import { ThinkingPose, THINKING_POSE } from "./thinking-pose.js";
 import { buildThinkingRig } from "./thinking-rig.js";
@@ -177,6 +177,8 @@ let speechClip = null;
 const speechQueue = [];
 /** Bumped on every new response or stop, so stale clip loads are discarded. */
 let liveRun = 0;
+let speechTurn = 0;
+let playingReplay = false;
 let speechStarting = false;
 let sampleStarting = false;
 let replayStarting = false;
@@ -994,39 +996,33 @@ async function toggleSpeech() {
 speechButton.addEventListener("click", toggleSpeech);
 
 /** Replay never contacts the bridge, changes chat history, or answers a pending ask. */
-async function replayLastSpeech() {
-  if (replayButton.disabled || !lastSpeech.entry) return;
-  const entry = lastSpeech.entry;
-  const run = liveRun;
+function replayLastSpeech() {
+  if (replayButton.disabled || lastSpeech.entries.length === 0) return;
   replayStarting = true;
   syncReplayControls();
   expressions.stopLoop();
   audition.stopSweep();
   globalThis.__yidhariHold = null;
-  try {
-    applyMood(entry.expression, entry.weight);
-    if (!await speech.play(entry.clip) || run !== liveRun) return;
-    liveSpeech.clipQueued();
-    liveSpeech.responseFinished();
-    speechButton.textContent = "■ Stop";
-    speechStatus.textContent = `Replaying (${entry.expression}): ${entry.text}`;
-  } catch (error) {
-    console.error(error);
-    speechStatus.textContent = "Could not replay the last speech. Try again.";
-  } finally {
-    replayStarting = false;
-    syncReplayControls();
-  }
+  speechQueue.push(...replayQueueItems(lastSpeech.entries));
+  liveSpeech.clipQueued();
+  liveSpeech.responseFinished();
+  replayStarting = false;
+  playNextSpeech();
 }
 
 replayButton.addEventListener("click", replayLastSpeech);
 
 /** Keep replay out of the shared speech lane while playback or a chat reply is busy. */
 function syncReplayControls() {
-  replayButton.disabled = !speech || !lastSpeech.entry || chatResponding || !speechIdle();
-  replayStatus.textContent = lastSpeech.entry
-    ? (replayButton.disabled ? "Replay available when speech is idle." : "Replay the last spoken clip, from the beginning.")
-    : (lastSpeech.expired ? "The latest clip was too long to keep for replay." : "No speech to replay yet.");
+  const retained = lastSpeech.entries.length > 0;
+  replayButton.disabled = !speech || !retained || chatResponding || !speechIdle();
+  replayStatus.textContent = retained
+    ? (replayButton.disabled
+      ? "Replay available when speech is idle."
+      : (lastSpeech.partial
+        ? "Replay keeps the start of the last turn. The rest was too long."
+        : "Replay the last spoken turn, from the beginning."))
+    : (lastSpeech.expired ? "The latest turn was too long to keep for replay." : "No speech to replay yet.");
 }
 
 /**
@@ -1036,6 +1032,7 @@ function syncReplayControls() {
  */
 function stopSpeech(message) {
   liveRun += 1;
+  playingReplay = false;
   speechQueue.length = 0;
   fillerSpeech.reset();
   speech?.stop();
@@ -1071,6 +1068,11 @@ function applyMood(name, weight) {
  * @returns {void}
  */
 function enqueueSpeech({ id, expression, weight, text }) {
+  const kept = dropQueuedReplay(speechQueue);
+  speechQueue.length = 0;
+  speechQueue.push(...kept);
+  const interruptReplay = playingReplay;
+  playingReplay = false;
   liveSpeech.clipQueued();
   const fillerId = fillerSpeech.takeForAnswer();
   if (fillerId !== null) {
@@ -1080,10 +1082,9 @@ function enqueueSpeech({ id, expression, weight, text }) {
   }
   const clip = speech.load(`${LIVE_CLIP_DIR}${id}.wav`, `${LIVE_CLIP_DIR}${id}.visemes.json`);
   clip.catch(() => {}); // Reported when its turn comes.
-  speechQueue.push({ clip, expression, weight, text });
-  if (!speech.playing && !speechStarting) {
-    playNextSpeech();
-  }
+  speechQueue.push({ clip, expression, weight, text, turn: speechTurn });
+  if (interruptReplay) speech.stop();
+  if (interruptReplay || (!speech.playing && !speechStarting)) playNextSpeech();
   syncReplayControls();
 }
 
@@ -1111,9 +1112,10 @@ async function playNextSpeech() {
         continue;
       }
       if (!started) continue;
-      if (!next.filler) lastSpeech.remember({ ...next, clip });
+      if (!next.filler && !next.replay) lastSpeech.remember({ ...next, clip, turn: next.turn });
+      playingReplay = Boolean(next.replay);
       speechButton.textContent = "■ Stop";
-      speechStatus.textContent = `Speaking (${next.expression}): ${next.text}`;
+      speechStatus.textContent = `${next.replay ? "Replaying" : "Speaking"} (${next.expression}): ${next.text}`;
       break;
     } catch (error) {
       console.error(error);
@@ -1199,6 +1201,7 @@ function onModelLoaded(loaded, data) {
   audition = new MorphAudition(mesh, buildMorphInventory(data, mesh));
   speech = new SpeechPlayer(mesh, SPEECH_SHAPES, voiceVolume);
   speech.onEnded = () => {
+    playingReplay = false;
     if (speechQueue.length > 0) {
       playNextSpeech();
       return;
@@ -1296,8 +1299,9 @@ function onModelLoaded(loaded, data) {
     onText: (text) => { transcript.textContent = (transcript.textContent + text).slice(-50000); },
     onFiller: ({ id }) => fillerSpeech.reserve(id),
     onSpeak: enqueueSpeech,
+    onTurn: () => { speechTurn += 1; },
     onAgentSay: (chatBusy) => {
-      // Outside a chat reply, agent speech is its own finished response, so the face relaxes after it.
+      // The bubble arrives when the item is queued. The turn opens on the later turn event.
       if (!chatBusy) liveSpeech.responseFinished();
     },
     onAgentMood: (name, weight) => {

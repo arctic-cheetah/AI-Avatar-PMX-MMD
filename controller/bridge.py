@@ -1063,6 +1063,17 @@ def build_parser():
         help="Semitones at the interjection contour's peak (-12 to 12).",
     )
     parser.add_argument(
+        "--word-lifts",
+        action="store_true",
+        help='Kokoro: lift endearments in address ("sweetheart!") and the word before "!".',
+    )
+    parser.add_argument(
+        "--word-lift-bend",
+        type=float,
+        default=4.0,
+        help="Semitones at a word lift's peak (-12 to 12).",
+    )
+    parser.add_argument(
         "--interjection-hold",
         type=float,
         default=0.0,
@@ -1128,6 +1139,8 @@ def speech_settings(args):
         interjection_contours=args.interjection_contours,
         interjection_bend=args.interjection_bend,
         interjection_hold=args.interjection_hold,
+        word_lifts=args.word_lifts,
+        word_lift_bend=args.word_lift_bend,
         emphasis_pause=args.emphasis_pause,
         rvc_threads=args.rvc_threads,
         **({"pth": args.pth.expanduser().resolve()} if args.pth else {}),

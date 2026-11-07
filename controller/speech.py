@@ -22,10 +22,10 @@ import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from controller.kokoro_worker import AWW_WORD, MAX_EMPHASIS, WORD_EDGES as AWW_EDGES
+from controller.kokoro_worker import AWW_WORD, MAX_EMPHASIS, MAX_SPANS, WORD_EDGES as AWW_EDGES
 from controller.prosody import Prosody, combine, prosody_for, punctuation_prosody
 from controller.speech_align import align
-from controller.speech_trim import FRAGMENT_TAIL_KEEP, MAX_TAIL_KEEP, apply_gain, trim_clip
+from controller.speech_trim import FRAGMENT_TAIL_KEEP, MAX_TAIL_KEEP, apply_gain, ending, trim_clip
 
 ROOT = Path(__file__).resolve().parents[1]
 LIVE_DIR = ROOT / "assets" / "private" / "speech" / "live"
@@ -46,6 +46,12 @@ EMPHASIS_MARK = "\ue000"  # private-use marker kept through cleaning, then remov
 # Interjections Kokoro says flat but the actor lifts: aw/aww, ooh, ohh (a plain "oh" is left alone).
 INTERJECTION = re.compile(r"(?:a+w+|o{2,}h*|oh{2,})", re.IGNORECASE)
 WORD_EDGES = ".,!?…;:\"'()[]—–-*“”‘’"
+# Terms of endearment; lifted only when used to address someone (followed by punctuation).
+ENDEARMENTS = frozenset({
+    "sweetheart", "honey", "darling", "dear", "dearest", "sweetie", "love", "babe",
+    "baby", "cutie", "hun", "sweetpea", "sugar", "angel", "precious", "pumpkin", "treasure",
+})
+CLOSING = "\"'”’)]*"
 DASH = re.compile(r"\s*[—–]\s*|\s+-(?:\s+|$)")
 WORKER_SCRIPT = Path(__file__).with_name("applio_worker.py")
 WORKER_LOG = LIVE_DIR.parent / "applio-worker.log"
@@ -87,6 +93,8 @@ class ApplioSettings:
     emphasis_pause: float = 0.12
     interjection_contours: bool = False  # Kokoro: "Aww"/"Ooh" rise then fall (#84)
     interjection_bend: float = 8.0  # semitones at the peak: about one octave with Kokoro's rise (#84)
+    word_lifts: bool = False  # Kokoro: lift endearments in address and the word before ! (#84)
+    word_lift_bend: float = 4.0  # semitones at the lift's peak
     interjection_hold: float = 0.0  # seconds an "aww" is held; 0 keeps Kokoro's ~0.36 s (#84)
     exclaim_gain: float = 3.0  # dB louder for a clip ending in !, with punctuation_cadence
 
@@ -127,6 +135,8 @@ class ApplioSettings:
                 raise ValueError(f"{name} must be between 0 and {MAX_TAIL_KEEP} seconds.")
         if not math.isfinite(self.interjection_bend) or abs(self.interjection_bend) > 12.0:
             raise ValueError("interjection_bend must be between -12 and 12 semitones.")
+        if not math.isfinite(self.word_lift_bend) or abs(self.word_lift_bend) > 12.0:
+            raise ValueError("word_lift_bend must be between -12 and 12 semitones.")
         if not math.isfinite(self.interjection_hold) or not 0.0 <= self.interjection_hold <= 1.2:
             raise ValueError("interjection_hold must be between 0 and 1.2 seconds.")
         if not math.isfinite(self.emphasis_pause) or not 0.0 <= self.emphasis_pause <= 0.3:
@@ -181,6 +191,24 @@ def interjection_words(text: str) -> tuple[int, ...]:
         for index, word in enumerate(spoken_words(text))
         if INTERJECTION.fullmatch(word.strip(WORD_EDGES))
     )
+
+
+def lift_words(text: str) -> tuple[int, ...]:
+    """Spoken-word indices that get a pitch lift: endearments in address, and the word before "!".
+
+    Interjections are skipped; they have their own, larger contour.
+    """
+    words = spoken_words(text)
+    lifts = []
+    for index, word in enumerate(words):
+        core = word.strip(WORD_EDGES)
+        if INTERJECTION.fullmatch(core):
+            continue
+        addressed = core.lower() in ENDEARMENTS and word.rstrip(CLOSING)[-1:] in ",.!?…;:"
+        exclaimed = index == len(words) - 1 and ending(text) == "exclaim"
+        if addressed or exclaimed:
+            lifts.append(index)
+    return tuple(lifts)
 
 
 def clean_for_tts(text: str) -> str:
@@ -411,6 +439,7 @@ class ApplioWorker:
         emphasis: tuple[int, ...] = (),
         contours: tuple[int, ...] = (),
         holds: tuple[tuple[int, float], ...] = (),
+        lifts: tuple[int, ...] = (),
     ) -> dict:
         """Synthesise ``text`` into ``source`` and convert into ``output``.
 
@@ -421,11 +450,13 @@ class ApplioWorker:
         """
         await self.start()
         source_metrics = None
+        # Interjections first, so they keep their contour if the per-sentence cap is reached.
+        spanned = tuple(dict.fromkeys([*contours, *lifts]))[:MAX_SPANS]
         if self.kokoro is not None:
             source_metrics = await self.kokoro.request(
                 text, source, output, run,
                 fields={
-                    **self._kokoro_fields(prosody, emphasis, contours),
+                    **self._kokoro_fields(prosody, emphasis, spanned),
                     **({"holds": [list(hold) for hold in holds]} if holds else {}),
                 },
             )
@@ -435,12 +466,18 @@ class ApplioWorker:
         own = dict(fields or {})
         if prosody is not None:
             own["pitch"] = prosody.pitch
-        bends = []
-        if contours and source_metrics:
-            bends = [
-                [start, end, self.settings.interjection_bend]
-                for start, end in source_metrics.get("wordSpans", [])
-            ]
+        bends, bent = [], []
+        if spanned and source_metrics:
+            spans = source_metrics.get("wordSpans", [])
+            words = source_metrics.get("spanWords", list(spanned[: len(spans)]))
+            for word, (start, end) in zip(words, spans):
+                semitones = (
+                    self.settings.interjection_bend
+                    if word in contours
+                    else self.settings.word_lift_bend
+                )
+                bends.append([start, end, semitones])
+                bent.append(word)
             if bends:
                 own["bend"] = bends
         line = json.dumps(
@@ -476,7 +513,9 @@ class ApplioWorker:
                 }
             )
         if contours:
-            message["contours"] = len(bends)
+            message["contours"] = sum(word in contours for word in bent)
+        if lifts:
+            message["lifts"] = sum(word in lifts and word not in contours for word in bent)
         return message
 
     def cancel(self, run: str) -> None:
@@ -562,6 +601,10 @@ async def synthesise(
                 )
                 if holds:
                     options["holds"] = holds
+        if settings.word_lifts and settings.tts_provider == "kokoro":
+            lifts = lift_words(text)
+            if lifts:
+                options["lifts"] = lifts
         reply = await worker.request(text, source, wav, run, prosody=prosody, **options)
         # Trim before aligning so the lip-sync timings match the audio that plays.
         trim = await asyncio.to_thread(trim_clip, source, wav, text, **tails)
@@ -593,6 +636,7 @@ async def synthesise(
             "ttsRtf",
             "emphasisPauses",
             "contours",
+            "lifts",
         )
         if key in reply
     }

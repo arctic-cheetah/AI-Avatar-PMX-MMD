@@ -368,6 +368,7 @@ class Synthesizer:
             metrics['emphasisPauses'] = pauses
         if spans is not None:
             metrics['wordSpans'] = [list(found[i]) for i in spans if i in found]
+            metrics['spanWords'] = [i for i in spans if i in found]
         return metrics
 
 

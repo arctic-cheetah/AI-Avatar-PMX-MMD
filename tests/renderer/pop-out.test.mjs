@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { FrameLoop, PopOut } from "../../renderer/pop-out.js";
+import { FrameLoop, PopOut, popupWindow } from "../../renderer/pop-out.js";
 
 // A tiny DOM: just enough ChildNode/ParentNode behaviour to watch nodes move
 // between the page and the floating window and come back to the same place.
@@ -268,4 +268,89 @@ test("a refused window request leaves the avatar in the page", async () => {
   await assert.rejects(popOut.open(), /user gesture/);
   assert.equal(popOut.window, null);
   assert.deepEqual(main.names(), ["canvas", "bubble", "controls"]);
+});
+
+// Firefox and other browsers without Document Picture-in-Picture fall back to
+// an ordinary popup window from window.open() (issue #52 follow-up).
+
+function hostWithPopups(popup) {
+  const { host, main, canvas, bubble } = stage();
+  const opened = [];
+  host.open = (url, target, features) => {
+    opened.push({ url, target, features });
+    return popup;
+  };
+  host.document.title = "Yidhari";
+  return { host, main, canvas, bubble, opened };
+}
+
+test("the popup opener asks for a sized popup window of the same page", async () => {
+  const popup = fakeWindow();
+  const { host, opened } = hostWithPopups(popup);
+  const opener = popupWindow(host);
+  assert.equal(opener.kind, "popup");
+  const view = await opener.requestWindow({ width: 360, height: 480 });
+  assert.equal(view, popup);
+  assert.deepEqual(opened, [{ url: "", target: "_blank", features: "popup,width=360,height=480" }]);
+  assert.equal(popup.document.title, "Yidhari");
+});
+
+test("a blocked popup explains how to allow it", async () => {
+  const { host } = hostWithPopups(null);
+  await assert.rejects(popupWindow(host).requestWindow({ width: 360, height: 480 }), /pop-ups/);
+});
+
+test("without Document Picture-in-Picture the avatar pops out into a popup window", async () => {
+  const popup = fakeWindow();
+  const { host, main, canvas } = hostWithPopups(popup);
+  const popOut = new PopOut({ api: undefined, fallback: popupWindow(host), host, nodes: [canvas] });
+  assert.equal(popOut.supported, true);
+  assert.equal(popOut.kind, "popup", "the button can say it opens an ordinary window");
+  const view = await popOut.open();
+  assert.equal(view, popup);
+  assert.equal(popOut.kind, "popup");
+  assert.deepEqual(popup.document.body.names(), ["canvas"]);
+  popup.dispatch("pagehide");
+  assert.deepEqual(main.names(), ["canvas", "bubble", "controls"]);
+});
+
+test("when Picture-in-Picture refuses to open, the popup window is used instead", async () => {
+  const popup = fakeWindow();
+  const { host, canvas } = hostWithPopups(popup);
+  const popOut = new PopOut({
+    api: { requestWindow: async () => { throw new Error("Internal error: no window"); } },
+    fallback: popupWindow(host), host, nodes: [canvas],
+  });
+  assert.equal(popOut.kind, "pip");
+  assert.equal(await popOut.open(), popup);
+  assert.equal(popOut.kind, "popup");
+});
+
+test("if both windows are refused the avatar stays and the last reason is given", async () => {
+  const { host, main, canvas } = hostWithPopups(null);
+  const popOut = new PopOut({
+    api: { requestWindow: async () => { throw new Error("no window"); } },
+    fallback: popupWindow(host), host, nodes: [canvas],
+  });
+  await assert.rejects(popOut.open(), /pop-ups/);
+  assert.equal(popOut.window, null);
+  assert.deepEqual(main.names(), ["canvas", "bubble", "controls"]);
+});
+
+test("closing the main page also closes a popup window", async () => {
+  const popup = fakeWindow();
+  const { host, canvas } = hostWithPopups(popup);
+  const popOut = new PopOut({ api: undefined, fallback: popupWindow(host), host, nodes: [canvas] });
+  await popOut.open();
+  host.dispatch("pagehide");
+  assert.equal(popup.closed, true, "a popup would otherwise outlive the page and keep the avatar");
+  assert.equal(popOut.window, null);
+});
+
+test("the window size can be chosen per opening, e.g. with the side panel", async () => {
+  const pipApi = api();
+  const { host, canvas } = stage();
+  const popOut = new PopOut({ api: pipApi, host, nodes: [canvas] });
+  await popOut.open({ width: 756, height: 640 });
+  assert.deepEqual(pipApi.requests, [{ width: 756, height: 640 }]);
 });

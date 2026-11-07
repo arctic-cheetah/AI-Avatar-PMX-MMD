@@ -51,6 +51,7 @@ ENDEARMENTS = frozenset({
     "sweetheart", "honey", "darling", "dear", "dearest", "sweetie", "love", "babe",
     "baby", "cutie", "hun", "sweetpea", "sugar", "angel", "precious", "pumpkin", "treasure",
 })
+QUESTION_PEAK = 0.7  # a question's rise peaks 70 % into its last word (measured on RVC)
 CLOSING = "\"'”’)]*"
 DASH = re.compile(r"\s*[—–]\s*|\s+-(?:\s+|$)")
 WORKER_SCRIPT = Path(__file__).with_name("applio_worker.py")
@@ -95,6 +96,7 @@ class ApplioSettings:
     interjection_bend: float = 8.0  # semitones at the peak: about one octave with Kokoro's rise (#84)
     word_lifts: bool = False  # Kokoro: lift endearments in address and the word before ! (#84)
     word_lift_bend: float = 4.0  # semitones at the lift's peak
+    question_rise_bend: float = 8.0  # semitones a question's last word rises (peak at 70 %)
     interjection_hold: float = 0.0  # seconds an "aww" is held; 0 keeps Kokoro's ~0.36 s (#84)
     exclaim_gain: float = 3.0  # dB louder for a clip ending in !, with punctuation_cadence
 
@@ -137,6 +139,8 @@ class ApplioSettings:
             raise ValueError("interjection_bend must be between -12 and 12 semitones.")
         if not math.isfinite(self.word_lift_bend) or abs(self.word_lift_bend) > 12.0:
             raise ValueError("word_lift_bend must be between -12 and 12 semitones.")
+        if not math.isfinite(self.question_rise_bend) or abs(self.question_rise_bend) > 12.0:
+            raise ValueError("question_rise_bend must be between -12 and 12 semitones.")
         if not math.isfinite(self.interjection_hold) or not 0.0 <= self.interjection_hold <= 1.2:
             raise ValueError("interjection_hold must be between 0 and 1.2 seconds.")
         if not math.isfinite(self.emphasis_pause) or not 0.0 <= self.emphasis_pause <= 0.3:
@@ -480,8 +484,8 @@ class ApplioWorker:
             for word, (start, end) in zip(words, spans):
                 if word in contours:
                     bends.append([start, end, self.settings.interjection_bend])
-                elif word in rises:  # a question rises to its end
-                    bends.append([start, end, self.settings.word_lift_bend, 1.0])
+                elif word in rises:  # a question rises against Kokoro's fall
+                    bends.append([start, end, self.settings.question_rise_bend, QUESTION_PEAK])
                 else:
                     bends.append([start, end, self.settings.word_lift_bend])
                 bent.append(word)

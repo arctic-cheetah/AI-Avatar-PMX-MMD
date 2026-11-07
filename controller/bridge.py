@@ -1074,6 +1074,12 @@ def build_parser():
         help="Semitones at a word lift's peak (-12 to 12).",
     )
     parser.add_argument(
+        "--question-rise-bend",
+        type=float,
+        default=8.0,
+        help="Semitones a question's last word rises with --word-lifts (-12 to 12).",
+    )
+    parser.add_argument(
         "--interjection-hold",
         type=float,
         default=0.0,
@@ -1141,6 +1147,7 @@ def speech_settings(args):
         interjection_hold=args.interjection_hold,
         word_lifts=args.word_lifts,
         word_lift_bend=args.word_lift_bend,
+        question_rise_bend=args.question_rise_bend,
         emphasis_pause=args.emphasis_pause,
         rvc_threads=args.rvc_threads,
         **({"pth": args.pth.expanduser().resolve()} if args.pth else {}),

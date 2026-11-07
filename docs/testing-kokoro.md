@@ -209,6 +209,35 @@ short pause before it (`--emphasis-pause`, default 0.12 s, 0–0.3).
   --output-dir assets/private/speech/kokoro-audition/issue-84-emphasis
 ```
 
+## 2e. Interjection contours (#84 tier 5a)
+
+Yidhari's actor says "Aww" with a **rise, then a fall**; Kokoro always renders
+a straight drop of about 3 semitones, whatever the punctuation or spelling.
+With `--interjection-contours` (Kokoro only, off by default), `aw`/`aww`/`awww`,
+`ooh`/`oooh` and `ohh` get a smooth pitch bump of `--interjection-bend`
+semitones (default 2, range ±4) that peaks 40 % of the way through the word.
+
+How it works, without touching Kokoro's model:
+
+1. The Kokoro worker phonemizes the sentence, checks the words line up (as for
+   emphasis) and reports each interjection's span from its per-phoneme
+   timings, after any emphasis pauses.
+2. The bridge sends those spans to the RVC worker as `bend`s.
+3. The RVC worker wraps Applio's `Pipeline.get_f0()`: after Applio builds the
+   F0 curve (10 ms frames, offset by its 1 s padding), the bump is multiplied
+   in and the coarse pitch is rebuilt with Applio's own formula. RVC then
+   sings Yidhari's voice along the bent curve.
+
+The wrapper is installed only if `get_f0` still has the signature it was
+written for; otherwise the worker logs it and speaks without bends. A plain
+`Oh` is left alone, since it often drops on purpose ("Oh no.").
+
+```bash
+.venv/bin/python -m controller.audition_kokoro --interjection-contours \
+  --mood tender --text "Aww, that is so sweet." --text "Ooh! Nice." \
+  --output-dir assets/private/speech/kokoro-audition/issue-84-contours
+```
+
 ## 3. Test on the avatar
 
 Run these commands in separate terminals:

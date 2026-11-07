@@ -250,6 +250,7 @@ class SynthesiseContourTests(unittest.IsolatedAsyncioTestCase):
         worker.request = prepare
         with tempfile.TemporaryDirectory() as scratch:
             with patch('controller.speech.trim_clip', return_value={'beforeSeconds': 1}), \
+                    patch('controller.speech.apply_gain', return_value={'gainDb': 0.0}), \
                     patch('controller.speech.align', return_value={'duration': 0.8, 'alignSeconds': 0.1}):
                 _, metrics = await synthesise(segment, worker, directory=Path(scratch))
         return sent, metrics
@@ -262,7 +263,7 @@ class SynthesiseContourTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(metrics['contours'], 1)
 
     async def test_off_edge_or_no_interjection_sends_nothing(self):
-        cases = [(ApplioSettings(tts_provider='kokoro'), 'Aww, that is sweet.'),
+        cases = [(ApplioSettings(tts_provider='kokoro', interjection_contours=False), 'Aww, that is sweet.'),
                  (ApplioSettings(tts_provider='edge', interjection_contours=True), 'Aww, that is sweet.'),
                  (ApplioSettings(tts_provider='kokoro', interjection_contours=True), 'Hello there.')]
         for settings, text in cases:
@@ -287,7 +288,7 @@ class SynthesiseContourTests(unittest.IsolatedAsyncioTestCase):
                 ApplioSettings(applio_dir=Path('/nonexistent'), interjection_hold=value).check()
         defaults = speech_settings(build_parser().parse_args(['--speech']))
         self.assertEqual((defaults.interjection_contours, defaults.interjection_bend,
-                          defaults.interjection_hold), (False, 8.0, 0.0))
+                          defaults.interjection_hold), (True, 8.0, 0.0))
         settings = speech_settings(build_parser().parse_args(
             ['--speech', '--interjection-contours', '--interjection-bend', '3',
              '--interjection-hold', '0.6']))
@@ -484,7 +485,7 @@ class WordLiftTests(unittest.IsolatedAsyncioTestCase):
         sent, _ = await self.run_segment(ApplioSettings(tts_provider='kokoro', word_lifts=True),
                                          'Thank you, sweetheart!')
         self.assertEqual(sent['lifts'], (2,))
-        for settings in (ApplioSettings(tts_provider='kokoro'),
+        for settings in (ApplioSettings(tts_provider='kokoro', word_lifts=False),
                          ApplioSettings(tts_provider='edge', word_lifts=True)):
             with self.subTest(provider=settings.tts_provider):
                 sent, _ = await self.run_segment(settings, 'Thank you, sweetheart!')
@@ -495,7 +496,7 @@ class WordLiftTests(unittest.IsolatedAsyncioTestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 ApplioSettings(applio_dir=Path('/nonexistent'), word_lift_bend=value).check()
         defaults = speech_settings(build_parser().parse_args(['--speech']))
-        self.assertEqual((defaults.word_lifts, defaults.word_lift_bend), (False, 4.0))
+        self.assertEqual((defaults.word_lifts, defaults.word_lift_bend), (True, 4.0))
         settings = speech_settings(build_parser().parse_args(
             ['--speech', '--word-lifts', '--word-lift-bend', '5']))
         self.assertEqual((settings.word_lifts, settings.word_lift_bend), (True, 5.0))

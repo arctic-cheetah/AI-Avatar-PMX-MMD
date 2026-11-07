@@ -96,7 +96,8 @@ class KokoroIntegrationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_configured_tails_reach_trim(self):
         worker = Mock()
-        worker.settings = ApplioSettings(tts_provider='kokoro', sentence_tail=0.4, fragment_tail=0.05)
+        worker.settings = ApplioSettings(tts_provider='kokoro', sentence_tail=0.4, fragment_tail=0.05,
+                                         punctuation_cadence=False)
 
         async def prepare(text, source, output, run, prosody=None):
             source.touch()

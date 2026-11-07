@@ -64,6 +64,15 @@ The JSON report points to each WAV and records per-stage timings. These clips
 survive ordinary avatar runs; the separate `live/` directory is cleared by those
 runs. Listen for word endings, pronunciation, breath artifacts and voice identity.
 
+## Expressive voice defaults
+
+Everything below that was approved by listening (#29, #84) is **on by default**:
+mood prosody (§2b), punctuation cadence (§2c), emphasis (§2d), interjection
+contours and word lifts (§2e). Turn a part off with its `--no-…` flag (for
+example `--no-word-lifts`), or all of them with `--plain-voice`, e.g. to A/B
+against the plain Kokoro → RVC voice. Emphasis, contours and lifts only act
+with `--tts kokoro`.
+
 ## 2a. Cadence and voice-style blending (#29)
 
 Kokoro receives **one sentence per request**, and the trimmer then cuts each

@@ -200,11 +200,12 @@ for limits and listening checks.
 | `--sentence-tail`  | `0.4`                               | Seconds of silence kept after a full sentence (0–0.8); sets the inter-sentence gap |
 | `--fragment-tail`  | `0.1`                               | Seconds kept after a fragment split by a mood tag (0–0.8)                      |
 | `--kokoro-threads` | `2`                                 | CPU ONNX threads for the Kokoro worker                                         |
-| `--mood-prosody`   | off                                 | Let each sentence's mood tag nudge Kokoro speed/pauses and RVC pitch (clamped) |
-| `--interjection-contours` | off                          | Kokoro: "Aww"/"Ooh" rise then fall via an RVC pitch bend (`--interjection-bend` 8 st; optional `--interjection-hold`) |
-| `--word-lifts`     | off                                 | Kokoro: endearments in address ("sweetheart!") and the word before `!` get a rise-fall lift, the word before `?` a rise (`--word-lift-bend` 4 st, `--question-rise-bend` 9 st) |
-| `--emphasis`       | off                                 | Kokoro: `*word*` from the LLM adds a short pause before the word (`--emphasis-pause` 0.12 s) |
-| `--punctuation-cadence` | off                            | Gap by ending (`--ellipsis-tail` 0.6, `--exclaim-tail` 0.3, `--question-tail` 0.4 s), louder `!` (`--exclaim-gain` 3 dB), slower `…`, dashes as pauses |
+| `--plain-voice`    | off                                 | Turn every expressive part off (each also has `--no-…`, e.g. `--no-word-lifts`) |
+| `--mood-prosody`   | on                                  | Let each sentence's mood tag nudge Kokoro speed/pauses and RVC pitch (clamped) |
+| `--interjection-contours` | on                           | Kokoro: "Aww"/"Ooh" rise then fall via an RVC pitch bend (`--interjection-bend` 8 st; optional `--interjection-hold`) |
+| `--word-lifts`     | on                                  | Kokoro: endearments in address ("sweetheart!") and the word before `!` get a rise-fall lift, the word before `?` a rise (`--word-lift-bend` 4 st, `--question-rise-bend` 9 st) |
+| `--emphasis`       | on                                  | Kokoro: `*word*` from the LLM adds a short pause before the word (`--emphasis-pause` 0.12 s) |
+| `--punctuation-cadence` | on                             | Gap by ending (`--ellipsis-tail` 0.6, `--exclaim-tail` 0.3, `--question-tail` 0.4 s), louder `!` (`--exclaim-gain` 3 dB), slower `…`, dashes as pauses |
 | `--applio-dir`     | `../Applio`                         | Applio install to launch; `../Applio-rocm` enables ROCm GPU RVC              |
 | `--pth`            | model under `--applio-dir`          | Applio voice model                                                             |
 | `--index`          | index under `--applio-dir`          | Applio voice index                                                             |

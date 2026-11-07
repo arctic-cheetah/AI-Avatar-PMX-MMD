@@ -1036,8 +1036,14 @@ def build_parser():
         help="Seconds kept after a fragment split by a mood tag (0-0.8).",
     )
     parser.add_argument(
-        "--punctuation-cadence",
+        "--plain-voice",
         action="store_true",
+        help="Turn every expressive voice part off (mood prosody, cadence, emphasis, contours, lifts).",
+    )
+    parser.add_argument(
+        "--punctuation-cadence",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help="Shape delivery by punctuation: per-ending gaps, louder !, slower ellipses, dashes as pauses.",
     )
     for flag, default, what in (
@@ -1053,7 +1059,8 @@ def build_parser():
         )
     parser.add_argument(
         "--interjection-contours",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help='Kokoro: give "Aww"/"Ooh" a rise-then-fall pitch contour (RVC F0 bend).',
     )
     parser.add_argument(
@@ -1064,7 +1071,8 @@ def build_parser():
     )
     parser.add_argument(
         "--word-lifts",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help='Kokoro: lift endearments in address ("sweetheart!") and the word before "!".',
     )
     parser.add_argument(
@@ -1087,7 +1095,8 @@ def build_parser():
     )
     parser.add_argument(
         "--emphasis",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help="Kokoro: let the LLM stress one word per sentence as *word*, with a pause before it.",
     )
     parser.add_argument(
@@ -1104,7 +1113,8 @@ def build_parser():
     )
     parser.add_argument(
         "--mood-prosody",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help="Let mood tags nudge Kokoro speed/pauses and RVC pitch per sentence (clamped).",
     )
     parser.add_argument("--rvc-threads", type=int, default=0)
@@ -1126,6 +1136,8 @@ def speech_settings(args):
     """Build ``ApplioSettings`` from parsed bridge flags."""
     from controller.speech import ApplioSettings
 
+    plain = getattr(args, "plain_voice", False)
+
     return ApplioSettings(
         applio_dir=args.applio_dir.expanduser().resolve(),
         tts_provider=args.tts,
@@ -1135,17 +1147,17 @@ def speech_settings(args):
         kokoro_threads=args.kokoro_threads,
         sentence_tail=args.sentence_tail,
         fragment_tail=args.fragment_tail,
-        mood_prosody=args.mood_prosody,
-        punctuation_cadence=args.punctuation_cadence,
+        mood_prosody=args.mood_prosody and not plain,
+        punctuation_cadence=args.punctuation_cadence and not plain,
         ellipsis_tail=args.ellipsis_tail,
         exclaim_tail=args.exclaim_tail,
         question_tail=args.question_tail,
         exclaim_gain=args.exclaim_gain,
-        emphasis=args.emphasis,
-        interjection_contours=args.interjection_contours,
+        emphasis=args.emphasis and not plain,
+        interjection_contours=args.interjection_contours and not plain,
         interjection_bend=args.interjection_bend,
         interjection_hold=args.interjection_hold,
-        word_lifts=args.word_lifts,
+        word_lifts=args.word_lifts and not plain,
         word_lift_bend=args.word_lift_bend,
         question_rise_bend=args.question_rise_bend,
         emphasis_pause=args.emphasis_pause,

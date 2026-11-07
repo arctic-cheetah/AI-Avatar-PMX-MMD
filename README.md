@@ -311,6 +311,7 @@ avatar-yidhari/
 | [pmx-morph-catalog.md](docs/pmx-morph-catalog.md)                 | Every PMX facial morph                                  |
 | [gaze-tracking.md](docs/gaze-tracking.md)                         | Cursor + webcam gaze tracking design (issue #6)         |
 | [body-sway.md](docs/body-sway.md)                               | Slow sine-wave body sway design (issue #4)              |
+| [animation-transitions.md](docs/animation-transitions.md)         | Smooth, interruptible transitions and layer rules (#54) |
 | [shared-expression-catalog.md](docs/shared-expression-catalog.md) | Mood presets used by the LLM                            |
 | [issue-labels.md](docs/issue-labels.md)                           | Issue priority, difficulty and emoji labels             |
 

@@ -139,9 +139,11 @@ audition contributions. Known overlap: `super-angry` uses the blink morph, and
 seven moods (`cry`, `embarrassed`, `lovestruck`, `confused`, `nervous`,
 `flustered`, `pleading`) use `あ` at 0.1–0.25. The speech player now writes after
 the mood and blends each speech-owned morph from the mood value toward its own
-shape, so closures override those moods. Mood mouth morphs outside the speech
-catalog (for example `口角下げ`) still add on top unattenuated; a fuller
-compositor with per-shape rules remains to do. Channel independence is not a
+shape, so closures override those moods. While articulating it also scales the
+open-mouth mood shapes `□`, `ワ` and `ワ２` toward zero. Mouth corners outside
+the speech catalog (for example `口角下げ`) still add on top unattenuated. Layer
+order and blink combination rules are in
+[animation-transitions.md](./animation-transitions.md). Channel independence is not a
 guarantee of non-conflicting geometry.
 
 The thinking mood adds an eased chin-rest gesture: curled right fingers beneath
@@ -151,9 +153,10 @@ pose is solved from shoulder/elbow/wrist positions with a two-segment arm solver
 including intervening twist bones; finger curls are cached before restoring the
 exact rest rotations. Targets are tuned for Yidhari's PMX proportions, not a
 general-purpose retargeter. Both wrist targets and the raised elbow are spaced
-forward to keep fingers/gloves outside the face and outfit. Head/neck and eye
-tracking remain active at their normal limits throughout the gesture. The hand
-target remains fixed relative to the torso rather than following the head.
+forward to keep fingers/gloves outside the face and outfit. Eye tracking keeps
+its normal limits throughout the gesture. Head/neck tracking follows at 35 % of
+its range while the pose is in, so the chin stays over the hand. The hand target
+remains fixed relative to the torso rather than following the head.
 Sway moves the pose with the torso. This is tuned clearance, not general mesh collision physics;
 new model proportions or animations need another clearance check.
 Missing optional bones are skipped. Gesture and bubble follow the active mood
@@ -195,7 +198,7 @@ multiplies a small YXZ delta on top every frame — sway never overwrites a
 load-time pose. The pure math lives in `renderer/body-sway.js` with no DOM or
 Three.js imports (mirroring `gaze-tracking.js`), covered by
 `tests/renderer/body-sway.test.mjs`; a `Slow sway · ゆらぎ` toggle (default ON)
-eases the bones back to rest when cleared. Amplitudes stay at a few degrees
+fades the sway out over about a second when cleared, and back in when set. Amplitudes stay at a few degrees
 because hair and coat have no physics yet — see [body-sway.md](./body-sway.md).
 
 ## Current state and historical verification

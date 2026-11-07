@@ -95,6 +95,11 @@ as the pull request title, including its emoji or prefix. Reference the issue
 with `Closes #<number>` in the PR body and describe the implemented scope and
 validation accurately. Requested by the user on 7 November 2026.
 
+When a review comment is addressed with a fix, reply on that review thread
+before the pull request is merged. Say what changed, where, and how it was
+checked. If a comment is intentionally not changed, say why. Do not leave a
+fixed thread unanswered. Requested by the user on 8 November 2026.
+
 ## Test-driven development and commits
 
 For behaviour changes and bug fixes, follow red → green → refactor when a

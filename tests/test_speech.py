@@ -76,6 +76,33 @@ class ApplioSettingsTests(unittest.TestCase):
         self.assertEqual(settings.pth, Path("/tmp/custom.pth"))
         self.assertEqual(settings.index, Path("/tmp/custom.index"))
 
+    def test_tail_range_checked_before_files(self):
+        for field in ("sentence_tail", "fragment_tail"):
+            for value in (-0.01, 0.61, float("nan"), float("inf")):
+                with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                    ApplioSettings(applio_dir=Path("/nonexistent"), **{field: value}).check()
+
+    def test_bridge_cadence_and_blend_flags_reach_settings(self):
+        from controller.bridge import build_parser, speech_settings
+
+        args = build_parser().parse_args([
+            "--speech", "--tts", "kokoro",
+            "--kokoro-voice", "af_heart:0.7,af_bella:0.3",
+            "--kokoro-clause-pause", "0.2",
+            "--sentence-tail", "0.35", "--fragment-tail", "0.05",
+        ])
+        settings = speech_settings(args)
+        self.assertEqual(settings.kokoro_voice, "af_heart:0.7,af_bella:0.3")
+        self.assertEqual(
+            (settings.kokoro_clause_pause, settings.sentence_tail, settings.fragment_tail),
+            (0.2, 0.35, 0.05),
+        )
+        defaults = speech_settings(build_parser().parse_args(["--speech"]))
+        self.assertEqual(
+            (defaults.kokoro_clause_pause, defaults.sentence_tail, defaults.fragment_tail),
+            (0.1, 0.25, 0.1),
+        )
+
 
 class SpeechBridgeTests(unittest.IsolatedAsyncioTestCase):
     async def test_speak_events_in_order_without_early_moods(self):

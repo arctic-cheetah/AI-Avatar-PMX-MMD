@@ -40,7 +40,7 @@ class DrawlVowelTests(unittest.TestCase):
 class DrawlRequestTests(unittest.IsolatedAsyncioTestCase):
     async def test_drawls_reach_kokoro_and_bend_deeper(self):
         settings = ApplioSettings(tts_provider='kokoro', dynamic_emphasis=True, drawl_bend=-3.0,
-                                  drawl_hold=0.3)
+                                  drawl_hold=0.3, drawl_stretch=0.0)
         with tempfile.TemporaryDirectory() as scratch:
             script = Path(scratch) / 'spans.py'
             script.write_text(SPANS_WORKER.replace('"wordSpans": [[0.2, 0.5]]',
@@ -96,12 +96,13 @@ class SynthesiseDynamicTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(2, sent['lifts'])
         self.assertNotIn('drawls', sent)
 
-    def test_listened_defaults_keep_only_a_slightly_deeper_tone(self):
+    def test_listened_defaults_stretch_instead_of_hold(self):
         # Listening (8 Nov 2026): the held "buuut" still sounded like "boot" and one take broke
-        # up (its ~20 ms steady vowel repeated many times). Lengthening waits for ONNX per-token
-        # speed (#83 scope 2); for now a drawl is only a slightly deeper tone, no hold.
+        # up (its ~20 ms steady vowel repeated many times). Kokoro's own per-token speed (#83
+        # scope 2) draws it out instead; the hold stays off.
         settings = ApplioSettings()
-        self.assertEqual((settings.drawl_bend, settings.drawl_hold), (-2.0, 0.0))
+        self.assertEqual((settings.drawl_bend, settings.drawl_hold, settings.drawl_stretch),
+                         (-2.0, 0.0, 0.125))
 
     async def test_off_or_edge_sends_no_drawls(self):
         for settings in (ApplioSettings(tts_provider='kokoro', dynamic_emphasis=False),

@@ -223,6 +223,9 @@ tells the model that the report is data, not instructions.
 - With no LLM (`--mode demo`), or when the LLM fails, she speaks a fixed line
   for the kind, for example "All done. The details are in the chat."
 - Without `--speech`, the report appears in the chat log only.
+- In the chat log the report is collapsed under a plain-text summary line;
+  opening it shows the full text as Markdown
+  ([chat-markdown.md](chat-markdown.md)).
 
 Measured 29 October 2026 against local qwen3.8-27b (Vulkan, reasoning on, one
 slot): a 600-character report took **27–31 s** to summarise. Most of that is

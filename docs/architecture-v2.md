@@ -248,14 +248,16 @@ request is dropped without cancelling a running response — and are limited to
 4,000 characters inside a 128 KiB socket frame. Each connection keeps its own
 conversation history, trimmed to the context budget; `{"type":"reset"}` clears
 it (see [conversation-history.md](conversation-history.md)). Replies stream
-into the chat log as user/avatar bubbles written with `textContent`.
+into the chat log as user/avatar bubbles. User bubbles are written with
+`textContent`; Yidhari's and agents' text is rendered as Markdown into DOM
+nodes, never through `innerHTML` (see [chat-markdown.md](chat-markdown.md)).
 
 Each run begins neutral; in text-only mode,
 successful completion keeps the last mood unless a neutral tag was emitted. In
 speech mode the renderer eases to neutral 0.6 s after the last clip of a finished
 response stops ([speech-session.js](../renderer/speech-session.js)), and the
 bridge sends neutral if a response produced no clips, so the thinking face never
-sticks. Generation errors reset neutral. The browser preserves the last mood on disconnect. The renderer writes transcript text with `textContent`, limits retained
+sticks. Generation errors reset neutral. The browser preserves the last mood on disconnect. The renderer keeps each reply's Markdown source as plain text and renders it without HTML parsing, limits retained
 text to 50,000 characters, reconnects without automatically repeating a run,
 and clears manual overrides/stops the loop on start. Authoring controls are
 inert while receiving a response.

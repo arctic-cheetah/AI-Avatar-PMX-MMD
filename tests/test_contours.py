@@ -282,3 +282,49 @@ class SynthesiseContourTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class AwwPronunciationTests(unittest.TestCase):
+    """Listening: "Aww" sounded like "awah" because espeak gives ɔːwə ("aw-wuh")."""
+
+    def test_aww_family_becomes_one_long_vowel(self):
+        from controller.kokoro_worker import respell_phonemes
+        cases = [
+            ('Aww, that is so sweet.', 'ˈɔːwə, ðæt ɪz sˌoʊ swˈiːt.', 'ˈɔːɔː, ðæt ɪz sˌoʊ swˈiːt.'),
+            ('Awww!', 'ˈɔːʊwə!', 'ˈɔːɔː!'),
+            ('Well, aww.', 'wˈɛl, ˈɔːwə.', 'wˈɛl, ˈɔːɔː.'),
+        ]
+        for text, phonemes, expected in cases:
+            with self.subTest(text=text):
+                self.assertEqual(respell_phonemes(text, phonemes), expected)
+
+    def test_other_words_and_misaligned_text_are_untouched(self):
+        from controller.kokoro_worker import respell_phonemes
+        for text, phonemes in (('Aw.', 'ˈɔː.'), ('I saw it.', 'aɪ sˈɔː ɪt.'),
+                               ('Aww, sweet.', 'ˈɔːwə')):  # word counts differ
+            with self.subTest(text=text):
+                self.assertEqual(respell_phonemes(text, phonemes), phonemes)
+
+    def synthesizer(self, phonemes):
+        synthesizer = KokoroSpanTests.synthesizer(self)
+        synthesizer.model.tokenizer.phonemize.return_value = phonemes
+        return synthesizer
+
+    def test_synthesize_speaks_corrected_phonemes(self):
+        synthesizer = self.synthesizer('ˈɔːwə!')
+        synthesizer.synthesize('Aww!', 'out.wav')
+        args, kwargs = synthesizer.model.create.call_args
+        self.assertEqual((args[0], kwargs['is_phonemes']), ('ˈɔːɔː!', True))
+
+    def test_text_without_aww_keeps_the_plain_path(self):
+        synthesizer = self.synthesizer('hɛlˈoʊ.')
+        synthesizer.synthesize('Hello.', 'out.wav')
+        args, kwargs = synthesizer.model.create.call_args
+        self.assertEqual(args[0], 'Hello.')
+        self.assertNotIn('is_phonemes', kwargs)
+        synthesizer.model.tokenizer.phonemize.assert_not_called()
+
+    def test_timed_path_uses_corrected_phonemes(self):
+        synthesizer = self.synthesizer('ˈɔːwə, ðæt ɪz sˌoʊ swˈiːt.')
+        synthesizer.synthesize('Aww, that is so sweet.', 'out.wav', spans=[0])
+        self.assertEqual(synthesizer.model.create_timed.call_args.args[0], 'ˈɔːɔː, ðæt ɪz sˌoʊ swˈiːt.')

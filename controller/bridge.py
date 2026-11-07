@@ -1083,6 +1083,18 @@ def build_parser():
         help="Semitones at a word lift's peak (-12 to 12).",
     )
     parser.add_argument(
+        "--dynamic-emphasis",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help='Kokoro: say "But…", skeptical "sure" and such deeper and drawn out; brighten *word*.',
+    )
+    parser.add_argument(
+        "--drawl-bend",
+        type=float,
+        default=-3.0,
+        help="Semitones at a drawled word's dip (-12 to 12).",
+    )
+    parser.add_argument(
         "--quote-voice",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -1174,6 +1186,8 @@ def speech_settings(args):
         word_lift_bend=args.word_lift_bend,
         question_rise_bend=args.question_rise_bend,
         quote_voice=args.quote_voice and not plain,
+        dynamic_emphasis=args.dynamic_emphasis and not plain,
+        drawl_bend=args.drawl_bend,
         quote_bend=args.quote_bend,
         emphasis_pause=args.emphasis_pause,
         rvc_threads=args.rvc_threads,

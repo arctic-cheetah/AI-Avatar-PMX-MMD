@@ -20,7 +20,8 @@ VOICE_ID = re.compile(r'[ab][a-z]_[a-z]+')
 MAX_BLEND_VOICES = 4
 MAX_CLAUSE_PAUSE = 0.5
 # Optional per-sentence request fields.
-PROSODY_FIELDS = ('speed', 'clause_pause', 'emphasis', 'emphasis_pause', 'spans', 'holds')
+PROSODY_FIELDS = ('speed', 'clause_pause', 'emphasis', 'emphasis_pause', 'spans', 'holds', 'drawls')
+PHONEME_VOWELS = frozenset('aeiouæɑɒɔəɛɜɪʊʌɐᵻɚɝ')
 MAX_HOLD = 1.5        # seconds a held vowel may last
 AUDIBLE_FLOOR_DB = -30.0  # a word's frames this far below its loudest are not part of it
 HOLD_WINDOW = 0.025   # seconds either side of the vowel's middle used to find its period
@@ -116,6 +117,38 @@ def _spoken_words(timings):
 def canonical_aww(text: str) -> str:
     """Rewrite every spelling of "aww" as Aww/aww, which respell_phonemes() knows how to fix."""
     return AWW_FAMILY.sub(lambda m: 'Aww' if m.group(1) == 'A' else 'aww', text)
+
+
+def drawl_token(token: str) -> str:
+    """Draw a word out: primary stress and a long stressed vowel (bˌʌt → bˈʌːːt).
+
+    Measured (#83): this lengthens a word 1.2–2.25× without changing its loudness.
+    """
+    if not any(char in PHONEME_VOWELS for char in token):
+        return token
+    if 'ˈ' not in token:
+        if 'ˌ' in token:
+            token = token.replace('ˌ', 'ˈ', 1)
+        else:
+            first = next(i for i, char in enumerate(token) if char in PHONEME_VOWELS)
+            token = token[:first] + 'ˈ' + token[first:]
+    mark = token.index('ˈ')
+    vowel = next((i for i in range(mark, len(token)) if token[i] in PHONEME_VOWELS), None)
+    if vowel is None:
+        return token
+    return token[:vowel + 1] + 'ːː' + token[vowel + 1:]
+
+
+def apply_drawls(text: str, phonemes: str, drawls) -> str:
+    """Draw out the spoken words at ``drawls``, when phoneme and text words line up."""
+    if not drawls or not aligned(text, phonemes):
+        return phonemes
+    tokens = phonemes.split(' ')
+    spoken = [i for i, token in enumerate(tokens) if _is_word(token)]
+    for index in drawls:
+        if index < len(spoken):
+            tokens[spoken[index]] = drawl_token(tokens[spoken[index]])
+    return ' '.join(tokens)
 
 
 def needs_respelling(text: str) -> bool:
@@ -327,7 +360,7 @@ class Synthesizer:
     def synthesize(self, text: str, path: str, speed: float | None = None,
                    clause_pause: float | None = None, emphasis: list[int] | None = None,
                    emphasis_pause: float = 0.12, spans: list[int] | None = None,
-                   holds: list | None = None) -> dict:
+                   holds: list | None = None, drawls: list[int] | None = None) -> dict:
         """Write ``text`` to ``path``.
 
         ``speed``/``clause_pause`` override the settings for one sentence.
@@ -349,13 +382,15 @@ class Synthesizer:
             validate_spans(spans)
         if holds is not None:
             validate_holds(holds)
+        if drawls is not None:
+            validate_spans(drawls)
         lang = 'en-gb' if self.voice.lstrip().startswith('b') else 'en-us'
         started = time.perf_counter()
         pauses, found, skipped = None, {}, 'misaligned'
-        timed = bool(emphasis or spans or holds)
+        timed = bool(emphasis or spans or holds or drawls)
         phonemes = (self.model.tokenizer.phonemize(text, lang)
                     if timed or needs_respelling(text) else None)
-        spoken = respell_phonemes(text, phonemes) if phonemes else None
+        spoken = apply_drawls(text, respell_phonemes(text, phonemes), drawls) if phonemes else None
         if timed and phonemes and aligned(text, phonemes):
             samples, rate, timings = self.model.create_timed(
                 spoken, voice=self.style, speed=speed, lang=lang, is_phonemes=True,

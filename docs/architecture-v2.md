@@ -50,6 +50,11 @@ Emphasis (#84 tier 4, `--emphasis`): the Segmenter records `*word*` positions in
 `Segment.emphasis`; the Kokoro worker phonemizes the text, checks `aligned()`,
 synthesises with `create_timed(is_phonemes=True)` and splices a faded pause at
 `pause_points()` before each emphasised word.
+Interjection contours (#84 tier 5a, `--interjection-contours`): the Kokoro worker
+returns `wordSpans` for requested words; `ApplioWorker.request()` turns them into
+RVC `bend`s; `install_f0_bend()` wraps Applio's `Pipeline.get_f0()` so
+`bend_factors()` multiplies a rise-fall bump into the F0 curve and
+`coarse_pitch()` rebuilds the coarse pitch.
 
 ```text
 User text -> llama-server (Qwen, Vulkan, 127.0.0.1:8080)

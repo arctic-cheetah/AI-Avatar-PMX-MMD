@@ -209,6 +209,91 @@ short pause before it (`--emphasis-pause`, default 0.12 s, 0–0.3).
   --output-dir assets/private/speech/kokoro-audition/issue-84-emphasis
 ```
 
+## 2e. Interjection contours (#84 tier 5a)
+
+Yidhari's actor says "Aww" with a **rise, then a fall**; Kokoro always renders
+a straight drop of about 3 semitones, whatever the punctuation or spelling.
+With `--interjection-contours` (Kokoro only, off by default), `aw`/`aww`/`awww`,
+`ooh`/`oooh` and `ohh` get a smooth pitch bump of `--interjection-bend`
+semitones (default 8, range ±12) that peaks 40 % of the way through the word.
+After listening (7 Nov 2026) "Aww" needed far more lift. Kokoro already rises
+about 4 st inside "Aww, …", so the peak is roughly 4 + bend:
+
+| Bend | Peak | Clearly pitched frames | Verdict |
+| ---: | ---: | ---: | --- |
+| 4 | +7 st | 33/42 | smooth |
+| **8** | **+12 st (one octave)** | 32/42 | smooth (default) |
+| 12 | +15 st | 23/42 | rise turns breathy/rough |
+| 18 | +21 st | 17/42 | voice breaks up (beyond the RVC model's range) |
+
+Two octaves is therefore not offered; ±12 st is the limit.
+
+**Hold (off by default):** with `--interjection-hold SECONDS` (0–1.2) and
+`--interjection-contours`, an `aw`/`aww` word is lengthened by repeating whole
+pitch periods from the steady middle of the vowel, with short crossfades,
+before RVC re-voices it; the pitch bend then covers the longer word. A first
+default of 0.8 s (asked for as 0.6–1 s) sounded like "aw-aw-aw" and slower
+than the rest of the speech when listened to, while the corrected vowel alone
+already lasts about 0.36–0.39 s, so the default is 0 (Kokoro's own length).
+Short holds (≤ 0.45 s) repeat few cycles and stutter least.
+
+How it works, without touching Kokoro's model:
+
+1. The Kokoro worker phonemizes the sentence, checks the words line up (as for
+   emphasis) and reports each interjection's span from its per-phoneme
+   timings, after any emphasis pauses.
+2. The bridge sends those spans to the RVC worker as `bend`s.
+3. The RVC worker wraps Applio's `Pipeline.get_f0()`: after Applio builds the
+   F0 curve (10 ms frames, offset by its 1 s padding), the bump is multiplied
+   in and the coarse pitch is rebuilt with Applio's own formula. RVC then
+   sings Yidhari's voice along the bent curve.
+
+**Pronunciation fix (always on with Kokoro):** espeak phonemizes `Aww` as
+`ɔːwə` ("aw-wuh", heard as "awah") and `Awww` as `ɔːʊwə`. The Kokoro worker
+replaces those with one long vowel, `ɔːɔː` (about 0.25 s, no dip in loudness),
+before synthesis. Other spellings an LLM likes (`Awwww!`, `Aaww!`, `aWWW!`, `Awwh`)
+are first rewritten to `Aww` (keeping its capital), since espeak turns them into
+`ɔːʊˌʊwə`, `ɑːwə` or even spells out the letters. A plain `Aw` (`ɔː`, about
+0.15 s) is left alone. This is a
+Kokoro front-end issue, so retraining the RVC voice would not change it.
+
+**Word lifts:** with `--word-lifts` (Kokoro only, off by default), two kinds
+of word get a smaller rise-fall bump of `--word-lift-bend` semitones (default
+4, ±12), since they sounded monotonous against the rest of the sentence:
+
+- terms of endearment used to address someone, i.e. followed by punctuation:
+  "Thank you, *sweetheart*!", "Hi *honey*, …", "Oh, my *love*." ("I love it"
+  and "honey cake" are left alone);
+- the word right before `!`: "We did *it*!".
+
+- the word right before `?` gets a **rise** instead of a rise-fall: Kokoro
+  ends questions on a fall ("Is that so?" drops about 8 st), so it gets
+  `--question-rise-bend` semitones (default 9, ±12; raised from 8 after listening
+  asked for 10–20 Hz more, about one semitone at her ~230 Hz ending) peaking 70 % of the way
+  through the word. Measured on RVC, 4 st peaking at the very end only touched
+  the last voiced blip, while 8 st at 70 % turned "so" (202 → 152 Hz) into a
+  dip and rise (204 → 192 → 207 → 241 Hz). A question's last word rises even if
+  it is an endearment ("Are you okay, *honey*?").
+
+Kokoro's last phoneme often absorbs trailing silence ("so?" is voiced for
+0.85–1.05 s but its timing runs to 1.425 s), so word spans are trimmed to the
+frames within 30 dB of the word's loudest before any bend or hold; otherwise a
+question's rise would land in silence.
+
+Interjections keep their own, larger contour. At most four bends are used
+per sentence, interjections first. A bend can carry an optional fourth value,
+the position of its peak (0.4 = rise-fall, 1.0 = rise to the end).
+
+The wrapper is installed only if `get_f0` still has the signature it was
+written for; otherwise the worker logs it and speaks without bends. A plain
+`Oh` is left alone, since it often drops on purpose ("Oh no.").
+
+```bash
+.venv/bin/python -m controller.audition_kokoro --interjection-contours \
+  --mood tender --text "Aww, that is so sweet." --text "Ooh! Nice." \
+  --output-dir assets/private/speech/kokoro-audition/issue-84-contours
+```
+
 ## 3. Test on the avatar
 
 Run these commands in separate terminals:

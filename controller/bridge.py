@@ -1052,6 +1052,40 @@ def build_parser():
             help=f"Seconds kept after {what} with --punctuation-cadence (0-0.8).",
         )
     parser.add_argument(
+        "--interjection-contours",
+        action="store_true",
+        help='Kokoro: give "Aww"/"Ooh" a rise-then-fall pitch contour (RVC F0 bend).',
+    )
+    parser.add_argument(
+        "--interjection-bend",
+        type=float,
+        default=8.0,
+        help="Semitones at the interjection contour's peak (-12 to 12).",
+    )
+    parser.add_argument(
+        "--word-lifts",
+        action="store_true",
+        help='Kokoro: lift endearments in address ("sweetheart!") and the word before "!".',
+    )
+    parser.add_argument(
+        "--word-lift-bend",
+        type=float,
+        default=4.0,
+        help="Semitones at a word lift's peak (-12 to 12).",
+    )
+    parser.add_argument(
+        "--question-rise-bend",
+        type=float,
+        default=9.0,
+        help="Semitones a question's last word rises with --word-lifts (-12 to 12).",
+    )
+    parser.add_argument(
+        "--interjection-hold",
+        type=float,
+        default=0.0,
+        help='Seconds an "aww" is held with --interjection-contours (0-1.2; 0 keeps Kokoro\'s length).',
+    )
+    parser.add_argument(
         "--emphasis",
         action="store_true",
         help="Kokoro: let the LLM stress one word per sentence as *word*, with a pause before it.",
@@ -1108,6 +1142,12 @@ def speech_settings(args):
         question_tail=args.question_tail,
         exclaim_gain=args.exclaim_gain,
         emphasis=args.emphasis,
+        interjection_contours=args.interjection_contours,
+        interjection_bend=args.interjection_bend,
+        interjection_hold=args.interjection_hold,
+        word_lifts=args.word_lifts,
+        word_lift_bend=args.word_lift_bend,
+        question_rise_bend=args.question_rise_bend,
         emphasis_pause=args.emphasis_pause,
         rvc_threads=args.rvc_threads,
         **({"pth": args.pth.expanduser().resolve()} if args.pth else {}),

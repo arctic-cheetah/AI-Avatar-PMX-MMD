@@ -166,7 +166,7 @@ class RvcPitchTests(unittest.IsolatedAsyncioTestCase):
         async def edge(text, path):
             return 0
 
-        def convert(source, output, pitch=0):
+        def convert(source, output, pitch=0, bends=()):
             converted.append((source, pitch))
 
         pipeline = Pipeline(edge, convert, replies.append)

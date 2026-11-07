@@ -335,9 +335,10 @@ deeper and drawn out, or a sarcastic "suuure". With `--dynamic-emphasis`
 - **Drawl (deeper and longer):** a sentence-opening *But / Well / So / Now /
   Okay*; the attitude words *sure, really, right, totally, obviously* when
   the mood is skeptical, suspicious, unimpressed, sad-sceptical, annoyed,
-  sulky, pout or smug; and `*word*` marks in those moods. The Kokoro worker
-  gives the word primary stress and a long vowel (`bˌʌt` → `bˈʌːːt`), and a
-  `--drawl-bend` dip (default −3 st, ±12) is bent over it.
+  sulky, pout or smug; and `*word*` marks in those moods. The word keeps
+  Kokoro's own phonemes; its vowel is **held** to `--drawl-hold` seconds
+  (default 0.3, 0–0.45) by repeating whole pitch periods, and a `--drawl-bend`
+  dip (default −3 st, ±12) is bent over it.
 - **Bright emphasis:** a `*word*` mark in any other mood also gets the word
   lift (`--word-lift-bend`), on top of its pause.
 
@@ -351,8 +352,18 @@ length, not loudness:
 | but | `bˌʌt` → `bˈʌt` | 1.50× | +0.5 dB |
 | but | `bˌʌt` → `bˈʌːːt` | 2.25× (0.225 s) | ±0 dB |
 
-So drawls use Kokoro's own lengthening rather than the pitch-period hold, and
-loudness stays with the exclamation gain.
+Lengthening by marks changes the vowel, though: listening heard `bˈʌːːt` as
+"boot", and a spectrum comparison agreed. The smoothed spectrum of the held
+vowel's middle was compared with a real "but" (`bˌʌt`) and "boot" (`buːt`):
+
+| Variant | Length | Like "but" | Like "boot" |
+| --- | ---: | ---: | ---: |
+| `bˈʌːːt` | 0.25 s | 0.80 | **0.84** |
+| `bˈʌt` | 0.15 s | 0.80 | 0.81 |
+| `bˈʌt` + hold 0.30 s | 0.30 s | **0.85** | 0.81 |
+
+So drawls hold Kokoro's own vowel instead (holds up to about 0.45 s do not
+stutter), and loudness stays with the exclamation gain.
 
 ## 3. Test on the avatar
 

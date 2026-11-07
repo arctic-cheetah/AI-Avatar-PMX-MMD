@@ -105,7 +105,7 @@ conversion on the Radeon 8060S, point it at the separate ROCm workspace:
 
 ```bash
 .venv/bin/python -m controller.bridge --mode llm --speech --tts kokoro \
-  --kokoro-voice af_heart --kokoro-speed 1.0 --kokoro-threads 2 \
+  --kokoro-voice af_heart:0.7,af_bella:0.3 --kokoro-speed 1.0 --kokoro-threads 2 \
   --applio-dir ../Applio-rocm
 ```
 
@@ -128,7 +128,7 @@ its Edge, RVC and alignment times and its length before and after trimming.
 The worker requests Edge audio for up to two sentences ahead while RVC converts
 one at a time, and the bridge keeps up to three sentences in flight, so later
 sentences are usually ready well before they are needed. Each clip is trimmed
-to 0.05 s before and 0.25 s after the speech, which also removes breaths RVC
+to 0.05 s before and 0.4 s after the speech (`--sentence-tail`), which also removes breaths RVC
 adds at the end. While the LLM is reasoning, Yidhari shows the `thinking` mood,
 looks upward and rests curled right fingers beneath her chin, with the left arm
 supporting the lowered elbow, alongside a thought bubble. The hands are held

@@ -165,7 +165,7 @@ The transcript shows up as your chat bubble and goes down the same `{"type":"sta
 
    ```bash
    .venv/bin/python controller/bridge.py --mode llm --speech \
-     --tts kokoro --kokoro-voice af_heart --kokoro-speed 1.0 --kokoro-threads 2 \
+     --tts kokoro --kokoro-voice af_heart:0.7,af_bella:0.3 --kokoro-speed 1.0 --kokoro-threads 2 \
      --applio-dir "../Applio-rocm"
    ```
 
@@ -186,10 +186,10 @@ The voice model and Applio settings (RVC pitch, index rate, protect, plus Kokoro
 | `--speech`         | off                                   | Speak replies with TTS → RVC and lip sync                                     |
 | `--thinking-filler` | off                                  | Cache “Hmm…” at startup; play once per reasoning reply, before the answer     |
 | `--tts`            | `edge` in code; docs use `kokoro` | TTS source. **README's recommended default is `--tts kokoro`** (local) |
-| `--kokoro-voice`   | `af_heart`                          | Kokoro voice ID, or a blend such as `af_heart:0.7,af_bella:0.3`                |
+| `--kokoro-voice`   | `af_heart:0.7,af_bella:0.3`         | Kokoro voice ID or weighted blend (default chosen by listening, #29)          |
 | `--kokoro-speed`   | `1.0`                               | Kokoro speed multiplier                                                        |
-| `--kokoro-clause-pause` | `0.1`                          | Seconds of pause Kokoro inserts at commas and other clause breaks (0–0.5)     |
-| `--sentence-tail`  | `0.25`                              | Seconds of silence kept after a full sentence (0–0.6); sets the inter-sentence gap |
+| `--kokoro-clause-pause` | `0.25`                         | Seconds of pause Kokoro inserts at commas and other clause breaks (0–0.5)     |
+| `--sentence-tail`  | `0.4`                               | Seconds of silence kept after a full sentence (0–0.6); sets the inter-sentence gap |
 | `--fragment-tail`  | `0.1`                               | Seconds kept after a fragment split by a mood tag (0–0.6)                      |
 | `--kokoro-threads` | `2`                                 | CPU ONNX threads for the Kokoro worker                                         |
 | `--applio-dir`     | `../Applio`                         | Applio install to launch; `../Applio-rocm` enables ROCm GPU RVC              |
@@ -213,8 +213,8 @@ The voice model and Applio settings (RVC pitch, index rate, protect, plus Kokoro
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--tts {edge,kokoro}` | Selects the TTS source. The bridge code defaults to `edge` for backwards compatibility, but the README's recommended speech command uses `--tts kokoro` for fully local synthesis. |
 | `--kokoro-voice`      | Kokoro voice ID, e.g. `af_heart`, or a weighted blend of up to four same-accent voices, e.g. `af_heart:0.7,af_bella:0.3`.                                                           |
-| `--kokoro-clause-pause` | Pause Kokoro inserts at clause breaks such as commas (0–0.5 s, default 0.1).                                                                                                       |
-| `--sentence-tail` / `--fragment-tail` | Silence kept after a full sentence (default 0.25 s) or a mood-tag fragment (default 0.1 s), 0–0.6 s; these set the gap between clips for Edge and Kokoro.               |
+| `--kokoro-clause-pause` | Pause Kokoro inserts at clause breaks such as commas (0–0.5 s, default 0.25).                                                                                                       |
+| `--sentence-tail` / `--fragment-tail` | Silence kept after a full sentence (default 0.4 s) or a mood-tag fragment (default 0.1 s), 0–0.6 s; these set the gap between clips for Edge and Kokoro.               |
 | `--kokoro-speed`      | Kokoro speaking speed multiplier. `1.0` is the baseline.                                                                                                                             |
 | `--kokoro-threads`    | CPU ONNX thread count for the Kokoro worker.                                                                                                                                           |
 | `--rvc-threads`       | PyTorch CPU thread count for RVC when using the CPU Applio path.                                                                                                                       |

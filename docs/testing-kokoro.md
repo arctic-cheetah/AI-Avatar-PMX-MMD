@@ -31,7 +31,7 @@ Kokoro weights are Apache-2.0; the wrapper is MIT licensed.
 ```bash
 .venv-kokoro/bin/python -m controller.kokoro_worker \
   --text "Good evening! I am ready to keep you company." \
-  --voice af_heart --speed 1.0 --threads 2
+  --voice af_heart:0.7,af_bella:0.3 --speed 1.0 --threads 2
 ```
 
 Open `assets/private/speech/kokoro-test.wav` in an audio player. This is Kokoro's
@@ -54,7 +54,7 @@ It is independent of Edge's existing −15% rate setting.
 
 ```bash
 .venv/bin/python -m controller.audition_kokoro \
-  --voice af_heart --threads 2 --rvc-threads 4
+  --voice af_heart:0.7,af_bella:0.3 --threads 2 --rvc-threads 4
 ```
 
 This produces two WAV files, transcripts, final-audio viseme tracks and
@@ -71,8 +71,8 @@ clip to the speech plus a short tail. So two different knobs shape cadence:
 
 | Knob | Where it acts | Default | Range |
 | --- | --- | ---: | ---: |
-| `--clause-pause` (bridge: `--kokoro-clause-pause`) | Kokoro, inside a sentence: pause at commas, semicolons, dashes | 0.1 s | 0–0.5 s |
-| `--sentence-tail` | Trim, after a full sentence: the gap before the next clip | 0.25 s | 0–0.6 s |
+| `--clause-pause` (bridge: `--kokoro-clause-pause`) | Kokoro, inside a sentence: pause at commas, semicolons, dashes | 0.25 s | 0–0.5 s |
+| `--sentence-tail` | Trim, after a full sentence: the gap before the next clip | 0.4 s | 0–0.6 s |
 | `--fragment-tail` | Trim, after a fragment split by a mood tag: keeps it flowing | 0.1 s | 0–0.6 s |
 
 Kokoro's own `sentence_pause` is deliberately not exposed: with one sentence
@@ -99,8 +99,16 @@ done
 
 Compare `ttsSeconds` and `rvcSeconds` in each `results.json` with the
 measurements below; these settings only change parameters, so latency should
-stay the same. Listening notes and chosen defaults are recorded in the ticket
-and PR. Mood-driven prosody (per-sentence speed and pitch) follows in a
+stay the same.
+
+**Chosen defaults — 7 November 2026.** After listening to Kokoro → RVC clips,
+the user picked `af_heart:0.7,af_bella:0.3`, clause pause 0.25 s, sentence
+tail 0.4 s and fragment tail 0.1 s as the most natural.
+Measured on the same two sentences: `ttsSeconds`
+0.690 / 0.354 and `rvcSeconds` 2.15 / 1.15 (CPU RVC), versus 0.653 / 0.335 and
+2.34 / 1.19 for the old `af_heart` defaults — no latency cost. Pass
+`--kokoro-voice af_heart --kokoro-clause-pause 0.1 --sentence-tail 0.25` to
+return to the previous sound. The sentence tail also applies to Edge clips. Mood-driven prosody (per-sentence speed and pitch) follows in a
 separate PR.
 
 ## 3. Test on the avatar
@@ -127,7 +135,7 @@ llama-server, then run:
 
 ```bash
 .venv/bin/python -m controller.bridge --mode llm --speech \
-  --tts kokoro --kokoro-voice af_heart --kokoro-speed 1.0 \
+  --tts kokoro --kokoro-voice af_heart:0.7,af_bella:0.3 --kokoro-speed 1.0 \
   --kokoro-threads 2 --rvc-threads 4
 ```
 

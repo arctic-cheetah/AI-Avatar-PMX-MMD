@@ -228,6 +228,12 @@ How it works, without touching Kokoro's model:
    in and the coarse pitch is rebuilt with Applio's own formula. RVC then
    sings Yidhari's voice along the bent curve.
 
+**Pronunciation fix (always on with Kokoro):** espeak phonemizes `Aww` as
+`ɔːwə` ("aw-wuh", heard as "awah") and `Awww` as `ɔːʊwə`. The Kokoro worker
+replaces those with one long vowel, `ɔːɔː` (about 0.25 s, no dip in loudness),
+before synthesis. A plain `Aw` (`ɔː`, about 0.15 s) is left alone. This is a
+Kokoro front-end issue, so retraining the RVC voice would not change it.
+
 The wrapper is installed only if `get_f0` still has the signature it was
 written for; otherwise the worker logs it and speaks without bends. A plain
 `Oh` is left alone, since it often drops on purpose ("Oh no.").

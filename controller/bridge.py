@@ -1098,7 +1098,13 @@ def build_parser():
         "--drawl-hold",
         type=float,
         default=0.0,
-        help="Seconds a drawled word's own vowel is held (0-0.45).",
+        help="Seconds a drawled word's own vowel is held (0-0.45); only used with --drawl-stretch 0.",
+    )
+    parser.add_argument(
+        "--drawl-stretch",
+        type=float,
+        default=0.125,
+        help="Seconds Kokoro draws each stressed sound of a drawl out to (0-0.125; 0 is off).",
     )
     parser.add_argument(
         "--quote-voice",
@@ -1195,6 +1201,7 @@ def speech_settings(args):
         dynamic_emphasis=args.dynamic_emphasis and not plain,
         drawl_bend=args.drawl_bend,
         drawl_hold=args.drawl_hold,
+        drawl_stretch=args.drawl_stretch,
         quote_bend=args.quote_bend,
         emphasis_pause=args.emphasis_pause,
         rvc_threads=args.rvc_threads,

@@ -16,11 +16,12 @@ from controller.applio_worker import protocol_stream, read_stdin
 
 ROOT = Path(__file__).resolve().parents[1]
 MODEL_DIR = ROOT / 'models' / 'kokoro'
+PER_TOKEN_MODEL = MODEL_DIR / 'kokoro-v1.0-pertoken.onnx'  # speed declared [n]: setup_kokoro (#83)
 VOICE_ID = re.compile(r'[ab][a-z]_[a-z]+')
 MAX_BLEND_VOICES = 4
 MAX_CLAUSE_PAUSE = 0.5
 # Optional per-sentence request fields.
-PROSODY_FIELDS = ('speed', 'clause_pause', 'emphasis', 'emphasis_pause', 'spans', 'holds')
+PROSODY_FIELDS = ('speed', 'clause_pause', 'emphasis', 'emphasis_pause', 'spans', 'holds', 'stretch')
 MAX_HOLD = 1.5        # seconds a held vowel may last
 AUDIBLE_FLOOR_DB = -30.0  # a word's frames this far below its loudest are not part of it
 HOLD_WINDOW = 0.025   # seconds either side of the vowel's middle used to find its period
@@ -35,6 +36,11 @@ SPAN_PUNCTUATION = frozenset(',.!?…;:—"\'()')
 MAX_EMPHASIS = 3          # emphasised words per sentence
 MAX_EMPHASIS_PAUSE = 0.3  # seconds
 SPLICE_FADE = 0.005       # seconds faded out and in around a spliced pause
+FRAME = 0.025             # seconds per Kokoro duration frame (600 samples at 24 kHz)
+MAX_STRETCH = 0.125       # seconds one sound may be drawn out to: 5 frames sounded natural, 8 broke up
+STRESS_MARKS = ('ˈ', 'ˌ')  # primary first
+VOWELS = frozenset('aeiouyæɐɑɒɔəɘɚɛɜɝɞɤɨɪɯɵøœɶʉʊʌʏᵻː')  # ː lengthens the vowel before it
+HOLDABLE = frozenset('lmnŋɹrɾsʃzʒfvθðjwɫ')  # consonants that can be held; stops cannot be drawn out
 
 
 def parse_voice(spec) -> list[tuple[str, float]]:
@@ -198,6 +204,129 @@ def validate_holds(holds) -> None:
             raise ValueError(f'Each hold must be [word index, seconds up to {MAX_HOLD}].')
 
 
+def stretch_sounds(word: str) -> list[int]:
+    """Positions in one word's phonemes to draw out.
+
+    The stressed vowel (primary stress, else secondary, else the first vowel),
+    with both halves of a diphthong and any length mark, and a consonant that
+    can be held right after it ("wellll", "suuure"). Stops such as t are left.
+    """
+    after = next((word.index(mark) + 1 for mark in STRESS_MARKS if mark in word), 0)
+    first = next((i for i in range(after, len(word)) if word[i] in VOWELS), None)
+    if first is None:
+        return []
+    last = first
+    while last + 1 < len(word) and word[last + 1] in VOWELS:
+        last += 1
+    if last + 1 < len(word) and word[last + 1] in HOLDABLE:
+        last += 1
+    return list(range(first, last + 1))
+
+
+def validate_stretch(stretch) -> None:
+    if not isinstance(stretch, list) or len(stretch) > MAX_SPANS:
+        raise ValueError(f'Stretch must be a list of up to {MAX_SPANS} [word index, seconds].')
+    for item in stretch:
+        if (not isinstance(item, (list, tuple)) or len(item) != 2 or isinstance(item[0], bool)
+                or not isinstance(item[0], int) or not 0 <= item[0] < 1000
+                or not _number(item[1]) or not 0 < item[1] <= MAX_STRETCH):
+            raise ValueError(f'Each stretch must be [word index, seconds up to {MAX_STRETCH}].')
+
+
+def _phoneme_words(phonemes: str):
+    """(first character position, word) for each spoken word of a phoneme string."""
+    position = 0
+    for token in phonemes.split(' '):
+        if _is_word(token):
+            yield position, token
+        position += len(token) + 1
+
+
+def stretch_factors(timings, phonemes: str, stretch, speed: float = 1.0) -> list[float] | None:
+    """Per-phoneme speed factors (1 = unchanged) that draw out each [word, seconds] in ``stretch``.
+
+    ``phonemes`` are the ones Kokoro kept (one per token) and ``timings`` the
+    first pass's. Each sound picked by stretch_sounds() gets frames ÷ target, so
+    it lasts ``seconds`` ÷ ``speed`` (at most MAX_STRETCH) and is never sped up.
+    Returns None if the timings' words do not line up with the phonemes'.
+    """
+    factors = [1.0] * len(phonemes)
+    timed = {index: word for index, _, word in _spoken_words(timings)}
+    words = list(_phoneme_words(phonemes))
+    if len(timed) != len(words):
+        return None
+    for index, seconds in stretch:
+        if index >= len(words) or index not in timed:
+            continue
+        position, word = words[index]
+        sounds = timed[index]
+        target = round(min(MAX_STRETCH, seconds / speed) / FRAME)
+        for i in stretch_sounds(word):
+            if i >= len(sounds) or sounds[i].phoneme != word[i]:
+                continue
+            frames = round((sounds[i].end - sounds[i].start) / FRAME)
+            if 0 < frames < target:
+                factors[position + i] = frames / target
+    return factors
+
+
+class TokenPlan:
+    """Speed factors for a sentence's tokens, handed out to Kokoro's batches in order."""
+
+    def __init__(self, tokens: list[int], factors: list[float]):
+        self.tokens, self.factors, self.cursor = list(tokens), list(factors), 0
+
+    def take(self, window) -> list[float] | None:
+        """Factors for the next run of tokens equal to ``window``, or None if there is none."""
+        window, n = list(window), len(window)
+        for start in range(self.cursor, len(self.tokens) - n + 1):
+            if self.tokens[start:start + n] == window:
+                self.cursor = start + n
+                return self.factors[start:start + n]
+        return None
+
+
+def token_speed_vector(factors: list[float], speed: float) -> list[float]:
+    """One speed per model input: the padding token at each end, then every token."""
+    return [speed, *(round(speed * factor, 6) for factor in factors), speed]
+
+
+def install_token_speeds(model, current_plan) -> bool:
+    """Wrap the Kokoro wrapper's ``_infer`` so a batch can run with one speed per token.
+
+    While ``current_plan()`` returns a TokenPlan, each batch takes its factors
+    from it; otherwise (or if the batch is not found) the original runs. Returns
+    False, leaving the model alone, if the wrapper lacks the internals used here.
+    """
+    if not all(hasattr(model, name) for name in ('_infer', 'sess', '_tokens_input', '_input_dtypes')):
+        return False
+    original = model._infer
+
+    def infer(tokens, style, speed):
+        plan = current_plan()
+        factors = plan.take(tokens) if plan is not None else None
+        if not factors or all(factor == 1.0 for factor in factors):
+            return original(tokens, style, speed)
+        import numpy as np
+        dtypes = model._input_dtypes
+        inputs = {
+            model._tokens_input: np.array([[0, *tokens, 0]], dtype=dtypes[model._tokens_input]),
+            'style': np.asarray(style, dtype=dtypes['style']),
+            'speed': np.array(token_speed_vector(factors, float(speed)), dtype=dtypes['speed']),
+        }
+        audio, duration = model.sess.run(None, inputs)[:2]
+        return np.asarray(audio).ravel(), np.asarray(duration).ravel()
+
+    model._infer = infer
+    return True
+
+
+def per_token_session(session) -> bool:
+    """True when the session's speed input takes one value per token (a named, dynamic size)."""
+    speed = next((i for i in session.get_inputs() if i.name == 'speed'), None)
+    return speed is not None and len(speed.shape) == 1 and isinstance(speed.shape[0], str)
+
+
 def word_spans(timings, words) -> dict[int, tuple[float, float]]:
     """Seconds from the first to the last sounding phoneme of each requested spoken word."""
     wanted, spans = set(words), {}
@@ -312,10 +441,14 @@ class Synthesizer:
         options.inter_op_num_threads = 1
         options.add_session_config_entry('session.intra_op.allow_spinning', '0')
         options.add_session_config_entry('session.inter_op.allow_spinning', '0')
+        # The per-token copy gives the same durations for one speed, so it serves every sentence.
+        path = PER_TOKEN_MODEL if PER_TOKEN_MODEL.is_file() else MODEL_DIR / 'kokoro-v1.0.onnx'
         session = onnxruntime.InferenceSession(
-            str(MODEL_DIR / 'kokoro-v1.0.onnx'), sess_options=options,
-            providers=['CPUExecutionProvider'])
+            str(path), sess_options=options, providers=['CPUExecutionProvider'])
         self.model = Kokoro.from_session(session, str(MODEL_DIR / 'voices-v1.0.bin'))
+        self.plan = None
+        self.token_speeds = (per_token_session(session) and self.model.has_timings
+                             and install_token_speeds(self.model, lambda: self.plan))
         parts = parse_voice(voice)
         for name, _ in parts:
             if name not in self.model.voices:
@@ -327,7 +460,7 @@ class Synthesizer:
     def synthesize(self, text: str, path: str, speed: float | None = None,
                    clause_pause: float | None = None, emphasis: list[int] | None = None,
                    emphasis_pause: float = 0.12, spans: list[int] | None = None,
-                   holds: list | None = None) -> dict:
+                   holds: list | None = None, stretch: list | None = None) -> dict:
         """Write ``text`` to ``path``.
 
         ``speed``/``clause_pause`` override the settings for one sentence.
@@ -336,6 +469,8 @@ class Synthesizer:
         ``spans`` lists spoken-word indices whose time spans are reported as
         ``wordSpans`` (seconds in the written file, after any pauses and holds).
         ``holds`` ([word index, seconds]) lengthen those words' vowels.
+        ``stretch`` ([word index, seconds]) has Kokoro itself say those words'
+        stressed sounds longer, with per-token speed (a second pass).
         """
         if not isinstance(text, str) or not text.strip() or len(text) > 16000:
             raise ValueError('Speech text must contain 1–16000 characters.')
@@ -349,17 +484,27 @@ class Synthesizer:
             validate_spans(spans)
         if holds is not None:
             validate_holds(holds)
+        if stretch is not None:
+            validate_stretch(stretch)
         lang = 'en-gb' if self.voice.lstrip().startswith('b') else 'en-us'
         started = time.perf_counter()
         pauses, found, skipped = None, {}, 'misaligned'
-        timed = bool(emphasis or spans or holds)
+        stretched, stretch_skipped = 0, 'misaligned'
+        timed = bool(emphasis or spans or holds or stretch)
         phonemes = (self.model.tokenizer.phonemize(text, lang)
                     if timed or needs_respelling(text) else None)
         spoken = respell_phonemes(text, phonemes) if phonemes else None
         if timed and phonemes and aligned(text, phonemes):
-            samples, rate, timings = self.model.create_timed(
-                spoken, voice=self.style, speed=speed, lang=lang, is_phonemes=True,
-                trim=False, clause_pause=clause_pause)
+            def create_timed():
+                return self.model.create_timed(
+                    spoken, voice=self.style, speed=speed, lang=lang, is_phonemes=True,
+                    trim=False, clause_pause=clause_pause)
+
+            samples, rate, timings = create_timed()
+            if stretch:
+                stretched, stretch_skipped, redone = self._stretch(spoken, timings, stretch, speed, create_timed)
+                if redone is not None:
+                    samples, rate, timings = redone
             points = pause_points(timings, emphasis or [])
             wanted = [*(spans or []), *(index for index, _ in holds or [])]
             heard = {index: audible_span(samples, rate, start, end)
@@ -405,10 +550,36 @@ class Synthesizer:
             metrics['emphasisPauses'] = pauses
             if pauses == 0:
                 metrics['emphasisSkipped'] = skipped
+        if stretch is not None:
+            metrics['stretched'] = stretched
+            if not stretched:
+                metrics['stretchSkipped'] = stretch_skipped
         if spans is not None:
             metrics['wordSpans'] = [list(found[i]) for i in spans if i in found]
             metrics['spanWords'] = [i for i in spans if i in found]
         return metrics
+
+
+    def _stretch(self, spoken: str, timings, stretch, speed: float, create_timed):
+        """Second pass with per-token speed: (words stretched, reason if none, new result or None)."""
+        if not getattr(self, 'token_speeds', False):
+            return 0, 'no-model', None
+        known = self.model.tokenizer.known(spoken)
+        if not timings or known != ' '.join(spoken.split()):
+            return 0, 'misaligned', None
+        factors = stretch_factors(timings, known, stretch, speed)
+        if factors is None:
+            return 0, 'misaligned', None
+        words = list(_phoneme_words(known))
+        drawn = sum(any(factors[p] < 1.0 for p in range(position, position + len(word)))
+                    for position, word in (words[index] for index, _ in stretch if index < len(words)))
+        if not drawn:
+            return 0, 'nothing-to-stretch', None
+        self.plan = TokenPlan(self.model.tokenizer.tokenize(known), factors)
+        try:
+            return drawn, '', create_timed()
+        finally:
+            self.plan = None
 
 
 async def serve(lines: asyncio.Queue, synthesize, reply) -> None:

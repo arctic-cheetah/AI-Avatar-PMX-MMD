@@ -43,6 +43,7 @@ import { CameraGaze } from "./camera-gaze.js";
 import { SWAY, SwayController, swayAnglesAt } from "./body-sway.js";
 import { Spring, TIMING, frameDelta } from "./smoothing.js";
 import { composeBlink, eyeClosure } from "./facial-layers.js";
+import { GreetingGate, bindGreetingToggle } from "./greeting.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
 const MODEL_URL = "/yidhari-mmd/伊德海莉.pmx";
@@ -1272,8 +1273,12 @@ function onModelLoaded(loaded, data) {
     : `Ready · ${morphCount} morphs`);
   scheduleBlink(performance.now() / 1000);
   const transcript = document.querySelector('#bridge-transcript');
+  // Page-open greeting (#72): claimed once per session here, shown on first connect.
+  const greetingGate = bindGreetingToggle(new GreetingGate(), document.querySelector('#greeting-toggle'));
   connectBridge({
     catalog: EXPRESSION_CATALOG,
+    greeting: greetingGate.claim(new Date()),
+    onGreeting: ({ mood, weight }) => { expressions.stopLoop(); applyMood(mood, weight); },
     onStart: () => {
       chatResponding = true;
       for (const section of document.querySelectorAll('#panel > section:not(:first-child)')) section.inert = true;

@@ -8,7 +8,8 @@ from collections import namedtuple
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from controller.bridge import TagParser, build_parser, load_catalog, speech_settings, system_prompt
+from controller.bridge import (TagParser, build_parser, load_catalog, prompts_emphasis,
+                               speech_settings, system_prompt)
 from controller.kokoro_worker import Synthesizer, aligned, pause_points, serve, splice_silence
 from controller.speech import ApplioSettings, ApplioWorker, Segment, Segmenter, synthesise
 from test_prosody import ECHO_WORKER
@@ -44,6 +45,21 @@ class MarkupTests(unittest.TestCase):
             with self.subTest(text=text):
                 [segment] = segments(text)
                 self.assertEqual((segment.text, segment.emphasis), (spoken, ()))
+
+    def test_marks_beyond_the_worker_limit_are_capped_not_fatal(self):
+        # PR #88 review: four marks made the worker reject the request, dropping the sentence.
+        [segment] = segments('I *really* *really* *really* *really* love it.')
+        self.assertEqual(segment.text, 'I really really really really love it.')
+        self.assertEqual(segment.emphasis, (1, 2, 3))
+
+    def test_multi_word_spans_are_actions_not_emphasis(self):
+        # PR #88 review: roleplay actions such as *giggles softly* are not emphasis.
+        [segment] = segments('*giggles softly* Hi there, *you*.')
+        self.assertEqual((segment.text, segment.emphasis), ('giggles softly Hi there, you.', (4,)))
+
+    def test_stray_marker_character_is_ignored(self):
+        [segment] = segments('Hi\ue000 there.')
+        self.assertEqual((segment.text, segment.emphasis), ('Hi there.', ()))
 
     def test_default_segment_has_no_emphasis(self):
         self.assertEqual(Segment('Hi.').emphasis, ())
@@ -216,6 +232,12 @@ class PipelineEmphasisTests(unittest.IsolatedAsyncioTestCase):
 
 
 class PromptTests(unittest.TestCase):
+    def test_rule_is_prompted_only_for_kokoro_emphasis(self):
+        self.assertTrue(prompts_emphasis(ApplioSettings(tts_provider='kokoro', emphasis=True)))
+        self.assertFalse(prompts_emphasis(ApplioSettings(tts_provider='edge', emphasis=True)))
+        self.assertFalse(prompts_emphasis(ApplioSettings(tts_provider='kokoro')))
+        self.assertFalse(prompts_emphasis(None))
+
     def test_emphasis_rule_only_when_enabled(self):
         catalog = load_catalog()
         self.assertNotIn('*really*', system_prompt(catalog))

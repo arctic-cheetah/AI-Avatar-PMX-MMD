@@ -268,6 +268,11 @@ of word get a smaller rise-fall bump of `--word-lift-bend` semitones (default
   `--word-lift-bend`. A question's last word rises even if it is an
   endearment ("Are you okay, *honey*?").
 
+Kokoro's last phoneme often absorbs trailing silence ("so?" is voiced for
+0.85–1.05 s but its timing runs to 1.425 s), so word spans are trimmed to the
+frames within 30 dB of the word's loudest before any bend or hold; otherwise a
+question's rise would land in silence.
+
 Interjections keep their own, larger contour. At most four bends are used
 per sentence, interjections first. A bend can carry an optional fourth value,
 the position of its peak (0.4 = rise-fall, 1.0 = rise to the end).

@@ -22,7 +22,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from controller.kokoro_worker import MAX_EMPHASIS
+from controller.kokoro_worker import AWW_WORD, MAX_EMPHASIS, WORD_EDGES as AWW_EDGES
 from controller.prosody import Prosody, combine, prosody_for, punctuation_prosody
 from controller.speech_align import align
 from controller.speech_trim import FRAGMENT_TAIL_KEEP, MAX_TAIL_KEEP, apply_gain, trim_clip
@@ -86,7 +86,8 @@ class ApplioSettings:
     emphasis: bool = False  # Kokoro: pause before *word* emphasis from the LLM (#84)
     emphasis_pause: float = 0.12
     interjection_contours: bool = False  # Kokoro: "Aww"/"Ooh" rise then fall (#84)
-    interjection_bend: float = 4.0  # semitones at the peak; 4 chosen by listening (#84)
+    interjection_bend: float = 8.0  # semitones at the peak: about one octave with Kokoro's rise (#84)
+    interjection_hold: float = 0.8  # seconds an "aww" is held (0 = Kokoro's length)
     exclaim_gain: float = 3.0  # dB louder for a clip ending in !, with punctuation_cadence
 
     def __post_init__(self) -> None:
@@ -124,8 +125,10 @@ class ApplioSettings:
             value = getattr(self, name)
             if not math.isfinite(value) or not 0.0 <= value <= MAX_TAIL_KEEP:
                 raise ValueError(f"{name} must be between 0 and {MAX_TAIL_KEEP} seconds.")
-        if not math.isfinite(self.interjection_bend) or abs(self.interjection_bend) > 4.0:
-            raise ValueError("interjection_bend must be between -4 and 4 semitones.")
+        if not math.isfinite(self.interjection_bend) or abs(self.interjection_bend) > 12.0:
+            raise ValueError("interjection_bend must be between -12 and 12 semitones.")
+        if not math.isfinite(self.interjection_hold) or not 0.0 <= self.interjection_hold <= 1.2:
+            raise ValueError("interjection_hold must be between 0 and 1.2 seconds.")
         if not math.isfinite(self.emphasis_pause) or not 0.0 <= self.emphasis_pause <= 0.3:
             raise ValueError("emphasis_pause must be between 0 and 0.3 seconds.")
         if not math.isfinite(self.exclaim_gain) or not 0.0 <= self.exclaim_gain <= 6.0:
@@ -407,6 +410,7 @@ class ApplioWorker:
         fields: dict | None = None,
         emphasis: tuple[int, ...] = (),
         contours: tuple[int, ...] = (),
+        holds: tuple[tuple[int, float], ...] = (),
     ) -> dict:
         """Synthesise ``text`` into ``source`` and convert into ``output``.
 
@@ -420,7 +424,10 @@ class ApplioWorker:
         if self.kokoro is not None:
             source_metrics = await self.kokoro.request(
                 text, source, output, run,
-                fields=self._kokoro_fields(prosody, emphasis, contours),
+                fields={
+                    **self._kokoro_fields(prosody, emphasis, contours),
+                    **({"holds": [list(hold) for hold in holds]} if holds else {}),
+                },
             )
         request_id = secrets.token_hex(8)
         future = asyncio.get_running_loop().create_future()
@@ -546,6 +553,15 @@ async def synthesise(
             contours = interjection_words(text)
             if contours:
                 options["contours"] = contours
+                words = spoken_words(text)
+                holds = tuple(
+                    (index, settings.interjection_hold)
+                    for index in contours
+                    if settings.interjection_hold > 0
+                    and AWW_WORD.fullmatch(words[index].strip(AWW_EDGES))
+                )
+                if holds:
+                    options["holds"] = holds
         reply = await worker.request(text, source, wav, run, prosody=prosody, **options)
         # Trim before aligning so the lip-sync timings match the audio that plays.
         trim = await asyncio.to_thread(trim_clip, source, wav, text, **tails)

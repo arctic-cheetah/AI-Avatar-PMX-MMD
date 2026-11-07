@@ -37,7 +37,7 @@ EDGE_ATTEMPTS = 3
 EDGE_CONCURRENCY = 2  # more parallel Edge requests make HTTP 429 likelier
 MAX_PITCH_SHIFT = 12  # semitones; mood prosody itself stays within ±2
 MAX_BENDS = 4         # pitch bends per sentence
-MAX_BEND = 4.0        # semitones at a bend's peak
+MAX_BEND = 12.0       # semitones at a bend's peak; beyond ~+15 st total RVC turns rough
 BEND_PEAK = 0.4       # a bend rises to its peak 40 % of the way through its span
 
 

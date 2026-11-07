@@ -1059,8 +1059,14 @@ def build_parser():
     parser.add_argument(
         "--interjection-bend",
         type=float,
-        default=4.0,
-        help="Semitones at the interjection contour's peak (-4 to 4).",
+        default=8.0,
+        help="Semitones at the interjection contour's peak (-12 to 12).",
+    )
+    parser.add_argument(
+        "--interjection-hold",
+        type=float,
+        default=0.8,
+        help='Seconds an "aww" is held with --interjection-contours (0-1.2; 0 keeps Kokoro\'s length).',
     )
     parser.add_argument(
         "--emphasis",
@@ -1121,6 +1127,7 @@ def speech_settings(args):
         emphasis=args.emphasis,
         interjection_contours=args.interjection_contours,
         interjection_bend=args.interjection_bend,
+        interjection_hold=args.interjection_hold,
         emphasis_pause=args.emphasis_pause,
         rvc_threads=args.rvc_threads,
         **({"pth": args.pth.expanduser().resolve()} if args.pth else {}),

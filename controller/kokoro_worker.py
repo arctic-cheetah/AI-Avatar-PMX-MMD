@@ -20,7 +20,9 @@ VOICE_ID = re.compile(r'[ab][a-z]_[a-z]+')
 MAX_BLEND_VOICES = 4
 MAX_CLAUSE_PAUSE = 0.5
 # Optional per-sentence request fields.
-PROSODY_FIELDS = ('speed', 'clause_pause', 'emphasis', 'emphasis_pause', 'spans')
+PROSODY_FIELDS = ('speed', 'clause_pause', 'emphasis', 'emphasis_pause', 'spans', 'holds')
+MAX_HOLD = 1.5        # seconds a held vowel may last
+HOLD_WINDOW = 0.025   # seconds either side of the vowel's middle used to find its period
 MAX_SPANS = 4  # word spans reported per sentence (for RVC pitch bends)
 # espeak says "aww" as ɔːwə ("aw-wuh", heard as "awah"); one long vowel sounds right.
 AWW_WORD = re.compile(r'a+w{2,}h*', re.IGNORECASE)
@@ -128,6 +130,66 @@ def respell_phonemes(text: str, phonemes: str) -> str:
     return ' '.join(tokens)
 
 
+def _period(samples: list[float], rate: int, low_hz: float = 120, high_hz: float = 600) -> int | None:
+    """Pitch period in samples of a voiced stretch, or None if it is not clearly periodic."""
+    n = len(samples)
+    lags = range(max(1, int(rate / high_hz)), min(int(rate / low_hz), n // 2) + 1)
+    scores = []
+    for lag in lags:
+        a, b = samples[:n - lag], samples[lag:]
+        energy = math.sqrt(sum(x * x for x in a) * sum(y * y for y in b))
+        scores.append((sum(x * y for x, y in zip(a, b)) / energy) if energy > 1e-12 else 0.0)
+    if not scores or max(scores) < 0.8:
+        return None
+    best = max(scores)
+    # The first local peak near the best: neighbouring lags of a smooth vowel also
+    # score highly, and multiples of the period score as well as the period itself.
+    for i in range(1, len(scores) - 1):
+        if scores[i] >= 0.9 * best and scores[i - 1] <= scores[i] >= scores[i + 1]:
+            return lags[i]
+    return lags[scores.index(best)]
+
+
+def hold_vowel(samples: list[float], rate: int, start: float, end: float,
+               target: float) -> tuple[list[float], float]:
+    """Lengthen the word at ``start``-``end`` seconds to ``target`` seconds.
+
+    Whole pitch periods from the steady middle of the vowel are repeated (so the
+    pitch and timbre stay the same), with crossfades of half a period at both
+    seams. Returns the new samples and the seconds added (0 if left alone).
+    """
+    duration = end - start
+    if target <= duration:
+        return samples, 0.0
+    low, high = int((start + 0.3 * duration) * rate), int((start + 0.7 * duration) * rate)
+    middle, half = (low + high) // 2, int(HOLD_WINDOW * rate)
+    period = _period(samples[max(low, middle - half):min(high, middle + half)], rate)
+    if not period or high - low < 3 * period:
+        return samples, 0.0
+    length = period * max(1, (high - low) // period // 2)  # whole periods, about half the steady part
+    first = middle - length // 2
+    chunk, seam = samples[first:first + length], first + length
+    size = round((target - duration) * rate / period) * period
+    insert = (chunk * (size // length + 1))[:size]
+    fade = max(1, period // 2)
+    for i in range(min(fade, size)):  # ease in from what would have followed the chunk
+        w = i / fade
+        insert[i] = (1 - w) * samples[seam + i] + w * insert[i]
+        k = size - fade + i            # ease out towards the lead-in to the rest
+        insert[k] = (1 - w) * insert[k] + w * samples[seam - fade + i]
+    return samples[:seam] + insert + samples[seam:], size / rate
+
+
+def validate_holds(holds) -> None:
+    if not isinstance(holds, list) or len(holds) > MAX_SPANS:
+        raise ValueError(f'Holds must be a list of up to {MAX_SPANS} [word index, seconds].')
+    for hold in holds:
+        if (not isinstance(hold, (list, tuple)) or len(hold) != 2 or isinstance(hold[0], bool)
+                or not isinstance(hold[0], int) or not 0 <= hold[0] < 1000
+                or not _number(hold[1]) or not 0 < hold[1] <= MAX_HOLD):
+            raise ValueError(f'Each hold must be [word index, seconds up to {MAX_HOLD}].')
+
+
 def word_spans(timings, words) -> dict[int, tuple[float, float]]:
     """Seconds from the first to the last sounding phoneme of each requested spoken word."""
     wanted, spans = set(words), {}
@@ -233,14 +295,16 @@ class Synthesizer:
 
     def synthesize(self, text: str, path: str, speed: float | None = None,
                    clause_pause: float | None = None, emphasis: list[int] | None = None,
-                   emphasis_pause: float = 0.12, spans: list[int] | None = None) -> dict:
+                   emphasis_pause: float = 0.12, spans: list[int] | None = None,
+                   holds: list | None = None) -> dict:
         """Write ``text`` to ``path``.
 
         ``speed``/``clause_pause`` override the settings for one sentence.
         ``emphasis`` lists spoken-word indices that get ``emphasis_pause`` seconds
         of silence before them, when Kokoro's phonemes line up with the words.
         ``spans`` lists spoken-word indices whose time spans are reported as
-        ``wordSpans`` (seconds in the written file, after any pauses).
+        ``wordSpans`` (seconds in the written file, after any pauses and holds).
+        ``holds`` ([word index, seconds]) lengthen those words' vowels.
         """
         if not isinstance(text, str) or not text.strip() or len(text) > 16000:
             raise ValueError('Speech text must contain 1–16000 characters.')
@@ -251,10 +315,12 @@ class Synthesizer:
             validate_emphasis(emphasis, emphasis_pause)
         if spans is not None:
             validate_spans(spans)
+        if holds is not None:
+            validate_holds(holds)
         lang = 'en-gb' if self.voice.lstrip().startswith('b') else 'en-us'
         started = time.perf_counter()
         pauses, found = None, {}
-        timed = bool(emphasis or spans)
+        timed = bool(emphasis or spans or holds)
         phonemes = (self.model.tokenizer.phonemize(text, lang)
                     if timed or needs_respelling(text) else None)
         spoken = respell_phonemes(text, phonemes) if phonemes else None
@@ -263,9 +329,19 @@ class Synthesizer:
                 spoken, voice=self.style, speed=speed, lang=lang, is_phonemes=True,
                 trim=False, clause_pause=clause_pause)
             points = pause_points(timings, emphasis or [])
-            found = shift_spans(word_spans(timings, spans or []), points, emphasis_pause)
+            wanted = [*(spans or []), *(index for index, _ in holds or [])]
+            found = shift_spans(word_spans(timings, wanted), points, emphasis_pause)
             if points:
                 samples = splice_silence(list(samples), rate, points, emphasis_pause)
+            # Latest word first, so earlier holds do not move the spans still to be held.
+            for index, seconds in sorted(holds or [], key=lambda h: -found.get(h[0], (0, 0))[0]):
+                if index not in found:
+                    continue
+                start, end = found[index]
+                samples, added = hold_vowel(list(samples), rate, start, end, seconds)
+                found = {k: ((s, round(e + added, 6)) if k == index else
+                             (round(s + added, 6), round(e + added, 6)) if s >= end else (s, e))
+                         for k, (s, e) in found.items()}
             if emphasis:
                 pauses = len(points)
         elif spoken and spoken != phonemes:  # pronunciation fix only

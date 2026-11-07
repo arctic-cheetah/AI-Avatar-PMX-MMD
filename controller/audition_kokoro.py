@@ -32,6 +32,7 @@ async def audition(args) -> None:
                              emphasis=args.emphasis, emphasis_pause=args.emphasis_pause,
                              interjection_contours=args.interjection_contours,
                              interjection_bend=args.interjection_bend,
+                             interjection_hold=args.interjection_hold,
                              rvc_threads=args.rvc_threads)
     settings.check()
     worker = ApplioWorker(settings)
@@ -109,7 +110,8 @@ def main() -> None:
     parser.add_argument('--emphasis-pause', type=float, default=0.12)
     parser.add_argument('--interjection-contours', action='store_true',
                         help='Rise-then-fall pitch contour on "Aww"/"Ooh".')
-    parser.add_argument('--interjection-bend', type=float, default=4.0)
+    parser.add_argument('--interjection-bend', type=float, default=8.0)
+    parser.add_argument('--interjection-hold', type=float, default=0.8)
     parser.add_argument('--mood-prosody', action='store_true',
                         help='Apply mood-driven speed, pauses and RVC pitch.')
     parser.add_argument('--output-dir', type=Path, default=ROOT / 'assets/private/speech/kokoro-audition')

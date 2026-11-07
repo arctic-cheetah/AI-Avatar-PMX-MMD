@@ -406,3 +406,95 @@ class AwwHoldTests(unittest.TestCase):
             ApplioSettings(tts_provider='kokoro', interjection_contours=True, interjection_hold=0.0),
             'Aww, that is so sweet.'))
         self.assertNotIn('holds', sent)
+
+
+class WordLiftTests(unittest.IsolatedAsyncioTestCase):
+    """Listening: "sweetheart!" / "honey!" sounded monotonous against the rest of the sentence."""
+
+    def test_endearments_in_address_and_the_exclaimed_word(self):
+        from controller.speech import lift_words
+        cases = {
+            'Thank you, sweetheart!': (2,),
+            'Hi honey, how are you?': (1,),
+            'Oh, my love.': (2,),
+            'We did it!': (2,),
+            'Good night, darling.': (2,),
+        }
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(lift_words(text), expected)
+
+    def test_ordinary_uses_and_interjections_are_not_lifted(self):
+        from controller.speech import lift_words
+        for text in ('I love it.', 'Honey cake is nice.', 'Aww!', 'Hello there.', 'Ooh!'):
+            with self.subTest(text=text):
+                self.assertEqual(lift_words(text), ())
+
+    def test_kokoro_reports_which_words_it_found(self):
+        synthesizer = KokoroSpanTests.synthesizer(self)
+        metrics = synthesizer.synthesize('I really like it.', 'out.wav', spans=[3, 9, 1])
+        self.assertEqual(metrics['spanWords'], [3, 1])
+        self.assertEqual(metrics['wordSpans'], [[1.15, 1.55], [0.625, 0.85]])
+
+    async def exchange(self, contours, lifts, worker_script):
+        settings = ApplioSettings(tts_provider='kokoro', interjection_contours=True, word_lifts=True,
+                                  interjection_bend=8.0, word_lift_bend=4.0)
+        with tempfile.TemporaryDirectory() as scratch:
+            script = Path(scratch) / 'spans.py'
+            script.write_text(worker_script)
+            command = [sys.executable, str(script)]
+            worker = ApplioWorker(settings, command=command, log_path=Path(scratch) / 'rvc.log')
+            worker.kokoro = ApplioWorker(settings, command=command, log_path=Path(scratch) / 'tts.log')
+            seen = {}
+            original = worker.kokoro.request
+
+            async def spy(*args, **kwargs):
+                reply = await original(*args, **kwargs)
+                seen['tts'] = reply['request']
+                return reply
+
+            worker.kokoro.request = spy
+            try:
+                reply = await worker.request('Aww, sweetheart!', Path('s.wav'), Path('o.wav'),
+                                             contours=contours, lifts=lifts)
+            finally:
+                await worker.close()
+        return seen['tts'], reply
+
+    async def test_each_word_gets_its_own_bend(self):
+        script = SPANS_WORKER.replace('"wordSpans": [[0.2, 0.5]]',
+                                      '"wordSpans": [[0.2, 0.5], [0.6, 1.0]], "spanWords": [0, 1]')
+        tts, reply = await self.exchange((0,), (1,), script)
+        self.assertEqual(tts['spans'], [0, 1])
+        self.assertEqual(reply['request']['bend'], [[0.2, 0.5, 8.0], [0.6, 1.0, 4.0]])
+        self.assertEqual((reply['contours'], reply['lifts']), (1, 1))
+
+    async def test_lifts_alone(self):
+        tts, reply = await self.exchange((), (1,), SPANS_WORKER)  # no spanWords: request order
+        self.assertEqual(tts['spans'], [1])
+        self.assertEqual(reply['request']['bend'], [[0.2, 0.5, 4.0]])
+        self.assertEqual(reply['lifts'], 1)
+        self.assertNotIn('contours', reply)
+
+    async def run_segment(self, settings, text):
+        return await SynthesiseContourTests.run_segment(self, settings, Segment(text, 'tender', 1.0))
+
+    async def test_synthesise_sends_lifts_only_when_enabled_for_kokoro(self):
+        sent, _ = await self.run_segment(ApplioSettings(tts_provider='kokoro', word_lifts=True),
+                                         'Thank you, sweetheart!')
+        self.assertEqual(sent['lifts'], (2,))
+        for settings in (ApplioSettings(tts_provider='kokoro'),
+                         ApplioSettings(tts_provider='edge', word_lifts=True)):
+            with self.subTest(provider=settings.tts_provider):
+                sent, _ = await self.run_segment(settings, 'Thank you, sweetheart!')
+                self.assertNotIn('lifts', sent)
+
+    def test_settings_and_flags(self):
+        for value in (-12.1, 12.1, float('nan')):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                ApplioSettings(applio_dir=Path('/nonexistent'), word_lift_bend=value).check()
+        defaults = speech_settings(build_parser().parse_args(['--speech']))
+        self.assertEqual((defaults.word_lifts, defaults.word_lift_bend), (False, 4.0))
+        settings = speech_settings(build_parser().parse_args(
+            ['--speech', '--word-lifts', '--word-lift-bend', '5']))
+        self.assertEqual((settings.word_lifts, settings.word_lift_bend), (True, 5.0))

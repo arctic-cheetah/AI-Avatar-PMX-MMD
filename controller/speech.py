@@ -43,6 +43,9 @@ DIGIT_RANGE = re.compile(r"(?<=\d)\s*[–—]\s*(?=\d)")
 # Only one word: multi-word spans like *giggles softly* are roleplay actions (PR #88 review).
 EMPHASIS = re.compile(r"(?<![*\w])\*([^\s*]+)\*(?![*\w])")
 EMPHASIS_MARK = "\ue000"  # private-use marker kept through cleaning, then removed
+# Interjections Kokoro says flat but the actor lifts: aw/aww, ooh, ohh (a plain "oh" is left alone).
+INTERJECTION = re.compile(r"(?:a+w+|o{2,}h*|oh{2,})", re.IGNORECASE)
+WORD_EDGES = ".,!?…;:\"'()[]—–-*“”‘’"
 DASH = re.compile(r"\s*[—–]\s*|\s+-(?:\s+|$)")
 WORKER_SCRIPT = Path(__file__).with_name("applio_worker.py")
 WORKER_LOG = LIVE_DIR.parent / "applio-worker.log"
@@ -82,6 +85,8 @@ class ApplioSettings:
     question_tail: float = 0.4
     emphasis: bool = False  # Kokoro: pause before *word* emphasis from the LLM (#84)
     emphasis_pause: float = 0.12
+    interjection_contours: bool = False  # Kokoro: "Aww"/"Ooh" rise then fall (#84)
+    interjection_bend: float = 2.0  # semitones at the contour's peak
     exclaim_gain: float = 3.0  # dB louder for a clip ending in !, with punctuation_cadence
 
     def __post_init__(self) -> None:
@@ -119,6 +124,8 @@ class ApplioSettings:
             value = getattr(self, name)
             if not math.isfinite(value) or not 0.0 <= value <= MAX_TAIL_KEEP:
                 raise ValueError(f"{name} must be between 0 and {MAX_TAIL_KEEP} seconds.")
+        if not math.isfinite(self.interjection_bend) or abs(self.interjection_bend) > 4.0:
+            raise ValueError("interjection_bend must be between -4 and 4 semitones.")
         if not math.isfinite(self.emphasis_pause) or not 0.0 <= self.emphasis_pause <= 0.3:
             raise ValueError("emphasis_pause must be between 0 and 0.3 seconds.")
         if not math.isfinite(self.exclaim_gain) or not 0.0 <= self.exclaim_gain <= 6.0:
@@ -162,6 +169,15 @@ class Segment:
 def spoken_words(text: str) -> list[str]:
     """Words that are spoken: any letter or digit (a lone dash or comma is not)."""
     return [word for word in text.split() if any(char.isalnum() for char in word)]
+
+
+def interjection_words(text: str) -> tuple[int, ...]:
+    """Spoken-word indices of interjections that get a rise-fall pitch contour."""
+    return tuple(
+        index
+        for index, word in enumerate(spoken_words(text))
+        if INTERJECTION.fullmatch(word.strip(WORD_EDGES))
+    )
 
 
 def clean_for_tts(text: str) -> str:
@@ -360,12 +376,19 @@ class ApplioWorker:
                 )
         pending.clear()
 
-    def _kokoro_fields(self, prosody: Prosody | None, emphasis: tuple[int, ...] = ()) -> dict:
-        """Per-sentence Kokoro fields: speed and clause pause in the worker's ranges, emphasis."""
+    def _kokoro_fields(
+        self,
+        prosody: Prosody | None,
+        emphasis: tuple[int, ...] = (),
+        contours: tuple[int, ...] = (),
+    ) -> dict:
+        """Per-sentence Kokoro fields: speed and clause pause in the worker's ranges, emphasis, spans."""
         s = self.settings
         fields = {}
         if emphasis:
             fields = {"emphasis": list(emphasis), "emphasis_pause": s.emphasis_pause}
+        if contours:
+            fields["spans"] = list(contours)
         if prosody is None:
             return fields
         return {
@@ -383,18 +406,21 @@ class ApplioWorker:
         prosody: Prosody | None = None,
         fields: dict | None = None,
         emphasis: tuple[int, ...] = (),
+        contours: tuple[int, ...] = (),
     ) -> dict:
         """Synthesise ``text`` into ``source`` and convert into ``output``.
 
         ``prosody`` adds optional per-sentence fields: speed and clause pause for
         Kokoro, a semitone shift for RVC. ``fields`` are extra protocol fields for
-        this worker's own line (used for the nested Kokoro worker).
+        this worker's own line (used for the nested Kokoro worker). ``contours``
+        are word indices whose Kokoro time spans become RVC pitch bends.
         """
         await self.start()
         source_metrics = None
         if self.kokoro is not None:
             source_metrics = await self.kokoro.request(
-                text, source, output, run, fields=self._kokoro_fields(prosody, emphasis)
+                text, source, output, run,
+                fields=self._kokoro_fields(prosody, emphasis, contours),
             )
         request_id = secrets.token_hex(8)
         future = asyncio.get_running_loop().create_future()
@@ -402,6 +428,14 @@ class ApplioWorker:
         own = dict(fields or {})
         if prosody is not None:
             own["pitch"] = prosody.pitch
+        bends = []
+        if contours and source_metrics:
+            bends = [
+                [start, end, self.settings.interjection_bend]
+                for start, end in source_metrics.get("wordSpans", [])
+            ]
+            if bends:
+                own["bend"] = bends
         line = json.dumps(
             {
                 **own,
@@ -434,6 +468,8 @@ class ApplioWorker:
                     if key in source_metrics
                 }
             )
+        if contours:
+            message["contours"] = len(bends)
         return message
 
     def cancel(self, run: str) -> None:
@@ -506,6 +542,10 @@ async def synthesise(
             and len(spoken_words(text)) == len(spoken_words(segment.text))
         ):
             options["emphasis"] = segment.emphasis
+        if settings.interjection_contours and settings.tts_provider == "kokoro":
+            contours = interjection_words(text)
+            if contours:
+                options["contours"] = contours
         reply = await worker.request(text, source, wav, run, prosody=prosody, **options)
         # Trim before aligning so the lip-sync timings match the audio that plays.
         trim = await asyncio.to_thread(trim_clip, source, wav, text, **tails)
@@ -536,6 +576,7 @@ async def synthesise(
             "sampleRate",
             "ttsRtf",
             "emphasisPauses",
+            "contours",
         )
         if key in reply
     }

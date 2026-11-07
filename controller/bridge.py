@@ -1052,6 +1052,17 @@ def build_parser():
             help=f"Seconds kept after {what} with --punctuation-cadence (0-0.8).",
         )
     parser.add_argument(
+        "--interjection-contours",
+        action="store_true",
+        help='Kokoro: give "Aww"/"Ooh" a rise-then-fall pitch contour (RVC F0 bend).',
+    )
+    parser.add_argument(
+        "--interjection-bend",
+        type=float,
+        default=2.0,
+        help="Semitones at the interjection contour's peak (-4 to 4).",
+    )
+    parser.add_argument(
         "--emphasis",
         action="store_true",
         help="Kokoro: let the LLM stress one word per sentence as *word*, with a pause before it.",
@@ -1108,6 +1119,8 @@ def speech_settings(args):
         question_tail=args.question_tail,
         exclaim_gain=args.exclaim_gain,
         emphasis=args.emphasis,
+        interjection_contours=args.interjection_contours,
+        interjection_bend=args.interjection_bend,
         emphasis_pause=args.emphasis_pause,
         rvc_threads=args.rvc_threads,
         **({"pth": args.pth.expanduser().resolve()} if args.pth else {}),

@@ -20,7 +20,9 @@ VOICE_ID = re.compile(r'[ab][a-z]_[a-z]+')
 MAX_BLEND_VOICES = 4
 MAX_CLAUSE_PAUSE = 0.5
 # Optional per-sentence request fields.
-PROSODY_FIELDS = ('speed', 'clause_pause', 'emphasis', 'emphasis_pause')
+PROSODY_FIELDS = ('speed', 'clause_pause', 'emphasis', 'emphasis_pause', 'spans')
+MAX_SPANS = 4  # word spans reported per sentence (for RVC pitch bends)
+SPAN_PUNCTUATION = frozenset(',.!?…;:—"\'()')
 MAX_EMPHASIS = 3          # emphasised words per sentence
 MAX_EMPHASIS_PAUSE = 0.3  # seconds
 SPLICE_FADE = 0.005       # seconds faded out and in around a spliced pause
@@ -86,6 +88,38 @@ def aligned(text: str, phonemes: str) -> bool:
     return sum(map(_is_word, text.split())) == sum(map(_is_word, phonemes.split()))
 
 
+def _spoken_words(timings):
+    """Yield (spoken-word index, middle of the space before it or None, its phoneme timings)."""
+    current, gap, before, index = [], None, None, 0
+    for timing in [*timings, None]:
+        if timing is None or timing.phoneme == ' ':
+            if _is_word(''.join(t.phoneme for t in current)):
+                yield index, before, current
+                index += 1
+            if timing is not None:
+                gap = (timing.start + timing.end) / 2
+                before = gap
+            current = []
+        else:
+            current.append(timing)
+
+
+def word_spans(timings, words) -> dict[int, tuple[float, float]]:
+    """Seconds from the first to the last sounding phoneme of each requested spoken word."""
+    wanted, spans = set(words), {}
+    for index, _, phonemes in _spoken_words(timings):
+        sounding = [t for t in phonemes if t.phoneme not in SPAN_PUNCTUATION]
+        if index in wanted and sounding:
+            spans[index] = (round(sounding[0].start, 6), round(sounding[-1].end, 6))
+    return spans
+
+
+def shift_spans(spans: dict, points: list[float], seconds: float) -> dict:
+    """Move spans later by ``seconds`` for every spliced pause at or before their start."""
+    return {index: tuple(round(t + seconds * sum(p <= start for p in points), 6) for t in (start, end))
+            for index, (start, end) in spans.items()}
+
+
 def pause_points(timings, words) -> list[float]:
     """Seconds, in the middle of the space before each spoken word index in ``words``.
 
@@ -124,6 +158,12 @@ def splice_silence(samples: list[float], rate: int, points: list[float], seconds
     for k in range(min(fade, len(tail))):
         tail[k] *= (k + 1) / fade
     return out + tail
+
+
+def validate_spans(spans) -> None:
+    if (not isinstance(spans, list) or len(spans) > MAX_SPANS
+            or any(isinstance(i, bool) or not isinstance(i, int) or not 0 <= i < 1000 for i in spans)):
+        raise ValueError(f'Spans must be a list of up to {MAX_SPANS} word indices.')
 
 
 def validate_emphasis(emphasis, pause) -> None:
@@ -169,12 +209,14 @@ class Synthesizer:
 
     def synthesize(self, text: str, path: str, speed: float | None = None,
                    clause_pause: float | None = None, emphasis: list[int] | None = None,
-                   emphasis_pause: float = 0.12) -> dict:
+                   emphasis_pause: float = 0.12, spans: list[int] | None = None) -> dict:
         """Write ``text`` to ``path``.
 
         ``speed``/``clause_pause`` override the settings for one sentence.
         ``emphasis`` lists spoken-word indices that get ``emphasis_pause`` seconds
         of silence before them, when Kokoro's phonemes line up with the words.
+        ``spans`` lists spoken-word indices whose time spans are reported as
+        ``wordSpans`` (seconds in the written file, after any pauses).
         """
         if not isinstance(text, str) or not text.strip() or len(text) > 16000:
             raise ValueError('Speech text must contain 1–16000 characters.')
@@ -183,18 +225,22 @@ class Synthesizer:
         validate_prosody(speed, clause_pause)
         if emphasis is not None:
             validate_emphasis(emphasis, emphasis_pause)
+        if spans is not None:
+            validate_spans(spans)
         lang = 'en-gb' if self.voice.lstrip().startswith('b') else 'en-us'
         started = time.perf_counter()
-        pauses = None
-        phonemes = self.model.tokenizer.phonemize(text, lang) if emphasis else None
+        pauses, found = None, {}
+        phonemes = self.model.tokenizer.phonemize(text, lang) if emphasis or spans else None
         if phonemes and aligned(text, phonemes):
             samples, rate, timings = self.model.create_timed(
                 phonemes, voice=self.style, speed=speed, lang=lang, is_phonemes=True,
                 trim=False, clause_pause=clause_pause)
-            points = pause_points(timings, emphasis)
+            points = pause_points(timings, emphasis or [])
+            found = shift_spans(word_spans(timings, spans or []), points, emphasis_pause)
             if points:
                 samples = splice_silence(list(samples), rate, points, emphasis_pause)
-            pauses = len(points)
+            if emphasis:
+                pauses = len(points)
         else:
             samples, rate = self.model.create(
                 text, voice=self.style, speed=speed, lang=lang, trim=False,
@@ -211,6 +257,8 @@ class Synthesizer:
                    'ttsRtf': round(seconds / duration, 3)}
         if pauses is not None:
             metrics['emphasisPauses'] = pauses
+        if spans is not None:
+            metrics['wordSpans'] = [list(found[i]) for i in spans if i in found]
         return metrics
 
 

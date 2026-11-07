@@ -21,6 +21,7 @@ back in order unless a request fails or is cancelled.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -35,6 +36,93 @@ import wave
 EDGE_ATTEMPTS = 3
 EDGE_CONCURRENCY = 2  # more parallel Edge requests make HTTP 429 likelier
 MAX_PITCH_SHIFT = 12  # semitones; mood prosody itself stays within ±2
+MAX_BENDS = 4         # pitch bends per sentence
+MAX_BEND = 4.0        # semitones at a bend's peak
+BEND_PEAK = 0.4       # a bend rises to its peak 40 % of the way through its span
+
+
+def validate_bends(bends) -> None:
+    """Check per-sentence pitch bends: up to MAX_BENDS [start, end, semitones] in source seconds."""
+    def number(value):
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+    if not isinstance(bends, list) or len(bends) > MAX_BENDS:
+        raise ValueError(f'bend must be a list of up to {MAX_BENDS} [start, end, semitones]')
+    for bend in bends:
+        if not isinstance(bend, (list, tuple)) or len(bend) != 3 or not all(map(number, bend)):
+            raise ValueError('each bend must be [start, end, semitones]')
+        start, end, semitones = bend
+        if not 0 <= start < end <= 60 or abs(semitones) > MAX_BEND:
+            raise ValueError(f'bend needs 0 <= start < end <= 60 s and at most ±{MAX_BEND} semitones')
+
+
+def bend_shape(t: float, start: float, end: float) -> float:
+    """0 outside the span; a smooth rise to 1 at BEND_PEAK, then a smooth fall back to 0."""
+    if t <= start or t >= end:
+        return 0.0
+    u = (t - start) / (end - start)
+    if u < BEND_PEAK:
+        return math.sin(math.pi / 2 * u / BEND_PEAK) ** 2
+    return math.cos(math.pi / 2 * (u - BEND_PEAK) / (1 - BEND_PEAK)) ** 2
+
+
+def bend_factors(frames: int, frame_seconds: float, offset_seconds: float, bends) -> list[float]:
+    """F0 multipliers per frame; frame i is at i * frame_seconds - offset_seconds in the source."""
+    factors = []
+    for i in range(frames):
+        t = i * frame_seconds - offset_seconds
+        semitones = sum(peak * bend_shape(t, start, end) for start, end, peak in bends)
+        factors.append(2 ** (semitones / 12))
+    return factors
+
+
+def coarse_pitch(f0, mel_min: float, mel_max: float) -> list[int]:
+    """Applio's 255-bucket coarse pitch for an F0 curve (same formula as Pipeline.get_f0)."""
+    coarse = []
+    for value in f0:
+        mel = 1127 * math.log(1 + float(value) / 700)
+        if mel > 0:
+            mel = (mel - mel_min) * 254 / (mel_max - mel_min) + 1
+        coarse.append(int(round(min(255.0, max(1.0, mel)))))
+    return coarse
+
+
+def install_f0_bend(pipeline_class, current_bends) -> bool:
+    """Wrap ``pipeline_class.get_f0`` so the F0 curve is bent by ``current_bends()``.
+
+    Applio builds the F0 curve and its coarse version in ``get_f0``; the wrapper
+    multiplies the bends into the float curve and rebuilds the coarse one. It is
+    installed only when ``get_f0(self, x, p_len, ...)`` looks as expected, so a
+    changed Applio speaks without bends instead of failing. Returns True if active.
+    """
+    original = getattr(pipeline_class, 'get_f0', None)
+    if original is None or not callable(original):
+        return False
+    original = getattr(original, '__bend_original__', original)
+    try:
+        names = list(inspect.signature(original).parameters)[:3]
+    except (TypeError, ValueError):
+        return False
+    if names != ['self', 'x', 'p_len']:
+        return False
+
+    def get_f0(pipe, x, p_len, *args, **kwargs):
+        coarse, f0 = original(pipe, x, p_len, *args, **kwargs)
+        bends = current_bends()
+        if not bends:
+            return coarse, f0
+        factors = bend_factors(len(f0), pipe.window / pipe.sample_rate,
+                               pipe.t_pad / pipe.sample_rate, bends)
+        bent = [float(value) * factor for value, factor in zip(f0, factors)]
+        new_coarse = coarse_pitch(bent, pipe.f0_mel_min, pipe.f0_mel_max)
+        if hasattr(f0, 'dtype'):  # Applio's numpy arrays; keep their types
+            import numpy
+            return (numpy.asarray(new_coarse, dtype=coarse.dtype),
+                    numpy.asarray(bent, dtype=f0.dtype))
+        return new_coarse, bent
+
+    get_f0.__bend_original__ = original
+    pipeline_class.get_f0 = get_f0
+    return True
 
 
 class Pipeline:
@@ -69,6 +157,8 @@ class Pipeline:
     async def _process(self, request: dict, previous: asyncio.Task | None) -> None:
         request_id = request.get('id')
         try:
+            bends = request.get('bend', [])
+            validate_bends(bends)
             pitch = request.get('pitch', 0)
             # Per-sentence semitone shift from mood prosody; checked again here.
             if isinstance(pitch, bool) or not isinstance(pitch, int) or abs(pitch) > MAX_PITCH_SHIFT:
@@ -88,7 +178,7 @@ class Pipeline:
                 return
             started = time.perf_counter()
             await asyncio.get_running_loop().run_in_executor(
-                self.rvc_thread, self.convert, request['source'], request['output'], pitch)
+                self.rvc_thread, self.convert, request['source'], request['output'], pitch, bends)
             self.reply({'id': request_id, 'ok': True, 'edgeSeconds': round(edge_seconds, 2),
                         'edgeRetries': retries, 'rvcSeconds': round(time.perf_counter() - started, 2)})
         except Exception as error:
@@ -157,9 +247,24 @@ class Worker:
             self.edge_tts = edge_tts
         self.settings = settings
         self.converter = VoiceConverter()
+        self.current_bends = ()
+        from rvc.infer.pipeline import Pipeline as RvcPipeline
+        if not install_f0_bend(RvcPipeline, lambda: self.current_bends):
+            print('Applio get_f0 changed; pitch bends are disabled.', file=sys.stderr)
 
-    def convert(self, source: str, output: str, pitch: int = 0) -> None:
-        """Convert with the configured pitch plus a per-sentence semitone ``pitch`` shift."""
+    def convert(self, source: str, output: str, pitch: int = 0, bends=()) -> None:
+        """Convert with the configured pitch plus a per-sentence semitone ``pitch`` shift.
+
+        ``bends`` ([start, end, semitones] in source seconds) are bent into the F0
+        curve by the get_f0 wrapper while this conversion runs.
+        """
+        self.current_bends = bends
+        try:
+            self._convert(source, output, pitch)
+        finally:
+            self.current_bends = ()
+
+    def _convert(self, source: str, output: str, pitch: int) -> None:
         s = self.settings
         self.converter.convert_audio(
             audio_input_path=source, audio_output_path=output,

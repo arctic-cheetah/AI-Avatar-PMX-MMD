@@ -64,6 +64,45 @@ The JSON report points to each WAV and records per-stage timings. These clips
 survive ordinary avatar runs; the separate `live/` directory is cleared by those
 runs. Listen for word endings, pronunciation, breath artifacts and voice identity.
 
+## 2a. Cadence and voice-style blending (#29)
+
+Kokoro receives **one sentence per request**, and the trimmer then cuts each
+clip to the speech plus a short tail. So two different knobs shape cadence:
+
+| Knob | Where it acts | Default | Range |
+| --- | --- | ---: | ---: |
+| `--clause-pause` (bridge: `--kokoro-clause-pause`) | Kokoro, inside a sentence: pause at commas, semicolons, dashes | 0.1 s | 0–0.5 s |
+| `--sentence-tail` | Trim, after a full sentence: the gap before the next clip | 0.25 s | 0–0.6 s |
+| `--fragment-tail` | Trim, after a fragment split by a mood tag: keeps it flowing | 0.1 s | 0–0.6 s |
+
+Kokoro's own `sentence_pause` is deliberately not exposed: with one sentence
+per request it would only add silence that the trimmer removes. The tails
+apply to Edge clips as well. Tails above about 0.3 s may bring back the soft
+RVC breath that the trimmer exists to remove, so listen for it.
+
+`--voice` also accepts a weighted blend of up to four voices with the same
+accent (all `a…` or all `b…`), for example `af_heart:0.7,af_bella:0.3`.
+Weights must be positive and are normalised to sum to 1. The style vectors
+are mixed once when the worker starts, so a blend costs nothing per sentence.
+
+Audition several settings with the same sentences, for example:
+
+```bash
+for pause in 0.05 0.1 0.25; do
+  .venv/bin/python -m controller.audition_kokoro \
+    --voice af_heart:0.7,af_bella:0.3 --clause-pause "$pause" --sentence-tail 0.25 \
+    --text "Well, I checked the logs, and the alert was a false positive." \
+    --text "Shall we tune the rule together?" \
+    --output-dir "assets/private/speech/kokoro-audition/pause-$pause"
+done
+```
+
+Compare `ttsSeconds` and `rvcSeconds` in each `results.json` with the
+measurements below; these settings only change parameters, so latency should
+stay the same. Listening notes and chosen defaults are recorded in the ticket
+and PR. Mood-driven prosody (per-sentence speed and pitch) follows in a
+separate PR.
+
 ## 3. Test on the avatar
 
 Run these commands in separate terminals:
@@ -139,7 +178,7 @@ visual lip-sync quality and preservation of soft endings need your listening che
   branch. RVC itself can run on the AMD GPU via `--applio-dir ../Applio-rocm`
   (verified 2026-10-23; see [the bridge guide](./running-the-bridge.md) and
   `docs/architecture-v2.md`). Prosody work (intonation, cadence, inflection)
-  is tracked in #29.
+  is tracked in #29; cadence controls and voice blending are in section 2a.
 
 Validation commands:
 

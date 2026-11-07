@@ -186,8 +186,11 @@ The voice model and Applio settings (RVC pitch, index rate, protect, plus Kokoro
 | `--speech`         | off                                   | Speak replies with TTS → RVC and lip sync                                     |
 | `--thinking-filler` | off                                  | Cache “Hmm…” at startup; play once per reasoning reply, before the answer     |
 | `--tts`            | `edge` in code; docs use `kokoro` | TTS source. **README's recommended default is `--tts kokoro`** (local) |
-| `--kokoro-voice`   | `af_heart`                          | Kokoro voice ID                                                                |
+| `--kokoro-voice`   | `af_heart`                          | Kokoro voice ID, or a blend such as `af_heart:0.7,af_bella:0.3`                |
 | `--kokoro-speed`   | `1.0`                               | Kokoro speed multiplier                                                        |
+| `--kokoro-clause-pause` | `0.1`                          | Seconds of pause Kokoro inserts at commas and other clause breaks (0–0.5)     |
+| `--sentence-tail`  | `0.25`                              | Seconds of silence kept after a full sentence (0–0.6); sets the inter-sentence gap |
+| `--fragment-tail`  | `0.1`                               | Seconds kept after a fragment split by a mood tag (0–0.6)                      |
 | `--kokoro-threads` | `2`                                 | CPU ONNX threads for the Kokoro worker                                         |
 | `--applio-dir`     | `../Applio`                         | Applio install to launch; `../Applio-rocm` enables ROCm GPU RVC              |
 | `--pth`            | model under `--applio-dir`          | Applio voice model                                                             |
@@ -209,7 +212,9 @@ The voice model and Applio settings (RVC pitch, index rate, protect, plus Kokoro
 | Flag                    | Purpose                                                                                                                                                                                |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--tts {edge,kokoro}` | Selects the TTS source. The bridge code defaults to `edge` for backwards compatibility, but the README's recommended speech command uses `--tts kokoro` for fully local synthesis. |
-| `--kokoro-voice`      | Kokoro voice ID, e.g. `af_heart`.                                                                                                                                                    |
+| `--kokoro-voice`      | Kokoro voice ID, e.g. `af_heart`, or a weighted blend of up to four same-accent voices, e.g. `af_heart:0.7,af_bella:0.3`.                                                           |
+| `--kokoro-clause-pause` | Pause Kokoro inserts at clause breaks such as commas (0–0.5 s, default 0.1).                                                                                                       |
+| `--sentence-tail` / `--fragment-tail` | Silence kept after a full sentence (default 0.25 s) or a mood-tag fragment (default 0.1 s), 0–0.6 s; these set the gap between clips for Edge and Kokoro.               |
 | `--kokoro-speed`      | Kokoro speaking speed multiplier. `1.0` is the baseline.                                                                                                                             |
 | `--kokoro-threads`    | CPU ONNX thread count for the Kokoro worker.                                                                                                                                           |
 | `--rvc-threads`       | PyTorch CPU thread count for RVC when using the CPU Applio path.                                                                                                                       |
@@ -222,7 +227,9 @@ The voice model and Applio settings (RVC pitch, index rate, protect, plus Kokoro
 | Flag              | Purpose                                                                    |
 | ----------------- | -------------------------------------------------------------------------- |
 | `--list-voices` | Lists available Kokoro voices.                                             |
-| `--voice`       | Voice ID for standalone Kokoro or audition runs.                           |
+| `--voice`       | Voice ID or blend (`af_heart:0.7,af_bella:0.3`) for standalone Kokoro or audition runs. |
+| `--clause-pause` | Clause-break pause in seconds (0–0.5) for standalone Kokoro or audition runs. |
+| `--sentence-tail` / `--fragment-tail` | Trim tails for audition runs (0–0.6 s).        |
 | `--speed`       | Speed multiplier for standalone Kokoro or audition runs.                   |
 | `--threads`     | CPU thread count for standalone Kokoro or audition runs.                   |
 | `--text`        | Text to synthesise; can be repeated in audition mode for multiple samples. |

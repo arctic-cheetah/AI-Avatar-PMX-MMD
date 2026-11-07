@@ -16,6 +16,7 @@ from controller.speech_trim import ending
 MAX_SPEED_CHANGE = 0.08  # ±8 % of the configured Kokoro speed
 MAX_PITCH = 2            # ±2 semitones; larger shifts bend the voice's character
 CLAUSE_PAUSE_RANGE = (0.5, 2.0)  # multiplier on the configured clause pause
+MAX_GAIN_DB = 6.0
 
 
 @dataclass(frozen=True)
@@ -23,6 +24,7 @@ class Prosody:
     speed: float = 1.0         # multiplier on kokoro_speed
     clause_pause: float = 1.0  # multiplier on kokoro_clause_pause
     pitch: int = 0             # semitones added to the RVC pitch
+    gain_db: float = 0.0       # loudness boost applied to the final clip
 
 
 ENERGETIC = Prosody(1.05, 0.7, 1)
@@ -40,9 +42,6 @@ MOOD_GROUPS = {
 }
 
 
-# An exclamation falls in pitch with these moods (#84); energetic moods make it rise.
-NEGATIVE = frozenset(name for name, group in MOOD_GROUPS.items() if group is LOW) | {
-    'angry', 'super-angry', 'annoyed', 'frown', 'disgusted', 'unimpressed'}
 ELLIPSIS_SPEED = 0.96  # a sentence trailing off into an ellipsis lingers
 
 
@@ -73,16 +72,18 @@ def prosody_for(expression: str, weight) -> Prosody:
     return Prosody(round(speed, 4), round(pause, 4), _semitones(base.pitch * w))
 
 
-def punctuation_prosody(text: str, expression: str, weight) -> Prosody:
-    """Prosody from the clip's final mark: slower ellipses, mood-aware exclamations."""
+def punctuation_prosody(text: str, expression: str, weight,
+                        exclaim_gain_db: float = 3.0) -> Prosody:
+    """Prosody from the clip's final mark: slower ellipses, louder exclamations.
+
+    Exclamations change loudness, not pitch: an extra ±1 semitone on ``!`` was
+    too strong when listened to (7 Nov 2026). Mood pitch still applies.
+    """
     kind = ending(text)
     if kind == 'ellipsis':
         return Prosody(ELLIPSIS_SPEED, 1.0, 0)
-    if kind == 'exclaim':
-        if MOOD_GROUPS.get(expression) is ENERGETIC:
-            return Prosody(1.0, 1.0, _semitones(_weight(weight)))
-        if expression in NEGATIVE:
-            return Prosody(1.0, 1.0, _semitones(-_weight(weight)))
+    if kind == 'exclaim' and exclaim_gain_db > 0:
+        return Prosody(gain_db=round(_clamp(exclaim_gain_db, 0.0, MAX_GAIN_DB), 2))
     return Prosody()
 
 
@@ -90,4 +91,6 @@ def combine(first: Prosody, second: Prosody) -> Prosody:
     """Stack two prosodies: speeds and pauses multiply, pitches add; then clamp."""
     speed = _clamp(first.speed * second.speed, 1 - MAX_SPEED_CHANGE, 1 + MAX_SPEED_CHANGE)
     pause = _clamp(first.clause_pause * second.clause_pause, *CLAUSE_PAUSE_RANGE)
-    return Prosody(round(speed, 4), round(pause, 4), _semitones(first.pitch + second.pitch))
+    gain = _clamp(first.gain_db + second.gain_db, 0.0, MAX_GAIN_DB)
+    return Prosody(round(speed, 4), round(pause, 4), _semitones(first.pitch + second.pitch),
+                   round(gain, 2))

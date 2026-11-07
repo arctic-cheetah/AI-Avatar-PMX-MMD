@@ -1025,7 +1025,7 @@ def build_parser():
     parser.add_argument(
         "--punctuation-cadence",
         action="store_true",
-        help="Shape delivery by punctuation: per-ending gaps, ! pitch by mood, slower ellipses, dashes as pauses.",
+        help="Shape delivery by punctuation: per-ending gaps, louder !, slower ellipses, dashes as pauses.",
     )
     for flag, default, what in (
         ("--ellipsis-tail", 0.6, "an ellipsis"),
@@ -1038,6 +1038,12 @@ def build_parser():
             default=default,
             help=f"Seconds kept after {what} with --punctuation-cadence (0-0.8).",
         )
+    parser.add_argument(
+        "--exclaim-gain",
+        type=float,
+        default=3.0,
+        help="dB louder for a clip ending in ! with --punctuation-cadence (0-6; peak-limited).",
+    )
     parser.add_argument(
         "--mood-prosody",
         action="store_true",
@@ -1076,6 +1082,7 @@ def speech_settings(args):
         ellipsis_tail=args.ellipsis_tail,
         exclaim_tail=args.exclaim_tail,
         question_tail=args.question_tail,
+        exclaim_gain=args.exclaim_gain,
         rvc_threads=args.rvc_threads,
         **({"pth": args.pth.expanduser().resolve()} if args.pth else {}),
         **({"index": args.index.expanduser().resolve()} if args.index else {}),

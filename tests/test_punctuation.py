@@ -104,9 +104,9 @@ class GainTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as scratch:
             path = Path(scratch) / 'clip.wav'
             write_wav(path, 24000, [(0.2, 'tone')])  # peak 12000
-            result = apply_gain(path, 6.0)
+            result = apply_gain(path, 12.0)  # ×3.98 would push 12000 past full scale
             self.assertLessEqual(self.peak(path), int(32767 * 10 ** (-1 / 20)) + 1)
-            self.assertLess(result['gainDb'], 6.0)
+            self.assertLess(result['gainDb'], 12.0)
 
     def test_zero_gain_and_silence_leave_clip_alone(self):
         with tempfile.TemporaryDirectory() as scratch:

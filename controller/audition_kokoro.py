@@ -28,7 +28,8 @@ async def audition(args) -> None:
                              mood_prosody=args.mood_prosody,
                              punctuation_cadence=args.punctuation_cadence,
                              ellipsis_tail=args.ellipsis_tail, exclaim_tail=args.exclaim_tail,
-                             question_tail=args.question_tail, rvc_threads=args.rvc_threads)
+                             question_tail=args.question_tail, exclaim_gain=args.exclaim_gain,
+                             rvc_threads=args.rvc_threads)
     settings.check()
     worker = ApplioWorker(settings)
     directory = args.output_dir.resolve()
@@ -94,10 +95,11 @@ def main() -> None:
     parser.add_argument('--mood', type=mood_arg, action='append',
                         help='Mood for every --text, as name or name:weight; repeat to compare.')
     parser.add_argument('--punctuation-cadence', action='store_true',
-                        help='Per-ending gaps, ! pitch by mood, slower ellipses, dashes as pauses.')
+                        help='Per-ending gaps, louder !, slower ellipses, dashes as pauses.')
     parser.add_argument('--ellipsis-tail', type=float, default=0.6)
     parser.add_argument('--exclaim-tail', type=float, default=0.3)
     parser.add_argument('--question-tail', type=float, default=0.4)
+    parser.add_argument('--exclaim-gain', type=float, default=3.0)
     parser.add_argument('--mood-prosody', action='store_true',
                         help='Apply mood-driven speed, pauses and RVC pitch.')
     parser.add_argument('--output-dir', type=Path, default=ROOT / 'assets/private/speech/kokoro-audition')

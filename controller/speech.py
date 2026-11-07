@@ -24,7 +24,7 @@ from pathlib import Path
 
 from controller.prosody import Prosody, combine, prosody_for, punctuation_prosody
 from controller.speech_align import align
-from controller.speech_trim import FRAGMENT_TAIL_KEEP, MAX_TAIL_KEEP, trim_clip
+from controller.speech_trim import FRAGMENT_TAIL_KEEP, MAX_TAIL_KEEP, apply_gain, trim_clip
 
 ROOT = Path(__file__).resolve().parents[1]
 LIVE_DIR = ROOT / "assets" / "private" / "speech" / "live"
@@ -74,6 +74,7 @@ class ApplioSettings:
     ellipsis_tail: float = 0.6  # used with punctuation_cadence
     exclaim_tail: float = 0.3
     question_tail: float = 0.4
+    exclaim_gain: float = 3.0  # dB louder for a clip ending in !, with punctuation_cadence
 
     def __post_init__(self) -> None:
         self.applio_dir = Path(self.applio_dir).expanduser()
@@ -110,6 +111,8 @@ class ApplioSettings:
             value = getattr(self, name)
             if not math.isfinite(value) or not 0.0 <= value <= MAX_TAIL_KEEP:
                 raise ValueError(f"{name} must be between 0 and {MAX_TAIL_KEEP} seconds.")
+        if not math.isfinite(self.exclaim_gain) or not 0.0 <= self.exclaim_gain <= 6.0:
+            raise ValueError("exclaim_gain must be between 0 and 6 dB.")
         if self.tts_provider == "kokoro":
             from controller.kokoro_worker import MODEL_DIR, validate_settings
 
@@ -451,7 +454,9 @@ async def synthesise(
             prosody_for(segment.expression, segment.weight)
             if settings.mood_prosody
             else Prosody(),
-            punctuation_prosody(text, segment.expression, segment.weight)
+            punctuation_prosody(
+                text, segment.expression, segment.weight, settings.exclaim_gain
+            )
             if settings.punctuation_cadence
             else Prosody(),
         )
@@ -459,6 +464,9 @@ async def synthesise(
         reply = await worker.request(text, source, wav, run, prosody=prosody)
         # Trim before aligning so the lip-sync timings match the audio that plays.
         trim = await asyncio.to_thread(trim_clip, source, wav, text, **tails)
+        gain = None
+        if prosody is not None and prosody.gain_db > 0:
+            gain = await asyncio.to_thread(apply_gain, wav, prosody.gain_db)
         source.unlink(missing_ok=True)
         track = await asyncio.to_thread(
             align, wav, text_path, worker.settings.recognizer
@@ -491,6 +499,8 @@ async def synthesise(
             "clausePause": prosody.clause_pause,
             "pitch": prosody.pitch,
         }
+        if gain is not None:
+            metrics["prosody"]["gainDb"] = gain["gainDb"]
     return clip_id, {
         **metrics,
         "rvcSeconds": reply["rvcSeconds"],

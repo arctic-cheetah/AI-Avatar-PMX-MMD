@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 import subprocess
+import sys
 import wave
 from array import array
 from pathlib import Path
@@ -22,6 +23,7 @@ TAIL_KEEP = 0.25         # seconds kept after a sentence end
 FRAGMENT_TAIL_KEEP = 0.1 # seconds kept after a fragment split by a mood tag
 MAX_TAIL_KEEP = 0.8     # an ellipsis may linger; silence past the source's own is padded
 SENTENCE_ENDINGS = tuple('.!?…')
+PEAK_LIMIT_DB = -1.0    # gain never pushes a sample above this
 CLOSERS = '"\')] ”’'
 
 
@@ -66,6 +68,33 @@ def tail_keep(text: str, sentence_tail: float = TAIL_KEEP,
         return fragment_tail
     chosen = {'ellipsis': ellipsis_tail, 'exclaim': exclaim_tail, 'question': question_tail}.get(kind)
     return sentence_tail if chosen is None else chosen
+
+
+def apply_gain(wav: Path, gain_db: float) -> dict:
+    """Make a 16-bit PCM clip louder by up to ``gain_db``, peak-limited to PEAK_LIMIT_DB; return the gain used."""
+    with wave.open(str(wav), 'rb') as clip:
+        params = clip.getparams()
+        frames = clip.readframes(params.nframes)
+    if gain_db <= 0 or params.sampwidth != 2:
+        return {'gainDb': 0.0}
+    samples = array('h')
+    samples.frombytes(frames)
+    if sys.byteorder == 'big':
+        samples.byteswap()
+    peak = max((abs(sample) for sample in samples), default=0)
+    if not peak:
+        return {'gainDb': 0.0}
+    limit = 32767 * 10 ** (PEAK_LIMIT_DB / 20)
+    scale = min(10 ** (gain_db / 20), limit / peak)
+    if scale <= 1:
+        return {'gainDb': 0.0}
+    louder = array('h', (int(round(sample * scale)) for sample in samples))
+    if sys.byteorder == 'big':
+        louder.byteswap()
+    with wave.open(str(wav), 'wb') as clip:
+        clip.setparams(params)
+        clip.writeframes(louder.tobytes())
+    return {'gainDb': round(20 * math.log10(scale), 2)}
 
 
 def trim_clip(source: Path, wav: Path, text: str, sentence_tail: float = TAIL_KEEP,

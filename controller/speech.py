@@ -52,6 +52,8 @@ ENDEARMENTS = frozenset({
     "baby", "cutie", "hun", "sweetpea", "sugar", "angel", "precious", "pumpkin", "treasure",
 })
 QUESTION_PEAK = 0.7  # a question's rise peaks 70 % into its last word (measured on RVC)
+QUOTE_PEAK = 0.5  # a quotation's pitch dip is deepest in its middle
+OPENING_QUOTES, CLOSING_QUOTES = '"“', '"”'
 CLOSING = "\"'”’)]*"
 DASH = re.compile(r"\s*[—–]\s*|\s+-(?:\s+|$)")
 WORKER_SCRIPT = Path(__file__).with_name("applio_worker.py")
@@ -96,6 +98,8 @@ class ApplioSettings:
     interjection_bend: float = 8.0  # semitones at the peak: about one octave with Kokoro's rise (#84)
     word_lifts: bool = True  # Kokoro: lift endearments in address and the word before ! (#84)
     word_lift_bend: float = 4.0  # semitones at the lift's peak
+    quote_voice: bool = False  # Kokoro: pause before and a slight pitch dip across quotes (#84)
+    quote_bend: float = -2.0  # semitones at the quote's dip
     question_rise_bend: float = 9.0  # semitones a question's last word rises (peak at 70 %)
     interjection_hold: float = 0.0  # seconds an "aww" is held; 0 keeps Kokoro's ~0.36 s (#84)
     exclaim_gain: float = 3.0  # dB louder for a clip ending in !, with punctuation_cadence
@@ -139,6 +143,8 @@ class ApplioSettings:
             raise ValueError("interjection_bend must be between -12 and 12 semitones.")
         if not math.isfinite(self.word_lift_bend) or abs(self.word_lift_bend) > 12.0:
             raise ValueError("word_lift_bend must be between -12 and 12 semitones.")
+        if not math.isfinite(self.quote_bend) or abs(self.quote_bend) > 12.0:
+            raise ValueError("quote_bend must be between -12 and 12 semitones.")
         if not math.isfinite(self.question_rise_bend) or abs(self.question_rise_bend) > 12.0:
             raise ValueError("question_rise_bend must be between -12 and 12 semitones.")
         if not math.isfinite(self.interjection_hold) or not 0.0 <= self.interjection_hold <= 1.2:
@@ -213,6 +219,20 @@ def lift_words(text: str) -> tuple[int, ...]:
         if addressed or exclaimed:
             lifts.append(index)
     return tuple(lifts)
+
+
+def quote_words(text: str) -> list[tuple[int, int]]:
+    """(first, last) spoken-word indices of each balanced "…" or “…” quotation."""
+    quotes, start = [], None
+    for index, word in enumerate(spoken_words(text)):
+        opens = word.lstrip("([*")[:1] in OPENING_QUOTES
+        closes = word.rstrip(".,!?…;:)]*")[-1:] in CLOSING_QUOTES and (start is not None or opens)
+        if start is None and opens:
+            start = index
+        if start is not None and closes and (index > start or word.count('"') + word.count("“") + word.count("”") >= 2):
+            quotes.append((start, index))
+            start = None
+    return quotes
 
 
 def question_words(text: str) -> tuple[int, ...]:
@@ -451,6 +471,7 @@ class ApplioWorker:
         holds: tuple[tuple[int, float], ...] = (),
         lifts: tuple[int, ...] = (),
         rises: tuple[int, ...] = (),
+        quotes: tuple[tuple[int, int], ...] = (),
     ) -> dict:
         """Synthesise ``text`` into ``source`` and convert into ``output``.
 
@@ -462,7 +483,8 @@ class ApplioWorker:
         await self.start()
         source_metrics = None
         # Interjections first, so they keep their contour if the per-sentence cap is reached.
-        spanned = tuple(dict.fromkeys([*contours, *rises, *lifts]))[:MAX_SPANS]
+        quoted = [index for pair in quotes for index in pair]
+        spanned = tuple(dict.fromkeys([*contours, *rises, *quoted, *lifts]))[:MAX_SPANS]
         if self.kokoro is not None:
             source_metrics = await self.kokoro.request(
                 text, source, output, run,
@@ -477,18 +499,27 @@ class ApplioWorker:
         own = dict(fields or {})
         if prosody is not None:
             own["pitch"] = prosody.pitch
-        bends, bent = [], []
+        bends, bent, dipped = [], [], 0
         if spanned and source_metrics:
             spans = source_metrics.get("wordSpans", [])
             words = source_metrics.get("spanWords", list(spanned[: len(spans)]))
-            for word, (start, end) in zip(words, spans):
+            found = dict(zip(words, spans))
+            for word, (start, end) in found.items():
                 if word in contours:
                     bends.append([start, end, self.settings.interjection_bend])
                 elif word in rises:  # a question rises against Kokoro's fall
                     bends.append([start, end, self.settings.question_rise_bend, QUESTION_PEAK])
-                else:
+                elif word in lifts:
                     bends.append([start, end, self.settings.word_lift_bend])
+                else:
+                    continue
                 bent.append(word)
+            dipped = 0
+            for first, last in quotes:  # one gentle dip across the whole quotation
+                if first in found and last in found:
+                    bends.append([found[first][0], found[last][1], self.settings.quote_bend, QUOTE_PEAK])
+                    dipped += 1
+            bends = bends[:MAX_SPANS]
             if bends:
                 own["bend"] = bends
         line = json.dumps(
@@ -525,6 +556,8 @@ class ApplioWorker:
             )
         if contours:
             message["contours"] = sum(word in contours for word in bent)
+        if quotes:
+            message["quotes"] = dipped
         if rises:
             message["rises"] = sum(word in rises and word not in contours for word in bent)
         if lifts:
@@ -616,6 +649,13 @@ async def synthesise(
                 )
                 if holds:
                     options["holds"] = holds
+        if settings.quote_voice and settings.tts_provider == "kokoro":
+            quotes = tuple(quote_words(text))
+            if quotes:
+                options["quotes"] = quotes
+                firsts = [first for first, _ in quotes]
+                merged = tuple(dict.fromkeys([*options.get("emphasis", ()), *firsts]))
+                options["emphasis"] = merged[:MAX_EMPHASIS]  # a pause before each quote
         if settings.word_lifts and settings.tts_provider == "kokoro":
             rises = question_words(text)
             lifts = tuple(index for index in lift_words(text) if index not in rises)
@@ -656,6 +696,7 @@ async def synthesise(
             "contours",
             "lifts",
             "rises",
+            "quotes",
         )
         if key in reply
     }

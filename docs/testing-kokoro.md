@@ -485,7 +485,10 @@ needs both halves slowed.
    the target and no more than 5 frames, and is never sped up. The target is
    divided by the sentence speed, so a faster pace (#92) gives a shorter drawl.
    Then it is synthesised again with one speed per token, batch by batch. Only
-   sentences with a stretch pay for the second pass (about 0.3 s each).
+   sentences with a stretch pay for the second pass, which roughly doubles
+   Kokoro's time for them (measured +0.26 to +0.49 s on 2–8 word sentences).
+   It works across clause batches ("Sure, that works.", "I said it, but
+   nobody listened, sadly.").
 4. **Results:** `stretched` counts the words drawn out. `stretchSkipped` says
    why none were: `no-model` (setup has not made the per-token model),
    `misaligned`, or `nothing-to-stretch`. `wordSpans` come from the second

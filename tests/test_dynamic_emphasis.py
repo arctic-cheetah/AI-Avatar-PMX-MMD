@@ -39,7 +39,8 @@ class DrawlVowelTests(unittest.TestCase):
 
 class DrawlRequestTests(unittest.IsolatedAsyncioTestCase):
     async def test_drawls_reach_kokoro_and_bend_deeper(self):
-        settings = ApplioSettings(tts_provider='kokoro', dynamic_emphasis=True, drawl_bend=-3.0)
+        settings = ApplioSettings(tts_provider='kokoro', dynamic_emphasis=True, drawl_bend=-3.0,
+                                  drawl_hold=0.3)
         with tempfile.TemporaryDirectory() as scratch:
             script = Path(scratch) / 'spans.py'
             script.write_text(SPANS_WORKER.replace('"wordSpans": [[0.2, 0.5]]',
@@ -95,6 +96,13 @@ class SynthesiseDynamicTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(2, sent['lifts'])
         self.assertNotIn('drawls', sent)
 
+    def test_listened_defaults_keep_only_a_slightly_deeper_tone(self):
+        # Listening (8 Nov 2026): the held "buuut" still sounded like "boot" and one take broke
+        # up (its ~20 ms steady vowel repeated many times). Lengthening waits for ONNX per-token
+        # speed (#83 scope 2); for now a drawl is only a slightly deeper tone, no hold.
+        settings = ApplioSettings()
+        self.assertEqual((settings.drawl_bend, settings.drawl_hold), (-2.0, 0.0))
+
     async def test_off_or_edge_sends_no_drawls(self):
         for settings in (ApplioSettings(tts_provider='kokoro', dynamic_emphasis=False),
                          ApplioSettings(tts_provider='edge', dynamic_emphasis=True)):
@@ -104,7 +112,7 @@ class SynthesiseDynamicTests(unittest.IsolatedAsyncioTestCase):
 
     def test_settings_and_flags(self):
         self.assertEqual((ApplioSettings().dynamic_emphasis, ApplioSettings().drawl_bend,
-                          ApplioSettings().drawl_hold), (False, -3.0, 0.3))
+                          ApplioSettings().drawl_hold), (False, -2.0, 0.0))
         for value in (-0.1, 0.46, float('nan')):
             with self.subTest(hold=value), self.assertRaises(ValueError):
                 ApplioSettings(applio_dir=Path('/nonexistent'), drawl_hold=value).check()

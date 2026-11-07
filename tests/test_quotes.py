@@ -86,7 +86,10 @@ class SynthesiseQuoteTests(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn('emphasis', sent)
 
     def test_settings_and_flags(self):
-        self.assertEqual((ApplioSettings().quote_voice, ApplioSettings().quote_bend), (False, -2.0))
+        # Listening (8 Nov 2026): quote voice sounds natural, so it is on by default.
+        self.assertEqual((ApplioSettings().quote_voice, ApplioSettings().quote_bend), (True, -2.0))
+        self.assertFalse(speech_settings(build_parser().parse_args(['--speech', '--no-quote-voice'])).quote_voice)
+        self.assertTrue(speech_settings(build_parser().parse_args(['--speech'])).quote_voice)
         for value in (-12.1, 12.1, float('nan')):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 ApplioSettings(applio_dir=Path('/nonexistent'), quote_bend=value).check()

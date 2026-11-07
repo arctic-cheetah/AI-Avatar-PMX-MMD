@@ -1003,7 +1003,25 @@ def build_parser():
     parser.add_argument("--tts", choices=["edge", "kokoro"], default="edge")
     parser.add_argument("--kokoro-voice", default="af_heart")
     parser.add_argument("--kokoro-speed", type=float, default=1.0)
+    parser.add_argument(
+        "--kokoro-clause-pause",
+        type=float,
+        default=0.1,
+        help="Seconds Kokoro pauses at commas and other clause breaks (0-0.5).",
+    )
     parser.add_argument("--kokoro-threads", type=int, default=2)
+    parser.add_argument(
+        "--sentence-tail",
+        type=float,
+        default=0.25,
+        help="Seconds of silence kept after a full sentence; the gap between clips (0-0.6).",
+    )
+    parser.add_argument(
+        "--fragment-tail",
+        type=float,
+        default=0.1,
+        help="Seconds kept after a fragment split by a mood tag (0-0.6).",
+    )
     parser.add_argument("--rvc-threads", type=int, default=0)
     parser.add_argument(
         "--agent",
@@ -1017,6 +1035,25 @@ def build_parser():
         help="Agent socket path (default: $XDG_RUNTIME_DIR/yidhari/agent.sock).",
     )
     return parser
+
+
+def speech_settings(args):
+    """Build ``ApplioSettings`` from parsed bridge flags."""
+    from controller.speech import ApplioSettings
+
+    return ApplioSettings(
+        applio_dir=args.applio_dir.expanduser().resolve(),
+        tts_provider=args.tts,
+        kokoro_voice=args.kokoro_voice,
+        kokoro_speed=args.kokoro_speed,
+        kokoro_clause_pause=args.kokoro_clause_pause,
+        kokoro_threads=args.kokoro_threads,
+        sentence_tail=args.sentence_tail,
+        fragment_tail=args.fragment_tail,
+        rvc_threads=args.rvc_threads,
+        **({"pth": args.pth.expanduser().resolve()} if args.pth else {}),
+        **({"index": args.index.expanduser().resolve()} if args.index else {}),
+    )
 
 
 def main():
@@ -1052,18 +1089,7 @@ def main():
         args.llm_headers, args.llm_external = config.headers, config.external
     args.speech_settings = None
     if args.speech:
-        from controller.speech import ApplioSettings
-
-        args.speech_settings = ApplioSettings(
-            applio_dir=args.applio_dir.expanduser().resolve(),
-            tts_provider=args.tts,
-            kokoro_voice=args.kokoro_voice,
-            kokoro_speed=args.kokoro_speed,
-            kokoro_threads=args.kokoro_threads,
-            rvc_threads=args.rvc_threads,
-            **({"pth": args.pth.expanduser().resolve()} if args.pth else {}),
-            **({"index": args.index.expanduser().resolve()} if args.index else {}),
-        )
+        args.speech_settings = speech_settings(args)
     logging.basicConfig(level=logging.INFO)
     try:
         asyncio.run(run(args))

@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import re
 import secrets
 import unicodedata
@@ -22,7 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from controller.speech_align import align
-from controller.speech_trim import trim_clip
+from controller.speech_trim import FRAGMENT_TAIL_KEEP, MAX_TAIL_KEEP, TAIL_KEEP, trim_clip
 
 ROOT = Path(__file__).resolve().parents[1]
 LIVE_DIR = ROOT / "assets" / "private" / "speech" / "live"
@@ -58,7 +59,10 @@ class ApplioSettings:
     tts_provider: str = "edge"
     kokoro_voice: str = "af_heart"
     kokoro_speed: float = 1.0
+    kokoro_clause_pause: float = 0.1  # seconds at commas etc., inside one sentence
     kokoro_threads: int = 2
+    sentence_tail: float = TAIL_KEEP  # silence kept after a sentence: the gap between clips
+    fragment_tail: float = FRAGMENT_TAIL_KEEP  # after a mood-tag fragment
 
     def __post_init__(self) -> None:
         self.applio_dir = Path(self.applio_dir).expanduser()
@@ -91,10 +95,19 @@ class ApplioSettings:
             raise ValueError("TTS provider must be edge or kokoro.")
         if self.rvc_threads < 0:
             raise ValueError("RVC threads must be nonnegative.")
+        for name in ("sentence_tail", "fragment_tail"):
+            value = getattr(self, name)
+            if not math.isfinite(value) or not 0.0 <= value <= MAX_TAIL_KEEP:
+                raise ValueError(f"{name} must be between 0 and {MAX_TAIL_KEEP} seconds.")
         if self.tts_provider == "kokoro":
             from controller.kokoro_worker import MODEL_DIR, validate_settings
 
-            validate_settings(self.kokoro_voice, self.kokoro_speed, self.kokoro_threads)
+            validate_settings(
+                self.kokoro_voice,
+                self.kokoro_speed,
+                self.kokoro_threads,
+                self.kokoro_clause_pause,
+            )
             for path in (
                 ROOT / ".venv-kokoro/bin/python",
                 MODEL_DIR / "kokoro-v1.0.onnx",
@@ -220,6 +233,8 @@ class ApplioWorker:
                     settings.kokoro_voice,
                     "--speed",
                     str(settings.kokoro_speed),
+                    "--clause-pause",
+                    str(settings.kokoro_clause_pause),
                     "--threads",
                     str(settings.kokoro_threads),
                 ],
@@ -377,7 +392,14 @@ async def synthesise(
     try:
         reply = await worker.request(segment.text, source, wav, run)
         # Trim before aligning so the lip-sync timings match the audio that plays.
-        trim = await asyncio.to_thread(trim_clip, source, wav, segment.text)
+        trim = await asyncio.to_thread(
+            trim_clip,
+            source,
+            wav,
+            segment.text,
+            sentence_tail=worker.settings.sentence_tail,
+            fragment_tail=worker.settings.fragment_tail,
+        )
         source.unlink(missing_ok=True)
         track = await asyncio.to_thread(
             align, wav, text_path, worker.settings.recognizer

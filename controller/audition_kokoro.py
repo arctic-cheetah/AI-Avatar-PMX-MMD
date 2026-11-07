@@ -12,6 +12,8 @@ from controller.speech import ApplioSettings, ApplioWorker, ROOT, Segment, synth
 async def audition(args) -> None:
     settings = ApplioSettings(tts_provider='kokoro', kokoro_voice=args.voice,
                              kokoro_speed=args.speed, kokoro_threads=args.threads,
+                             kokoro_clause_pause=args.clause_pause,
+                             sentence_tail=args.sentence_tail, fragment_tail=args.fragment_tail,
                              rvc_threads=args.rvc_threads)
     settings.check()
     worker = ApplioWorker(settings)
@@ -28,6 +30,10 @@ async def audition(args) -> None:
             result = {'text': text, 'audio': str(directory / f'{clip}.wav'),
                       'visemes': str(directory / f'{clip}.visemes.json'),
                       'wallSeconds': round(time.perf_counter() - started, 3), **metrics}
+            result['settings'] = {'voice': args.voice, 'speed': args.speed,
+                                  'clausePause': args.clause_pause,
+                                  'sentenceTail': args.sentence_tail,
+                                  'fragmentTail': args.fragment_tail}
             results.append(result)
             print(json.dumps(result), flush=True)
     finally:
@@ -41,6 +47,9 @@ def main() -> None:
     parser.add_argument('--text', action='append')
     parser.add_argument('--voice', default='af_heart')
     parser.add_argument('--speed', type=float, default=1.0)
+    parser.add_argument('--clause-pause', type=float, default=0.1)
+    parser.add_argument('--sentence-tail', type=float, default=0.25)
+    parser.add_argument('--fragment-tail', type=float, default=0.1)
     parser.add_argument('--threads', type=int, default=2)
     parser.add_argument('--rvc-threads', type=int, default=4)
     parser.add_argument('--output-dir', type=Path, default=ROOT / 'assets/private/speech/kokoro-audition')

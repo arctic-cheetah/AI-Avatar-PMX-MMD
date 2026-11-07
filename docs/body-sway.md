@@ -38,4 +38,7 @@ expression loop and the ~2–6 s blink timer.
 - Rotation order for the composed delta is YXZ (yaw, pitch, roll) so the
   breathing pitch reads naturally against the roll.
 - A sway toggle (default ON) mirrors `blinkToggle` for users who prefer a
-  perfectly still bust.
+  perfectly still bust. `SwayController.update(delta)` eases a gain between
+  0 and 1 with a slow spring (about 1.2 s), so stopping fades the torso back
+  to rest and starting fades it back in rather than snapping. See
+  [animation-transitions.md](./animation-transitions.md).

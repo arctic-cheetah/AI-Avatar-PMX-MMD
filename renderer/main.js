@@ -36,11 +36,13 @@ import { VoiceVolume, bindVoiceVolume } from "./voice-volume.js";
 import { LiveSpeechSession } from "./speech-session.js";
 import { LastSpeechReplay, dropQueuedReplay, replayQueueItems } from "./speech-replay.js";
 import { FillerSession } from "./filler-session.js";
-import { ThinkingPose, THINKING_POSE } from "./thinking-pose.js";
+import { ThinkingPose, THINKING_POSE, headGazeScale } from "./thinking-pose.js";
 import { buildThinkingRig } from "./thinking-rig.js";
 import { GazeController, normalisePointer, clampEyePitch } from "./gaze-tracking.js";
 import { CameraGaze } from "./camera-gaze.js";
 import { SWAY, SwayController, swayAnglesAt } from "./body-sway.js";
+import { Spring, TIMING, frameDelta } from "./smoothing.js";
+import { composeBlink, eyeClosure } from "./facial-layers.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
 const MODEL_URL = "/yidhari-mmd/伊德海莉.pmx";
@@ -54,7 +56,6 @@ const LIVE_CLIP_DIR = "/assets/private/speech/live/";
 const FILLER_DIR = "/assets/private/speech/filler/";
 const BLINK_MORPH = "まばたき";
 const WINK_MORPHS = { left: "ウィンク", right: "ウィンク右" };
-const WINK_EASE_RATE = 12;
 // Camera distances in PMX units from the head bone.
 const FRAMING = { bust: 13, face: 8 };
 
@@ -158,10 +159,10 @@ controls.maxDistance = 80;
 /** @type {THREE.SkinnedMesh | null} */
 let mesh = null;
 let blinkIndex = -1;
-/** @type {{ left: { index: number, weight: number, target: number }, right: { index: number, weight: number, target: number } }} */
+/** @type {{ left: { index: number, spring: Spring, target: number }, right: { index: number, spring: Spring, target: number } }} */
 const winks = {
-  left: { index: -1, weight: 0, target: 0 },
-  right: { index: -1, weight: 0, target: 0 },
+  left: { index: -1, spring: new Spring(0), target: 0 },
+  right: { index: -1, spring: new Spring(0), target: 0 },
 };
 /** @type {ExpressionController | null} */
 let expressions = null;
@@ -262,12 +263,14 @@ function setupGaze(object) {
 function applyGaze(delta) {
   if (!gazeBones.length) return;
   const angles = gaze.update(delta);
+  // The chin-rest hand is solved against the resting head, so the head follows less while it is up.
+  const headScale = headGazeScale(thinkingPose.weight);
   for (const { name, bone, rest } of gazeBones) {
     const isEye = name === "左目" || name === "右目";
-    const yaw = isEye ? angles.eyeYaw : angles.headYaw;
+    const yaw = isEye ? angles.eyeYaw : angles.headYaw * headScale;
     const pitch = isEye
       ? clampEyePitch(angles.eyePitch, thinkingPose.weight * THINKING_POSE.eyePitch)
-      : angles.headPitch;
+      : angles.headPitch * headScale;
     gazeEuler.set(pitch, yaw, 0, "YXZ");
     bone.quaternion.copy(rest).multiply(gazeQuat.setFromEuler(gazeEuler));
   }
@@ -315,7 +318,7 @@ function updateSwayButton() {
 
 /**
  * Stop or start the body sway from its button, keeping the checkbox in sync.
- * The pose eases back to rest because applySway writes zero angles while off.
+ * The pose fades back to rest because applySway scales the angles by the sway gain.
  * @returns {void}
  */
 function toggleSway() {
@@ -332,21 +335,23 @@ swayToggle.addEventListener("change", () => {
 
 /**
  * Apply the slow sine-wave sway for this frame.
- * Each bone returns toward its rest pose when the toggle is off, and each
+ * Each bone fades toward its rest pose when the toggle is off, and each
  * channel multiplies a small delta on top of rest so the lowered-arm pose
  * and the gaze layer are never overwritten.
  * @param {number} now Seconds since the animation clock started.
+ * @param {number} delta Seconds elapsed since the previous frame.
  * @returns {void}
  */
-function applySway(now) {
+function applySway(now, delta) {
   if (!swayBones.length) {
     return;
   }
-  const angles = sway.enabled && swayToggle.checked ? swayAnglesAt(now) : { roll: 0, yaw: 0, breath: 0 };
+  const gain = sway.update(delta);
+  const angles = swayAnglesAt(now);
   for (const { bone, rest } of swayBones) {
-    const pitch = bone.name === SWAY.breath.bone ? angles.breath : 0;
-    const yaw = bone.name === SWAY.yaw.bone ? angles.yaw : 0;
-    const roll = bone.name === SWAY.roll.bone ? angles.roll : 0;
+    const pitch = bone.name === SWAY.breath.bone ? angles.breath * gain : 0;
+    const yaw = bone.name === SWAY.yaw.bone ? angles.yaw * gain : 0;
+    const roll = bone.name === SWAY.roll.bone ? angles.roll * gain : 0;
     swayEuler.set(pitch, yaw, roll, "YXZ");
     bone.quaternion.copy(rest).multiply(swayQuat.setFromEuler(swayEuler));
   }
@@ -795,7 +800,8 @@ function blinkWeightAt(now) {
 }
 
 /**
- * Apply the current blink weight if the PMX provides the blink morph.
+ * Combine the idle blink with what the mood and winks already wrote this frame.
+ * A mood's own blink weight survives, and closed eyes do not blink on top.
  * @param {number} now Current performance time in seconds.
  * @returns {void}
  */
@@ -803,8 +809,9 @@ function updateBlink(now) {
   if (blinkIndex < 0 || !mesh) {
     return;
   }
-  const weight = blinkWeightAt(now);
-  mesh.morphTargetInfluences[blinkIndex] = blinkToggle.checked ? weight : 0;
+  const weight = blinkToggle.checked ? blinkWeightAt(now) : 0;
+  const influences = mesh.morphTargetInfluences;
+  influences[blinkIndex] = composeBlink(influences[blinkIndex], weight, eyeClosure(mesh));
 }
 
 /**
@@ -818,13 +825,12 @@ function updateWinks(delta) {
   if (!mesh) {
     return;
   }
-  const blend = 1 - Math.exp(-WINK_EASE_RATE * Math.max(0, delta));
   for (const wink of Object.values(winks)) {
     if (wink.index < 0) {
       continue;
     }
-    wink.weight += (wink.target - wink.weight) * blend;
-    mesh.morphTargetInfluences[wink.index] = wink.weight;
+    wink.spring.step(wink.target, delta, TIMING.wink);
+    mesh.morphTargetInfluences[wink.index] = wink.spring.clamp(0, 1);
   }
 }
 
@@ -1358,23 +1364,25 @@ function loadModel() {
 /**
  * Update controls and face morphs, then render the current frame.
  * Every morph starts the frame at zero; each channel writes its own morphs,
- * speech blends over the mood's mouth, and the audition layer adds on top last.
+ * speech blends over the mood's mouth, the blink combines with the mood and
+ * winks, and the audition layer adds on top last.
+ * See docs/animation-transitions.md.
  * @returns {void}
  */
 function animate() {
   const now = performance.now();
-  const delta = Math.min((now - previousFrame) / 1000, 0.1);
+  const delta = frameDelta(now, previousFrame);
   previousFrame = now;
   controls.update();
   mesh?.morphTargetInfluences?.fill(0);
   expressions?.update(delta);
   syncThinkingState();
   speech?.update(delta);
-  updateBlink(now / 1000);
   updateWinks(delta);
+  updateBlink(now / 1000);
   applyThinkingPose(delta);
   applyGaze(delta);
-  applySway(now / 1000);
+  applySway(now / 1000, delta);
   audition?.update(delta);
   audition?.apply();
   // A held preview wins the frame so a visual check is not overwritten by the mood loop.

@@ -59,3 +59,21 @@ test("stop/start controller toggles the enabled state", () => {
   sway.setEnabled(true);
   assert.equal(sway.enabled, true);
 });
+
+test("stopping sway fades its gain out instead of snapping to rest", () => {
+  const sway = new SwayController();
+  assert.equal(sway.update(1 / 60), 1, "enabled sway starts at full strength");
+  sway.setEnabled(false);
+  const first = sway.update(1 / 60);
+  assert.ok(first > 0.95 && first < 1, "the first frame barely moves");
+  for (let i = 0; i < 180; i += 1) sway.update(1 / 60);
+  assert.ok(sway.gain < 0.001, "settles at rest");
+  sway.setEnabled(true);
+  const resumed = sway.update(1 / 60);
+  assert.ok(resumed > 0 && resumed < 0.05, "restart fades back in");
+});
+
+test("a sway constructed disabled starts at rest", () => {
+  const sway = new SwayController(false);
+  assert.equal(sway.update(1 / 60), 0);
+});

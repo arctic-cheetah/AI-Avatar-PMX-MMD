@@ -1,7 +1,11 @@
+import { Spring, TIMING } from "./smoothing.js";
+
 /**
  * Resolve semantic expressions against a loaded PMX and ease their morphs.
  * The controller owns only morphs listed in its catalog; blink and future
  * speech morphs remain independent animation channels.
+ * Each morph eases on a critically damped spring from its displayed value and
+ * velocity, so an interrupted change carries on smoothly instead of resetting.
  */
 export class ExpressionController {
   /**
@@ -13,8 +17,12 @@ export class ExpressionController {
     this.catalog = catalog;
     this.activeExpression = "neutral";
     this.missingMorphs = new Map();
+    /** @type {Map<number, number>} Displayed weight per owned morph index. */
     this.weights = new Map();
+    /** @type {Map<number, Spring>} */
+    this.springs = new Map();
     this.targets = new Map();
+    this.rate = TIMING.expression;
     this.looping = false;
     this.loopTimer = 0;
     this.loopInterval = 3;
@@ -33,7 +41,9 @@ export class ExpressionController {
       for (const morph of Object.keys(definition.morphs)) {
         const index = mesh.morphTargetDictionary[morph];
         if (!this.weights.has(index)) {
-          this.weights.set(index, mesh.morphTargetInfluences[index] ?? 0);
+          const initial = mesh.morphTargetInfluences[index] ?? 0;
+          this.weights.set(index, initial);
+          this.springs.set(index, new Spring(initial));
           this.targets.set(index, 0);
         }
       }
@@ -145,7 +155,6 @@ export class ExpressionController {
    * @returns {void}
    */
   update(delta) {
-    const blend = 1 - Math.exp(-10 * Math.max(0, delta));
     if (this.looping) {
       this.loopTimer -= Math.max(0, delta);
       if (this.loopTimer <= 0) {
@@ -154,9 +163,10 @@ export class ExpressionController {
         this.applyExpression(this.loopQueue[this.loopPosition], this.loopWeight);
       }
     }
-    for (const [index, current] of this.weights) {
+    for (const [index, spring] of this.springs) {
       const target = this.targets.get(index);
-      const next = current + (target - current) * blend;
+      spring.step(target, delta, this.rate);
+      const next = spring.clamp(0, 1);
       this.weights.set(index, next);
       this.mesh.morphTargetInfluences[index] = next;
     }

@@ -3,6 +3,8 @@
 // tests/renderer/gaze-tracking.test.mjs). Browser wiring lives in main.js
 // and camera-gaze.js.
 
+import { Spring, TIMING } from "./smoothing.js";
+
 export const LIMITS = Object.freeze({
   eyeYaw: 0.38,
   eyePitch: 0.22,
@@ -58,15 +60,16 @@ export function targetToAngles(target) {
 export class GazeController {
   /**
    * @param {{rate?:number,cameraTimeout?:number}} [options]
-   *   rate: exponential smoothing rate (per second).
+   *   rate: critically damped smoothing rate (per second).
    *   cameraTimeout: ms after which a camera target is stale.
    */
-  constructor({ rate = 10, cameraTimeout = 500 } = {}) {
+  constructor({ rate = TIMING.gaze, cameraTimeout = 500 } = {}) {
     this.rate = rate;
     this.cameraTimeout = cameraTimeout;
     this.cursor = { enabled: false, target: { x: 0, y: 0 } };
     this.camera = { enabled: false, target: { x: 0, y: 0 }, at: -Infinity };
     this.current = { x: 0, y: 0 };
+    this.springs = { x: new Spring(0), y: new Spring(0) };
   }
 
   /**
@@ -107,11 +110,12 @@ export class GazeController {
    */
   update(delta, now = performance.now()) {
     const target = this.#activeTarget(now);
-    const blend = 1 - Math.exp(-this.rate * Math.max(0, delta));
-    this.current.x += (target.x - this.current.x) * blend;
-    this.current.y += (target.y - this.current.y) * blend;
-    if (Math.abs(this.current.x) < 1e-4 && target.x === 0) this.current.x = 0;
-    if (Math.abs(this.current.y) < 1e-4 && target.y === 0) this.current.y = 0;
+    for (const axis of ["x", "y"]) {
+      const spring = this.springs[axis];
+      spring.step(target[axis], delta, this.rate);
+      if (target[axis] === 0) spring.settle(0);
+      this.current[axis] = spring.value;
+    }
     return targetToAngles(this.current);
   }
 }

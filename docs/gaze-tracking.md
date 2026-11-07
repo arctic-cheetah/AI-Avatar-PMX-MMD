@@ -42,7 +42,8 @@ flowchart LR
 ```
 
 - `renderer/gaze-tracking.js` — **pure logic, no DOM/Three.js imports.**
-  Normalisation, clamping, exponential smoothing, source arbitration,
+  Normalisation, clamping, critically damped smoothing (eases in and out,
+  and keeps its speed when the target moves), source arbitration,
   and the mapping from normalised target → eye/head angles. This is the
   unit-tested core (`tests/renderer/gaze-tracking.test.mjs`), following
   the `speech-session.js` pattern.

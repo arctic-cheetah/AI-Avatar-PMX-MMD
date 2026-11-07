@@ -52,6 +52,12 @@ ENDEARMENTS = frozenset({
     "baby", "cutie", "hun", "sweetpea", "sugar", "angel", "precious", "pumpkin", "treasure",
 })
 QUESTION_PEAK = 0.7  # a question's rise peaks 70 % into its last word (measured on RVC)
+# Dynamic emphasis (#83): words said deeper and drawn out ("buuut", sarcastic "suuure").
+DRAWL_OPENERS = frozenset({"but", "well", "so", "now", "okay"})
+ATTITUDE_WORDS = frozenset({"sure", "really", "right", "totally", "obviously"})
+SKEPTICAL_MOODS = frozenset({
+    "skeptical", "suspicious", "unimpressed", "sad-sceptical", "annoyed", "sulky", "pout", "smug",
+})
 QUOTE_PEAK = 0.5  # a quotation's pitch dip is deepest in its middle
 OPENING_QUOTES, CLOSING_QUOTES = '"“', '"”'
 CLOSING = "\"'”’)]*"
@@ -98,6 +104,9 @@ class ApplioSettings:
     interjection_bend: float = 8.0  # semitones at the peak: about one octave with Kokoro's rise (#84)
     word_lifts: bool = True  # Kokoro: lift endearments in address and the word before ! (#84)
     word_lift_bend: float = 4.0  # semitones at the lift's peak
+    dynamic_emphasis: bool = False  # Kokoro: deeper, drawn-out "buuut"; brighter *word* (#83)
+    drawl_bend: float = -2.0  # semitones at a drawl's dip (slightly deeper; listened 8 Nov 2026)
+    drawl_hold: float = 0.0  # off: short vowels break up when held; awaits ONNX per-token speed (#83)
     quote_voice: bool = True  # Kokoro: pause before and a slight pitch dip across quotes (#84)
     quote_bend: float = -2.0  # semitones at the quote's dip
     question_rise_bend: float = 9.0  # semitones a question's last word rises (peak at 70 %)
@@ -143,6 +152,10 @@ class ApplioSettings:
             raise ValueError("interjection_bend must be between -12 and 12 semitones.")
         if not math.isfinite(self.word_lift_bend) or abs(self.word_lift_bend) > 12.0:
             raise ValueError("word_lift_bend must be between -12 and 12 semitones.")
+        if not math.isfinite(self.drawl_bend) or abs(self.drawl_bend) > 12.0:
+            raise ValueError("drawl_bend must be between -12 and 12 semitones.")
+        if not math.isfinite(self.drawl_hold) or not 0.0 <= self.drawl_hold <= 0.45:
+            raise ValueError("drawl_hold must be between 0 and 0.45 seconds.")
         if not math.isfinite(self.quote_bend) or abs(self.quote_bend) > 12.0:
             raise ValueError("quote_bend must be between -12 and 12 semitones.")
         if not math.isfinite(self.question_rise_bend) or abs(self.question_rise_bend) > 12.0:
@@ -219,6 +232,20 @@ def lift_words(text: str) -> tuple[int, ...]:
         if addressed or exclaimed:
             lifts.append(index)
     return tuple(lifts)
+
+
+def drawl_words(text: str, expression: str, emphasis: tuple[int, ...] = ()) -> tuple[int, ...]:
+    """Spoken-word indices to say deeper and drawn out.
+
+    A sentence-opening But/Well/So/Now/Okay always; in skeptical moods also the
+    attitude words (sure, really, …) and any ``*word*`` emphasis marks.
+    """
+    words = [word.strip(WORD_EDGES).lower() for word in spoken_words(text)]
+    drawls = {0} if words and words[0] in DRAWL_OPENERS else set()
+    if expression in SKEPTICAL_MOODS:
+        drawls |= {i for i, word in enumerate(words) if word in ATTITUDE_WORDS}
+        drawls |= {i for i in emphasis if i < len(words)}
+    return tuple(sorted(drawls))
 
 
 def quote_words(text: str) -> list[tuple[int, int]]:
@@ -472,6 +499,7 @@ class ApplioWorker:
         lifts: tuple[int, ...] = (),
         rises: tuple[int, ...] = (),
         quotes: tuple[tuple[int, int], ...] = (),
+        drawls: tuple[int, ...] = (),
     ) -> dict:
         """Synthesise ``text`` into ``source`` and convert into ``output``.
 
@@ -484,13 +512,19 @@ class ApplioWorker:
         source_metrics = None
         # Interjections first, so they keep their contour if the per-sentence cap is reached.
         quoted = [index for pair in quotes for index in pair]
-        spanned = tuple(dict.fromkeys([*contours, *rises, *quoted, *lifts]))[:MAX_SPANS]
+        # A drawl keeps Kokoro's own vowel and holds it ("bˈʌːːt" was heard as "boot").
+        held = [list(hold) for hold in holds]
+        if self.settings.drawl_hold > 0:
+            held += [[index, self.settings.drawl_hold] for index in drawls
+                     if index not in {hold[0] for hold in holds}]
+        held = held[:MAX_SPANS]
+        spanned = tuple(dict.fromkeys([*contours, *drawls, *rises, *quoted, *lifts]))[:MAX_SPANS]
         if self.kokoro is not None:
             source_metrics = await self.kokoro.request(
                 text, source, output, run,
                 fields={
                     **self._kokoro_fields(prosody, emphasis, spanned),
-                    **({"holds": [list(hold) for hold in holds]} if holds else {}),
+                    **({"holds": held} if held else {}),
                 },
             )
         request_id = secrets.token_hex(8)
@@ -507,6 +541,8 @@ class ApplioWorker:
             for word, (start, end) in found.items():
                 if word in contours:
                     bends.append([start, end, self.settings.interjection_bend])
+                elif word in drawls:  # deeper as well as longer
+                    bends.append([start, end, self.settings.drawl_bend])
                 elif word in rises:  # a question rises against Kokoro's fall
                     bends.append([start, end, self.settings.question_rise_bend, QUESTION_PEAK])
                 elif word in lifts:
@@ -556,6 +592,8 @@ class ApplioWorker:
             )
         if contours:
             message["contours"] = sum(word in contours for word in bent)
+        if drawls:
+            message["drawls"] = sum(word in drawls and word not in contours for word in bent)
         if quotes:
             message["quotes"] = dipped
         if rises:
@@ -663,6 +701,21 @@ async def synthesise(
                 options["rises"] = rises
             if lifts:
                 options["lifts"] = lifts
+        if settings.dynamic_emphasis and settings.tts_provider == "kokoro":
+            same_words = len(spoken_words(text)) == len(spoken_words(segment.text))
+            marked = segment.emphasis if same_words else ()
+            drawls = drawl_words(text, segment.expression, marked)
+            if drawls:
+                options["drawls"] = drawls
+                for key in ("rises", "lifts"):
+                    kept = tuple(i for i in options.get(key, ()) if i not in drawls)
+                    if kept:
+                        options[key] = kept
+                    else:
+                        options.pop(key, None)
+            bright = tuple(i for i in marked if i not in drawls)
+            if bright:  # a *word* in a non-skeptical mood is lifted as well as paused
+                options["lifts"] = tuple(dict.fromkeys([*options.get("lifts", ()), *bright]))
         reply = await worker.request(text, source, wav, run, prosody=prosody, **options)
         # Trim before aligning so the lip-sync timings match the audio that plays.
         trim = await asyncio.to_thread(trim_clip, source, wav, text, **tails)
@@ -697,6 +750,7 @@ async def synthesise(
             "lifts",
             "rises",
             "quotes",
+            "drawls",
         )
         if key in reply
     }

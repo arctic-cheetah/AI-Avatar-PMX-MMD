@@ -26,7 +26,7 @@ def join_wavs(paths: list[Path], output: Path) -> bool:
 async def audition(args) -> None:
     if args.plain_voice:
         for name in ('mood_prosody', 'punctuation_cadence', 'emphasis', 'interjection_contours', 'word_lifts',
-                     'quote_voice'):
+                     'quote_voice', 'dynamic_emphasis'):
             setattr(args, name, False)
     settings = ApplioSettings(tts_provider='kokoro', kokoro_voice=args.voice,
                              kokoro_speed=args.speed, kokoro_threads=args.threads,
@@ -43,6 +43,8 @@ async def audition(args) -> None:
                              word_lifts=args.word_lifts, word_lift_bend=args.word_lift_bend,
                              question_rise_bend=args.question_rise_bend,
                              quote_voice=args.quote_voice, quote_bend=args.quote_bend,
+                             dynamic_emphasis=args.dynamic_emphasis, drawl_bend=args.drawl_bend,
+                             drawl_hold=args.drawl_hold,
                              rvc_threads=args.rvc_threads)
     settings.check()
     worker = ApplioWorker(settings)
@@ -135,6 +137,9 @@ def main() -> None:
     parser.add_argument('--question-rise-bend', type=float, default=9.0)
     parser.add_argument('--quote-voice', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--quote-bend', type=float, default=-2.0)
+    parser.add_argument('--dynamic-emphasis', action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument('--drawl-bend', type=float, default=-2.0)
+    parser.add_argument('--drawl-hold', type=float, default=0.0)
     parser.add_argument('--plain-voice', action='store_true',
                         help='Turn every expressive voice part off.')
     parser.add_argument('--mood-prosody', action=argparse.BooleanOptionalAction, default=True,

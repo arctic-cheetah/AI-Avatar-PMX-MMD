@@ -326,6 +326,49 @@ separate clips, which risks audible joins.
   --output-dir assets/private/speech/kokoro-audition/issue-84-quotes
 ```
 
+## 2g. Dynamic emphasis (#83)
+
+Some words carry meaning in their delivery: a contrastive "**buuut**" said
+deeper and drawn out, or a sarcastic "suuure". With `--dynamic-emphasis`
+(Kokoro only, off until auditioned; `--plain-voice` turns it off):
+
+- **Drawl (deeper and longer):** a sentence-opening *But / Well / So / Now /
+  Okay*; the attitude words *sure, really, right, totally, obviously* when
+  the mood is skeptical, suspicious, unimpressed, sad-sceptical, annoyed,
+  sulky, pout or smug; and `*word*` marks in those moods. The word keeps
+  Kokoro's own phonemes and gets a slightly deeper tone, a `--drawl-bend` dip
+  (default −2 st, ±12). `--drawl-hold SECONDS` (0–0.45, default 0) can hold its
+  vowel longer, but see below: it is off because it does not sound right yet.
+- **Bright emphasis:** a `*word*` mark in any other mood also gets the word
+  lift (`--word-lift-bend`), on top of its pause.
+
+**Stress-mark check (#83 scope 3):** on ordinary words, Kokoro's marks change
+length, not loudness:
+
+| Word | Phonemes | Length | Loudness |
+| --- | --- | ---: | ---: |
+| really | `ɹˈiəli` → `ɹˈˈiəli` | 1.33× | −0.6 dB |
+| really | `ɹˈiəli` → `ɹˈiːːəli` | 1.22× | −0.4 dB |
+| but | `bˌʌt` → `bˈʌt` | 1.50× | +0.5 dB |
+| but | `bˌʌt` → `bˈʌːːt` | 2.25× (0.225 s) | ±0 dB |
+
+Lengthening by marks changes the vowel, though: listening heard `bˈʌːːt` as
+"boot", and a spectrum comparison agreed. The smoothed spectrum of the held
+vowel's middle was compared with a real "but" (`bˌʌt`) and "boot" (`buːt`):
+
+| Variant | Length | Like "but" | Like "boot" |
+| --- | ---: | ---: | ---: |
+| `bˈʌːːt` | 0.25 s | 0.80 | **0.84** |
+| `bˈʌt` | 0.15 s | 0.80 | 0.81 |
+| `bˈʌt` + hold 0.30 s | 0.30 s | **0.85** | 0.81 |
+
+Holding Kokoro's own vowel looked better on that measure, but listening still
+heard "boot", and one take broke up: the steady part of "but" is only about
+20 ms, so reaching 0.3 s repeats it many times, which RVC turns buzzy. So a
+natural "buuut" needs Kokoro itself to say the vowel longer, i.e. per-token
+speed in the ONNX model (#83 scope 2). Until then a drawl is only the slightly
+deeper tone, and loudness stays with the exclamation gain.
+
 ## 3. Test on the avatar
 
 Run these commands in separate terminals:

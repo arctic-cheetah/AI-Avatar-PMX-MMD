@@ -215,7 +215,10 @@ Yidhari's actor says "Aww" with a **rise, then a fall**; Kokoro always renders
 a straight drop of about 3 semitones, whatever the punctuation or spelling.
 With `--interjection-contours` (Kokoro only, off by default), `aw`/`aww`/`awww`,
 `ooh`/`oooh` and `ohh` get a smooth pitch bump of `--interjection-bend`
-semitones (default 2, range ±4) that peaks 40 % of the way through the word.
+semitones (default 4, range ±4) that peaks 40 % of the way through the word.
+The default was raised from 2 after listening (7 Nov 2026): "Aww, that is so
+sweet." peaked at +4.5 st with 2 and **+6.4 st** with 4, which sounded more
+convincing; a lone "Awww!" also stops sagging at the end (−1.6 → +0.7 st).
 
 How it works, without touching Kokoro's model:
 

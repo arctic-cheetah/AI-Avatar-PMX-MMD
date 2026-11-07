@@ -200,7 +200,7 @@ for limits and listening checks.
 | `--fragment-tail`  | `0.1`                               | Seconds kept after a fragment split by a mood tag (0–0.8)                      |
 | `--kokoro-threads` | `2`                                 | CPU ONNX threads for the Kokoro worker                                         |
 | `--mood-prosody`   | off                                 | Let each sentence's mood tag nudge Kokoro speed/pauses and RVC pitch (clamped) |
-| `--interjection-contours` | off                          | Kokoro: "Aww"/"Ooh" rise then fall via an RVC pitch bend (`--interjection-bend` 2 st) |
+| `--interjection-contours` | off                          | Kokoro: "Aww"/"Ooh" rise then fall via an RVC pitch bend (`--interjection-bend` 4 st) |
 | `--emphasis`       | off                                 | Kokoro: `*word*` from the LLM adds a short pause before the word (`--emphasis-pause` 0.12 s) |
 | `--punctuation-cadence` | off                            | Gap by ending (`--ellipsis-tail` 0.6, `--exclaim-tail` 0.3, `--question-tail` 0.4 s), louder `!` (`--exclaim-gain` 3 dB), slower `…`, dashes as pauses |
 | `--applio-dir`     | `../Applio`                         | Applio install to launch; `../Applio-rocm` enables ROCm GPU RVC              |
@@ -227,7 +227,7 @@ for limits and listening checks.
 | `--kokoro-clause-pause` | Pause Kokoro inserts at clause breaks such as commas (0–0.5 s, default 0.25).                                                                                                       |
 | `--sentence-tail` / `--fragment-tail` | Silence kept after a full sentence (default 0.4 s) or a mood-tag fragment (default 0.1 s), 0–0.8 s; these set the gap between clips for Edge and Kokoro.               |
 | `--kokoro-speed`      | Kokoro speaking speed multiplier. `1.0` is the baseline.                                                                                                                             |
-| `--interjection-contours` / `--interjection-bend` | "Aww"/"Ooh" get a rise-fall pitch bump (±4 st, default 2) bent into Applio's F0 curve over Kokoro's word timings; see docs/testing-kokoro.md §2e. |
+| `--interjection-contours` / `--interjection-bend` | "Aww"/"Ooh" get a rise-fall pitch bump (±4 st, default 4) bent into Applio's F0 curve over Kokoro's word timings; see docs/testing-kokoro.md §2e. |
 | `--emphasis` / `--emphasis-pause` | The LLM may stress one word per sentence as `*word*`; Kokoro pauses briefly before it (0–0.3 s, default 0.12); see docs/testing-kokoro.md §2d. |
 | `--punctuation-cadence` | Punctuation shapes delivery: per-ending gaps, louder exclamations, slower ellipses, dashes as pauses; see docs/testing-kokoro.md §2c.                                         |
 | `--mood-prosody`      | Mood tags also shape the voice per sentence: Kokoro speed and clause pause, RVC pitch (±2 semitones); see docs/testing-kokoro.md §2b.                                         |

@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 from controller.bridge import TagParser, build_parser, load_catalog, speech_settings
 from controller.prosody import Prosody, combine, prosody_for, punctuation_prosody
 from controller.speech import ApplioSettings, Segment, Segmenter, shape_punctuation, synthesise
-from controller.speech_trim import MAX_TAIL_KEEP, tail_keep, trim_clip
+from controller.speech_trim import MAX_TAIL_KEEP, apply_gain, tail_keep, trim_clip
 from test_speech_pipeline import duration, write_wav
 
 TAILS = {'sentence_tail': 0.4, 'fragment_tail': 0.1, 'ellipsis_tail': 0.6,
@@ -54,17 +54,15 @@ class TailByEndingTests(unittest.TestCase):
 
 
 class PunctuationProsodyTests(unittest.TestCase):
-    def test_exclamation_follows_mood_valence(self):
-        self.assertEqual(punctuation_prosody('Yay!', 'excited', 1.0), Prosody(1.0, 1.0, 1))
-        self.assertEqual(punctuation_prosody('Really?!', 'joyful', 1.0), Prosody(1.0, 1.0, 1))
-        self.assertEqual(punctuation_prosody('He said "Yay!"', 'happy', 1.0).pitch, 1)
-        for mood in ('sad', 'angry', 'annoyed', 'frown', 'disgusted'):
-            with self.subTest(mood=mood):
-                self.assertEqual(punctuation_prosody('No!', mood, 1.0).pitch, -1)
-        for mood in ('neutral', 'surprised', 'soft-smile'):
-            with self.subTest(mood=mood):
-                self.assertEqual(punctuation_prosody('Oh!', mood, 1.0), Prosody())
-        self.assertEqual(punctuation_prosody('Yay!', 'excited', 0.4).pitch, 0)
+    def test_exclamation_is_louder_without_extra_pitch(self):
+        # Listening (7 Nov 2026): the extra ! pitch was too strong; the actor gets louder instead.
+        for text, mood in (('Yay!', 'excited'), ('Really?!', 'joyful'), ('He said "Yay!"', 'happy'),
+                           ('No!', 'sad'), ('No!', 'angry'), ('Oh!', 'neutral'), ('Oh!', 'surprised')):
+            with self.subTest(text=text, mood=mood):
+                self.assertEqual(punctuation_prosody(text, mood, 1.0), Prosody(gain_db=3.0))
+        self.assertEqual(punctuation_prosody('Yay!', 'excited', 1.0, exclaim_gain_db=4.5),
+                         Prosody(gain_db=4.5))
+        self.assertEqual(punctuation_prosody('Yay!', 'excited', 1.0, exclaim_gain_db=0.0), Prosody())
 
     def test_ellipsis_is_slower_and_others_unchanged(self):
         for text in ('Hmm…', 'Well...', '"Well…"'):
@@ -81,6 +79,45 @@ class PunctuationProsodyTests(unittest.TestCase):
         self.assertEqual((low.speed, low.pitch), (0.92, -2))
         self.assertEqual(combine(Prosody(1.0, 1.9, 2), Prosody(1.0, 1.9, 2)), Prosody(1.0, 2.0, 2))
         self.assertEqual(combine(Prosody(), Prosody()), Prosody())
+        self.assertEqual(combine(Prosody(gain_db=4.0), Prosody(gain_db=4.0)).gain_db, 6.0)
+        self.assertEqual(combine(prosody_for('excited', 1.0), Prosody(gain_db=3.0)),
+                         Prosody(1.05, 0.7, 1, 3.0))
+
+
+class GainTests(unittest.TestCase):
+    def peak(self, path):
+        import array
+        with wave.open(str(path), 'rb') as clip:
+            samples = array.array('h', clip.readframes(clip.getnframes()))
+        return max(abs(sample) for sample in samples)
+
+    def test_gain_scales_quiet_clip(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            path = Path(scratch) / 'clip.wav'
+            write_wav(path, 24000, [(0.2, 'breath')])  # peak about 600
+            before = self.peak(path)
+            result = apply_gain(path, 6.0)
+            self.assertAlmostEqual(self.peak(path) / before, 10 ** (6 / 20), delta=0.02)
+            self.assertAlmostEqual(result['gainDb'], 6.0, delta=0.05)
+
+    def test_peak_limited_below_clipping(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            path = Path(scratch) / 'clip.wav'
+            write_wav(path, 24000, [(0.2, 'tone')])  # peak 12000
+            result = apply_gain(path, 6.0)
+            self.assertLessEqual(self.peak(path), int(32767 * 10 ** (-1 / 20)) + 1)
+            self.assertLess(result['gainDb'], 6.0)
+
+    def test_zero_gain_and_silence_leave_clip_alone(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            path = Path(scratch) / 'clip.wav'
+            write_wav(path, 24000, [(0.2, 'silence')])
+            before = path.read_bytes()
+            self.assertEqual(apply_gain(path, 3.0)['gainDb'], 0.0)
+            write_wav(path, 24000, [(0.2, 'tone')])
+            before = path.read_bytes()
+            apply_gain(path, 0.0)
+            self.assertEqual(path.read_bytes(), before)
 
 
 class DashAndEllipsisTests(unittest.TestCase):
@@ -122,22 +159,37 @@ class SynthesisePunctuationTests(unittest.IsolatedAsyncioTestCase):
         worker.request = prepare
         with tempfile.TemporaryDirectory() as scratch:
             with patch('controller.speech.trim_clip', return_value={'beforeSeconds': 1}) as trim, \
+                    patch('controller.speech.apply_gain', return_value={'gainDb': 3.0}) as gain, \
                     patch('controller.speech.align', return_value={'duration': 0.8, 'alignSeconds': 0.1}):
-                await synthesise(segment, worker, directory=Path(scratch))
+                _, metrics = await synthesise(segment, worker, directory=Path(scratch))
+        sent['gain'] = [call.args[1] for call in gain.call_args_list]
+        sent['metrics'] = metrics
         return sent, trim.call_args.kwargs
 
     async def test_enabled_cadence_shapes_text_tails_and_prosody(self):
         settings = ApplioSettings(tts_provider='kokoro', punctuation_cadence=True)
         sent, tails = await self.run_segment(settings, Segment('Yay — we did it!', 'excited', 1.0))
         self.assertEqual(sent['text'], 'Yay, we did it!')
-        self.assertEqual(sent['prosody'], Prosody(1.0, 1.0, 1))
+        self.assertEqual(sent['prosody'], Prosody(gain_db=3.0))
+        self.assertEqual(sent['gain'], [3.0])
+        self.assertEqual(sent['metrics']['prosody']['gainDb'], 3.0)
         self.assertEqual(tails, {'sentence_tail': 0.4, 'fragment_tail': 0.1, 'ellipsis_tail': 0.6,
                                  'exclaim_tail': 0.3, 'question_tail': 0.4})
 
     async def test_cadence_stacks_with_mood_prosody(self):
         settings = ApplioSettings(tts_provider='kokoro', punctuation_cadence=True, mood_prosody=True)
         sent, _ = await self.run_segment(settings, Segment('No!', 'sad', 1.0))
-        self.assertEqual(sent['prosody'], Prosody(0.92, 1.4, -2))
+        self.assertEqual(sent['prosody'], Prosody(0.92, 1.4, -1, 3.0))
+
+    async def test_no_gain_without_exclamation(self):
+        settings = ApplioSettings(tts_provider='kokoro', punctuation_cadence=True)
+        sent, _ = await self.run_segment(settings, Segment('Hello there.', 'excited', 1.0))
+        self.assertEqual(sent['gain'], [])
+
+    def test_exclaim_gain_range(self):
+        for value in (-0.1, 6.1, float('nan')):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                ApplioSettings(applio_dir=Path('/nonexistent'), exclaim_gain=value).check()
 
     async def test_disabled_by_default_leaves_text_and_tails(self):
         sent, tails = await self.run_segment(
@@ -151,9 +203,11 @@ class SynthesisePunctuationTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(defaults.punctuation_cadence)
         self.assertEqual((defaults.ellipsis_tail, defaults.exclaim_tail, defaults.question_tail),
                          (0.6, 0.3, 0.4))
+        self.assertEqual(defaults.exclaim_gain, 3.0)
         settings = speech_settings(build_parser().parse_args([
             '--speech', '--punctuation-cadence', '--ellipsis-tail', '0.7',
-            '--exclaim-tail', '0.25', '--question-tail', '0.35']))
+            '--exclaim-tail', '0.25', '--question-tail', '0.35', '--exclaim-gain', '4.5']))
+        self.assertEqual(settings.exclaim_gain, 4.5)
         self.assertTrue(settings.punctuation_cadence)
         self.assertEqual((settings.ellipsis_tail, settings.exclaim_tail, settings.question_tail),
                          (0.7, 0.25, 0.35))

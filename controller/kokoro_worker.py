@@ -22,6 +22,7 @@ MAX_CLAUSE_PAUSE = 0.5
 # Optional per-sentence request fields.
 PROSODY_FIELDS = ('speed', 'clause_pause', 'emphasis', 'emphasis_pause', 'spans', 'holds')
 MAX_HOLD = 1.5        # seconds a held vowel may last
+AUDIBLE_FLOOR_DB = -30.0  # a word's frames this far below its loudest are not part of it
 HOLD_WINDOW = 0.025   # seconds either side of the vowel's middle used to find its period
 MAX_SPANS = 4  # word spans reported per sentence (for RVC pitch bends)
 # espeak says "aww" as ɔːwə ("aw-wuh", heard as "awah"); one long vowel sounds right.
@@ -200,6 +201,29 @@ def word_spans(timings, words) -> dict[int, tuple[float, float]]:
     return spans
 
 
+def audible_span(samples, rate: int, start: float, end: float,
+                 floor_db: float = AUDIBLE_FLOOR_DB) -> tuple[float, float]:
+    """Shrink ``start``-``end`` seconds to the 10 ms frames within ``floor_db`` of the loudest.
+
+    Kokoro's last phoneme often absorbs trailing silence, which would put a pitch
+    rise where nothing is heard. The span is returned unchanged if it is silent.
+    """
+    frame = max(1, int(0.01 * rate))
+    first = int(start * rate)
+    levels = []
+    for i in range(first, int(end * rate), frame):
+        chunk = samples[i:i + frame]
+        levels.append(math.sqrt(sum(x * x for x in chunk) / len(chunk)) if len(chunk) else 0.0)
+    loudest = max(levels, default=0.0)
+    if loudest <= 0:
+        return start, end
+    floor = loudest * 10 ** (floor_db / 20)
+    kept = [i for i, level in enumerate(levels) if level >= floor]
+    new_start = max(start, (first + kept[0] * frame) / rate)
+    new_end = min(end, (first + (kept[-1] + 1) * frame) / rate)
+    return round(new_start, 6), round(new_end, 6)
+
+
 def shift_spans(spans: dict, points: list[float], seconds: float) -> dict:
     """Move spans later by ``seconds`` for every spliced pause at or before their start."""
     return {index: tuple(round(t + seconds * sum(p <= start for p in points), 6) for t in (start, end))
@@ -330,7 +354,9 @@ class Synthesizer:
                 trim=False, clause_pause=clause_pause)
             points = pause_points(timings, emphasis or [])
             wanted = [*(spans or []), *(index for index, _ in holds or [])]
-            found = shift_spans(word_spans(timings, wanted), points, emphasis_pause)
+            heard = {index: audible_span(samples, rate, start, end)
+                     for index, (start, end) in word_spans(timings, wanted).items()}
+            found = shift_spans(heard, points, emphasis_pause)
             if points:
                 samples = splice_silence(list(samples), rate, points, emphasis_pause)
             # Latest word first, so earlier holds do not move the spans still to be held.

@@ -189,8 +189,8 @@ The voice model and Applio settings (RVC pitch, index rate, protect, plus Kokoro
 | `--kokoro-voice`   | `af_heart:0.7,af_bella:0.3`         | Kokoro voice ID or weighted blend (default chosen by listening, #29)          |
 | `--kokoro-speed`   | `1.0`                               | Kokoro speed multiplier                                                        |
 | `--kokoro-clause-pause` | `0.25`                         | Seconds of pause Kokoro inserts at commas and other clause breaks (0–0.5)     |
-| `--sentence-tail`  | `0.4`                               | Seconds of silence kept after a full sentence (0–0.6); sets the inter-sentence gap |
-| `--fragment-tail`  | `0.1`                               | Seconds kept after a fragment split by a mood tag (0–0.6)                      |
+| `--sentence-tail`  | `0.4`                               | Seconds of silence kept after a full sentence (0–0.8); sets the inter-sentence gap |
+| `--fragment-tail`  | `0.1`                               | Seconds kept after a fragment split by a mood tag (0–0.8)                      |
 | `--kokoro-threads` | `2`                                 | CPU ONNX threads for the Kokoro worker                                         |
 | `--mood-prosody`   | off                                 | Let each sentence's mood tag nudge Kokoro speed/pauses and RVC pitch (clamped) |
 | `--punctuation-cadence` | off                            | Gap by ending (`--ellipsis-tail` 0.6, `--exclaim-tail` 0.3, `--question-tail` 0.4 s), mood-aware `!` pitch, slower `…`, dashes as pauses |
@@ -216,7 +216,7 @@ The voice model and Applio settings (RVC pitch, index rate, protect, plus Kokoro
 | `--tts {edge,kokoro}` | Selects the TTS source. The bridge code defaults to `edge` for backwards compatibility, but the README's recommended speech command uses `--tts kokoro` for fully local synthesis. |
 | `--kokoro-voice`      | Kokoro voice ID, e.g. `af_heart`, or a weighted blend of up to four same-accent voices, e.g. `af_heart:0.7,af_bella:0.3`.                                                           |
 | `--kokoro-clause-pause` | Pause Kokoro inserts at clause breaks such as commas (0–0.5 s, default 0.25).                                                                                                       |
-| `--sentence-tail` / `--fragment-tail` | Silence kept after a full sentence (default 0.4 s) or a mood-tag fragment (default 0.1 s), 0–0.6 s; these set the gap between clips for Edge and Kokoro.               |
+| `--sentence-tail` / `--fragment-tail` | Silence kept after a full sentence (default 0.4 s) or a mood-tag fragment (default 0.1 s), 0–0.8 s; these set the gap between clips for Edge and Kokoro.               |
 | `--kokoro-speed`      | Kokoro speaking speed multiplier. `1.0` is the baseline.                                                                                                                             |
 | `--punctuation-cadence` | Punctuation shapes delivery: per-ending gaps, `!` pitch by mood, slower ellipses, dashes as pauses; see docs/testing-kokoro.md §2c.                                         |
 | `--mood-prosody`      | Mood tags also shape the voice per sentence: Kokoro speed and clause pause, RVC pitch (±2 semitones); see docs/testing-kokoro.md §2b.                                         |
@@ -233,7 +233,7 @@ The voice model and Applio settings (RVC pitch, index rate, protect, plus Kokoro
 | `--list-voices` | Lists available Kokoro voices.                                             |
 | `--voice`       | Voice ID or blend (`af_heart:0.7,af_bella:0.3`) for standalone Kokoro or audition runs. |
 | `--clause-pause` | Clause-break pause in seconds (0–0.5) for standalone Kokoro or audition runs. |
-| `--sentence-tail` / `--fragment-tail` | Trim tails for audition runs (0–0.6 s).        |
+| `--sentence-tail` / `--fragment-tail` | Trim tails for audition runs (0–0.8 s).        |
 | `--speed`       | Speed multiplier for standalone Kokoro or audition runs.                   |
 | `--threads`     | CPU thread count for standalone Kokoro or audition runs.                   |
 | `--text`        | Text to synthesise; can be repeated in audition mode for multiple samples. |

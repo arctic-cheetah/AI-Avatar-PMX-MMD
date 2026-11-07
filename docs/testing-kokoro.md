@@ -72,13 +72,14 @@ clip to the speech plus a short tail. So two different knobs shape cadence:
 | Knob | Where it acts | Default | Range |
 | --- | --- | ---: | ---: |
 | `--clause-pause` (bridge: `--kokoro-clause-pause`) | Kokoro, inside a sentence: pause at commas, semicolons, dashes | 0.25 s | 0–0.5 s |
-| `--sentence-tail` | Trim, after a full sentence: the gap before the next clip | 0.4 s | 0–0.6 s |
-| `--fragment-tail` | Trim, after a fragment split by a mood tag: keeps it flowing | 0.1 s | 0–0.6 s |
+| `--sentence-tail` | Trim, after a full sentence: the gap before the next clip | 0.4 s | 0–0.8 s |
+| `--fragment-tail` | Trim, after a fragment split by a mood tag: keeps it flowing | 0.1 s | 0–0.8 s |
 
 Kokoro's own `sentence_pause` is deliberately not exposed: with one sentence
 per request it would only add silence that the trimmer removes. The tails
-apply to Edge clips as well. Tails above about 0.3 s may bring back the soft
-RVC breath that the trimmer exists to remove, so listen for it.
+apply to Edge clips as well. Long tails keep any soft RVC breath that follows
+the speech, so listen for it; past the source's own silence (about 0.5 s for
+Kokoro) the tail is padded with digital silence (#84).
 
 `--voice` also accepts a weighted blend of up to four voices with the same
 accent (all `a…` or all `b…`), for example `af_heart:0.7,af_bella:0.3`.

@@ -8,6 +8,30 @@ const UNSUPPORTED =
   "Pop out needs Chrome or Edge 116+ (Document Picture-in-Picture).";
 
 /**
+ * Copy the page's styles into the floating window. Readable (same-origin)
+ * rules are copied inline so they apply at once: a cloned <link> loads
+ * later, and the first resize would measure an unstyled canvas.
+ * @param {Document} from The main page.
+ * @param {Document} to The floating window's document.
+ * @returns {void}
+ */
+function copyStyles(from, to) {
+  for (const sheet of from.styleSheets) {
+    try {
+      const style = to.createElement("style");
+      style.textContent = [...sheet.cssRules].map((rule) => rule.cssText).join("\n");
+      to.head.append(style);
+    } catch {
+      if (!sheet.href) continue;
+      const link = to.createElement("link");
+      link.rel = "stylesheet";
+      link.href = sheet.href;
+      to.head.append(link);
+    }
+  }
+}
+
+/**
  * requestAnimationFrame on a window that can change, so the render loop can
  * follow the canvas into the floating window. Browsers pause frames in a
  * hidden tab; the floating window keeps its own.
@@ -108,9 +132,7 @@ export class PopOut {
   async #open() {
     const view = await this.api.requestWindow({ ...this.size });
     const { document } = view;
-    for (const sheet of this.host.document.querySelectorAll('link[rel="stylesheet"], style')) {
-      document.head.append(sheet.cloneNode(true));
-    }
+    copyStyles(this.host.document, document);
     document.body.classList.add("pop-out");
     for (const node of this.nodes) {
       const marker = this.host.document.createComment("pop-out");

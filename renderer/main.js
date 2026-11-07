@@ -391,6 +391,8 @@ function setStatus(text) {
  * Match the camera and both renderers to the canvas, which shares the
  * window with the test bench panel.
  * OutlineEffect maintains its own size, separate from WebGLRenderer.
+ * Neither may write an inline CSS size: the stylesheet sizes the canvas,
+ * in the page and in the pop-out window alike.
  * @returns {void}
  */
 function resize() {
@@ -399,7 +401,7 @@ function resize() {
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
   renderer.setSize(width, height, false);
-  outline.setSize(width, height);
+  outline.setSize(width, height, false);
 }
 
 const PANEL_WIDTH_KEY = "yidhari.panelWidth";
@@ -1433,6 +1435,8 @@ function onPopOut(view) {
     view.addEventListener("pointermove", followCursor);
     view.addEventListener("pointerleave", centreCursor);
     view.addEventListener("resize", resize);
+    // An observer from the floating window's own realm follows the canvas there.
+    new view.ResizeObserver(resize).observe(canvas);
   }
   gaze.setCursor({ x: 0, y: 0 }, cursorGazeToggle.checked);
   popOutNote.hidden = !view;

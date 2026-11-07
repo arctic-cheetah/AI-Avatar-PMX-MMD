@@ -38,6 +38,10 @@ in `ApplioSettings`), because each request is a single sentence and the
 trimmer cuts any trailing silence Kokoro adds. Voice-style blending (tier 3):
 `kokoro_voice` accepts `name:weight,…`; the worker mixes the style vectors
 once at startup. Both are parameter-only changes with no extra model pass.
+Mood prosody (tier 2, `--mood-prosody`): `controller/prosody.py` maps a
+segment's mood group and weight to a clamped speed/clause-pause multiplier and
+an RVC semitone shift; `ApplioWorker.request()` adds them as optional fields to
+the per-sentence JSON lines, and each worker validates them again.
 
 ```text
 User text -> llama-server (Qwen, Vulkan, 127.0.0.1:8080)

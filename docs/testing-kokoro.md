@@ -160,7 +160,7 @@ turns on all of the following:
 | Gap by ending | Trim tail chosen by the clip's last mark: `…`/`...` `--ellipsis-tail`, `!` (incl. `?!`) `--exclaim-tail`, `?` `--question-tail`, `.` `--sentence-tail` | 0.6 / 0.3 / 0.4 / 0.4 s |
 | Ellipsis pace | A sentence ending in `…` is spoken ×0.96 | on |
 | Exclamation volume | A clip ending in `!` (incl. `?!`) is made louder by `--exclaim-gain` dB (0–6). A soft limiter (≈3 ms look-ahead, 50 ms release) then holds brief peaks at −1 dBFS, so the boost is not lost to the little headroom RVC clips have. An earlier extra ±1 semitone on `!` was too strong when listened to (7 Nov 2026) and was removed; mood pitch still applies | +3 dB |
-| Dashes | `—`, `–` and spaced ` - ` become a comma, so Kokoro's clause pause applies; `1–5` becomes "1 to 5" and hyphenated words are kept | on |
+| Dashes | `—`, `–` and spaced ` - ` become a comma, so Kokoro's clause pause applies; `1–5` becomes "1 to 5" and hyphenated words are kept. A dash at the end of a clip (`So it goes —`) stays as a comma, and a clip ending in `,` `;` `:` keeps a tail equal to `--kokoro-clause-pause` | on |
 
 - Tails range 0–0.8 s. Kokoro leaves about 0.5 s of silence after speech,
   so a longer tail is padded with digital silence instead of being capped.

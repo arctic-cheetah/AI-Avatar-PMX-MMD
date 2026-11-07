@@ -23,6 +23,13 @@ class TailByEndingTests(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertEqual(tail_keep(text, **TAILS), expected)
 
+    def test_clause_ending_gets_clause_tail(self):
+        for text in ('So it goes,', 'First this;', 'As follows:', '"So it goes,"'):
+            with self.subTest(text=text):
+                self.assertEqual(tail_keep(text, **TAILS, clause_tail=0.25), 0.25)
+                # Without a clause tail (cadence off) it stays a flowing fragment.
+                self.assertEqual(tail_keep(text, **TAILS), 0.1)
+
     def test_unset_ending_tails_fall_back_to_sentence_tail(self):
         for text in ('Well...', 'Wow!', 'Really?'):
             self.assertEqual(tail_keep(text, sentence_tail=0.4, fragment_tail=0.1), 0.4)
@@ -163,7 +170,11 @@ class DashAndEllipsisTests(unittest.TestCase):
             'A false-positive alert.': 'A false-positive alert.',
             'Pages 1–5 and 3-4.': 'Pages 1 to 5 and 3-4.',
             'Well, — fine.': 'Well, fine.',
-            'So it goes —': 'So it goes',
+            # A trailing dash keeps its pause as a comma (PR #86 review).
+            'So it goes —': 'So it goes,',
+            'I was going to -': 'I was going to,',
+            'Wait—': 'Wait,',
+            '— Hi there.': 'Hi there.',
             'Plain text.': 'Plain text.',
         }
         for text, expected in cases.items():
@@ -207,7 +218,13 @@ class SynthesisePunctuationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sent['gain'], [3.0])
         self.assertEqual(sent['metrics']['prosody']['gainDb'], 3.0)
         self.assertEqual(tails, {'sentence_tail': 0.4, 'fragment_tail': 0.1, 'ellipsis_tail': 0.6,
-                                 'exclaim_tail': 0.3, 'question_tail': 0.4})
+                                 'exclaim_tail': 0.3, 'question_tail': 0.4, 'clause_tail': 0.25})
+
+    async def test_trailing_dash_keeps_clause_pause(self):
+        settings = ApplioSettings(tts_provider='kokoro', punctuation_cadence=True)
+        sent, tails = await self.run_segment(settings, Segment('So it goes —', 'neutral', 1.0))
+        self.assertEqual(sent['text'], 'So it goes,')
+        self.assertEqual(tails['clause_tail'], settings.kokoro_clause_pause)
 
     async def test_cadence_stacks_with_mood_prosody(self):
         settings = ApplioSettings(tts_provider='kokoro', punctuation_cadence=True, mood_prosody=True)

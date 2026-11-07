@@ -68,7 +68,7 @@ runs. Listen for word endings, pronunciation, breath artifacts and voice identit
 
 Everything below that was approved by listening (#29, #84) is **on by default**:
 mood prosody (§2b), punctuation cadence (§2c), emphasis (§2d), interjection
-contours and word lifts (§2e). Turn a part off with its `--no-…` flag (for
+contours and word lifts (§2e), and quote voice (§2f). Turn a part off with its `--no-…` flag (for
 example `--no-word-lifts`), or all of them with `--plain-voice`, e.g. to A/B
 against the plain Kokoro → RVC voice. Emphasis, contours and lifts only act
 with `--tts kokoro`.
@@ -301,6 +301,25 @@ written for; otherwise the worker logs it and speaks without bends. A plain
 .venv/bin/python -m controller.audition_kokoro --interjection-contours \
   --mood tender --text "Aww, that is so sweet." --text "Ooh! Nice." \
   --output-dir assets/private/speech/kokoro-audition/issue-84-contours
+```
+
+## 2f. Quotations (#84 tier 5b)
+
+Yidhari's actor sets a quotation apart: a slight pause before it and a
+slightly lower voice across it. Quote voice (Kokoro only) is on by default after
+listening (8 Nov 2026); `--no-quote-voice` or `--plain-voice` turns it off, a `"…"` or `“…”` span gets an
+emphasis pause before its first word and one gentle pitch dip of
+`--quote-bend` semitones (default −2, ±12) across all of its words, bent into
+the F0 curve like the contours in §2e. Unbalanced quotes are ignored.
+
+A different pace for just the quoted words is not included: Kokoro's speed
+is one number per sentence, so it would mean splitting the sentence into
+separate clips, which risks audible joins.
+
+```bash
+.venv/bin/python -m controller.audition_kokoro --quote-voice \
+  --text 'She said "I love it" and smiled.' \
+  --output-dir assets/private/speech/kokoro-audition/issue-84-quotes
 ```
 
 ## 3. Test on the avatar

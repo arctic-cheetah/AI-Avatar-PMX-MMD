@@ -1082,6 +1082,18 @@ def build_parser():
         help="Semitones at a word lift's peak (-12 to 12).",
     )
     parser.add_argument(
+        "--quote-voice",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help='Kokoro: a pause before a "quote" and a slight pitch dip across it.',
+    )
+    parser.add_argument(
+        "--quote-bend",
+        type=float,
+        default=-2.0,
+        help="Semitones at a quotation's pitch dip (-12 to 12).",
+    )
+    parser.add_argument(
         "--question-rise-bend",
         type=float,
         default=9.0,
@@ -1160,6 +1172,8 @@ def speech_settings(args):
         word_lifts=args.word_lifts and not plain,
         word_lift_bend=args.word_lift_bend,
         question_rise_bend=args.question_rise_bend,
+        quote_voice=args.quote_voice and not plain,
+        quote_bend=args.quote_bend,
         emphasis_pause=args.emphasis_pause,
         rvc_threads=args.rvc_threads,
         **({"pth": args.pth.expanduser().resolve()} if args.pth else {}),

@@ -22,7 +22,8 @@ def join_wavs(paths: list[Path], output: Path) -> None:
 
 async def audition(args) -> None:
     if args.plain_voice:
-        for name in ('mood_prosody', 'punctuation_cadence', 'emphasis', 'interjection_contours', 'word_lifts'):
+        for name in ('mood_prosody', 'punctuation_cadence', 'emphasis', 'interjection_contours', 'word_lifts',
+                     'quote_voice'):
             setattr(args, name, False)
     settings = ApplioSettings(tts_provider='kokoro', kokoro_voice=args.voice,
                              kokoro_speed=args.speed, kokoro_threads=args.threads,
@@ -38,6 +39,7 @@ async def audition(args) -> None:
                              interjection_hold=args.interjection_hold,
                              word_lifts=args.word_lifts, word_lift_bend=args.word_lift_bend,
                              question_rise_bend=args.question_rise_bend,
+                             quote_voice=args.quote_voice, quote_bend=args.quote_bend,
                              rvc_threads=args.rvc_threads)
     settings.check()
     worker = ApplioWorker(settings)
@@ -121,6 +123,8 @@ def main() -> None:
                         help='Lift endearments in address and the word before "!".')
     parser.add_argument('--word-lift-bend', type=float, default=4.0)
     parser.add_argument('--question-rise-bend', type=float, default=9.0)
+    parser.add_argument('--quote-voice', action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument('--quote-bend', type=float, default=-2.0)
     parser.add_argument('--plain-voice', action='store_true',
                         help='Turn every expressive voice part off.')
     parser.add_argument('--mood-prosody', action=argparse.BooleanOptionalAction, default=True,

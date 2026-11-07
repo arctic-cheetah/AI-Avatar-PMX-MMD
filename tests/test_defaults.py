@@ -4,7 +4,8 @@ import unittest
 from controller.bridge import build_parser, speech_settings
 from controller.speech import ApplioSettings
 
-FEATURES = ('mood_prosody', 'punctuation_cadence', 'emphasis', 'interjection_contours', 'word_lifts')
+FEATURES = ('mood_prosody', 'punctuation_cadence', 'emphasis', 'interjection_contours', 'word_lifts',
+            'quote_voice')
 
 
 class ExpressiveDefaultTests(unittest.TestCase):

@@ -106,7 +106,8 @@ class ApplioSettings:
     word_lift_bend: float = 4.0  # semitones at the lift's peak
     dynamic_emphasis: bool = False  # Kokoro: deeper, drawn-out "buuut"; brighter *word* (#83)
     drawl_bend: float = -2.0  # semitones at a drawl's dip (slightly deeper; listened 8 Nov 2026)
-    drawl_hold: float = 0.0  # off: short vowels break up when held; awaits ONNX per-token speed (#83)
+    drawl_hold: float = 0.0  # off: short vowels break up when held; only used without drawl_stretch
+    drawl_stretch: float = 0.125  # seconds per drawn-out sound, said by Kokoro itself (per-token speed, #83)
     quote_voice: bool = True  # Kokoro: pause before and a slight pitch dip across quotes (#84)
     quote_bend: float = -2.0  # semitones at the quote's dip
     question_rise_bend: float = 9.0  # semitones a question's last word rises (peak at 70 %)
@@ -156,6 +157,8 @@ class ApplioSettings:
             raise ValueError("drawl_bend must be between -12 and 12 semitones.")
         if not math.isfinite(self.drawl_hold) or not 0.0 <= self.drawl_hold <= 0.45:
             raise ValueError("drawl_hold must be between 0 and 0.45 seconds.")
+        if not math.isfinite(self.drawl_stretch) or not 0.0 <= self.drawl_stretch <= 0.125:
+            raise ValueError("drawl_stretch must be between 0 and 0.125 seconds.")
         if not math.isfinite(self.quote_bend) or abs(self.quote_bend) > 12.0:
             raise ValueError("quote_bend must be between -12 and 12 semitones.")
         if not math.isfinite(self.question_rise_bend) or abs(self.question_rise_bend) > 12.0:
@@ -512,9 +515,12 @@ class ApplioWorker:
         source_metrics = None
         # Interjections first, so they keep their contour if the per-sentence cap is reached.
         quoted = [index for pair in quotes for index in pair]
-        # A drawl keeps Kokoro's own vowel and holds it ("bˈʌːːt" was heard as "boot").
+        # A drawl keeps Kokoro's own vowel ("bˈʌːːt" was heard as "boot"); Kokoro says it
+        # longer with per-token speed, or, with that off, the vowel is held.
+        stretching = self.settings.drawl_stretch > 0
+        stretch = [[index, self.settings.drawl_stretch] for index in drawls][:MAX_SPANS] if stretching else []
         held = [list(hold) for hold in holds]
-        if self.settings.drawl_hold > 0:
+        if not stretching and self.settings.drawl_hold > 0:
             held += [[index, self.settings.drawl_hold] for index in drawls
                      if index not in {hold[0] for hold in holds}]
         held = held[:MAX_SPANS]
@@ -525,6 +531,7 @@ class ApplioWorker:
                 fields={
                     **self._kokoro_fields(prosody, emphasis, spanned),
                     **({"holds": held} if held else {}),
+                    **({"stretch": stretch} if stretch else {}),
                 },
             )
         request_id = secrets.token_hex(8)
@@ -586,6 +593,8 @@ class ApplioWorker:
                         "sampleRate",
                         "ttsRtf",
                         "emphasisPauses",
+                        "stretched",
+                        "stretchSkipped",
                     )
                     if key in source_metrics
                 }
@@ -746,6 +755,8 @@ async def synthesise(
             "sampleRate",
             "ttsRtf",
             "emphasisPauses",
+            "stretched",
+            "stretchSkipped",
             "contours",
             "lifts",
             "rises",

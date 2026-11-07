@@ -540,7 +540,8 @@ class QuestionRiseTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(reply['rises'], 1)
 
     def test_question_rise_settings_and_flag(self):
-        self.assertEqual(ApplioSettings().question_rise_bend, 8.0)
+        # Listening: questions needed 10-20 Hz more; one semitone is ~+14 Hz at ~230 Hz.
+        self.assertEqual(ApplioSettings().question_rise_bend, 9.0)
         for value in (-12.1, 12.1, float('nan')):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 ApplioSettings(applio_dir=Path('/nonexistent'), question_rise_bend=value).check()
@@ -578,3 +579,23 @@ class AudibleSpanTests(unittest.TestCase):
         start, end = metrics['wordSpans'][0]
         self.assertEqual(start, 1.15)
         self.assertAlmostEqual(end, 1.3, delta=0.011)   # was 1.55: the quiet tail is dropped
+
+
+class AwwSpellingTests(unittest.TestCase):
+    """Listening: "awah" came back; LLM spellings like Awwww!/Aaww!/aWWW! escaped the fix."""
+
+    def test_aww_family_is_written_canonically(self):
+        from controller.kokoro_worker import canonical_aww
+        self.assertEqual(canonical_aww('Awwww! Aaww, aWWW and Awwh. Awwwwww~'),
+                         'Aww! Aww, aww and Aww. Aww~')
+        for text in ('Aw, shucks.', 'Awful weather.', 'I saw it.', 'Away we go.', 'Aww, sweet.'):
+            with self.subTest(text=text):
+                self.assertEqual(canonical_aww(text), text)
+
+    def test_synthesize_speaks_any_aww_spelling_as_one_vowel(self):
+        synthesizer = KokoroSpanTests.synthesizer(self)
+        espeak = {'Aww!': 'ˈɔːwə!', 'Awwww!': 'ˈɔːʊˌʊwə!'}
+        synthesizer.model.tokenizer.phonemize.side_effect = lambda text, lang: espeak[text]
+        synthesizer.synthesize('Awwww!', 'out.wav')
+        args, kwargs = synthesizer.model.create.call_args
+        self.assertEqual((args[0], kwargs['is_phonemes']), ('ˈɔːɔː!', True))

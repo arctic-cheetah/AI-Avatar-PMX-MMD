@@ -254,6 +254,18 @@ replaces those with one long vowel, `ɔːɔː` (about 0.25 s, no dip in loudness
 before synthesis. A plain `Aw` (`ɔː`, about 0.15 s) is left alone. This is a
 Kokoro front-end issue, so retraining the RVC voice would not change it.
 
+**Word lifts:** with `--word-lifts` (Kokoro only, off by default), two kinds
+of word get a smaller rise-fall bump of `--word-lift-bend` semitones (default
+4, ±12), since they sounded monotonous against the rest of the sentence:
+
+- terms of endearment used to address someone, i.e. followed by punctuation:
+  "Thank you, *sweetheart*!", "Hi *honey*, …", "Oh, my *love*." ("I love it"
+  and "honey cake" are left alone);
+- the word right before `!`: "We did *it*!".
+
+Interjections keep their own, larger contour. At most four bends are used
+per sentence, interjections first.
+
 The wrapper is installed only if `get_f0` still has the signature it was
 written for; otherwise the worker logs it and speaks without bends. A plain
 `Oh` is left alone, since it often drops on purpose ("Oh no.").

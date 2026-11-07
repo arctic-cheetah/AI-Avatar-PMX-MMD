@@ -1022,6 +1022,11 @@ def build_parser():
         default=0.1,
         help="Seconds kept after a fragment split by a mood tag (0-0.6).",
     )
+    parser.add_argument(
+        "--mood-prosody",
+        action="store_true",
+        help="Let mood tags nudge Kokoro speed/pauses and RVC pitch per sentence (clamped).",
+    )
     parser.add_argument("--rvc-threads", type=int, default=0)
     parser.add_argument(
         "--agent",
@@ -1050,6 +1055,7 @@ def speech_settings(args):
         kokoro_threads=args.kokoro_threads,
         sentence_tail=args.sentence_tail,
         fragment_tail=args.fragment_tail,
+        mood_prosody=args.mood_prosody,
         rvc_threads=args.rvc_threads,
         **({"pth": args.pth.expanduser().resolve()} if args.pth else {}),
         **({"index": args.index.expanduser().resolve()} if args.index else {}),

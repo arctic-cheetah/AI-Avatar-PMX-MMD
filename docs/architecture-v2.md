@@ -42,6 +42,10 @@ Mood prosody (tier 2, `--mood-prosody`): `controller/prosody.py` maps a
 segment's mood group and weight to a clamped speed/clause-pause multiplier and
 an RVC semitone shift; `ApplioWorker.request()` adds them as optional fields to
 the per-sentence JSON lines, and each worker validates them again.
+Punctuation cadence (#84, `--punctuation-cadence`): `trim_clip()` picks the
+tail by the clip's final mark and pads silence past the source's own;
+`punctuation_prosody()` adds `!`/`…` rules that `combine()` stacks with the
+mood prosody; `shape_punctuation()` turns dashes into commas before TTS.
 
 ```text
 User text -> llama-server (Qwen, Vulkan, 127.0.0.1:8080)

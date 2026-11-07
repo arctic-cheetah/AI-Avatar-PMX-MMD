@@ -147,6 +147,34 @@ Each `results.json` entry records the mood, weight and applied prosody. On the
 avatar, add `--mood-prosody` to the bridge command and listen especially at
 mood changes in the middle of a sentence, where two clips meet.
 
+## 2c. Punctuation-driven cadence (#84)
+
+Based on listening to Yidhari's English voice actor: she lingers on ellipses,
+an exclamation rises with happy moods and falls with negative ones, and dashes
+read as a breath. `--punctuation-cadence` (off by default until auditioned)
+turns on all of the following:
+
+| Rule | What happens | Default |
+| --- | --- | --- |
+| Gap by ending | Trim tail chosen by the clip's last mark: `…`/`...` `--ellipsis-tail`, `!` (incl. `?!`) `--exclaim-tail`, `?` `--question-tail`, `.` `--sentence-tail` | 0.6 / 0.3 / 0.4 / 0.4 s |
+| Ellipsis pace | A sentence ending in `…` is spoken ×0.96 | on |
+| Exclamation pitch | `!` adds +1 semitone with energetic moods and −1 with low or negative moods (sad group, angry, super-angry, annoyed, frown, disgusted, unimpressed), scaled by the tag's weight | on |
+| Dashes | `—`, `–` and spaced ` - ` become a comma, so Kokoro's clause pause applies; `1–5` becomes "1 to 5" and hyphenated words are kept | on |
+
+- Tails range 0–0.8 s. Kokoro leaves about 0.5 s of silence after speech,
+  so a longer tail is padded with digital silence instead of being capped.
+- Punctuation prosody stacks with `--mood-prosody` (speed multiplies, pitch
+  adds) inside the same clamps: speed ±8 %, pitch ±2 semitones.
+- An ellipsis touching the next word (`Wait...what?!`) now always splits the
+  sentence there, like `Wait... what?!`; this needs no flag.
+
+```bash
+.venv/bin/python -m controller.audition_kokoro --mood-prosody --punctuation-cadence \
+  --mood excited --mood sad --mood thinking \
+  --text "Yay — we did it!" --text "Hmm… I am not sure." --text "Really?" \
+  --output-dir assets/private/speech/kokoro-audition/issue-84
+```
+
 ## 3. Test on the avatar
 
 Run these commands in separate terminals:

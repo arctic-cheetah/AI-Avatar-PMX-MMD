@@ -20,6 +20,7 @@ THRESHOLD_DB = -50.0     # dBFS; Edge's silence is far below this, soft endings 
 LEAD_KEEP = 0.05         # seconds kept before speech
 TAIL_KEEP = 0.25         # seconds kept after a sentence end
 FRAGMENT_TAIL_KEEP = 0.1 # seconds kept after a fragment split by a mood tag
+MAX_TAIL_KEEP = 0.6     # longer tails start to keep RVC's breath artifacts
 SENTENCE_ENDINGS = tuple('.!?…')
 
 
@@ -40,12 +41,14 @@ def speech_bounds(source: Path, threshold_db: float = THRESHOLD_DB,
     return loud[0] / ANALYSIS_RATE, (loud[-1] + size) / ANALYSIS_RATE
 
 
-def tail_keep(text: str) -> float:
+def tail_keep(text: str, sentence_tail: float = TAIL_KEEP,
+              fragment_tail: float = FRAGMENT_TAIL_KEEP) -> float:
     """A full stop earns a natural pause; a mood-tag split should flow on."""
-    return TAIL_KEEP if text.rstrip('"\')] ').endswith(SENTENCE_ENDINGS) else FRAGMENT_TAIL_KEEP
+    return sentence_tail if text.rstrip('"\')] ').endswith(SENTENCE_ENDINGS) else fragment_tail
 
 
-def trim_clip(source: Path, wav: Path, text: str) -> dict:
+def trim_clip(source: Path, wav: Path, text: str, sentence_tail: float = TAIL_KEEP,
+              fragment_tail: float = FRAGMENT_TAIL_KEEP) -> dict:
     """Trim ``wav`` in place to the speech in ``source`` plus margins; return before/after seconds."""
     with wave.open(str(wav), 'rb') as clip:
         params = clip.getparams()
@@ -55,7 +58,7 @@ def trim_clip(source: Path, wav: Path, text: str) -> dict:
     if bounds is None:
         return {'beforeSeconds': round(before, 3), 'afterSeconds': round(before, 3), 'trimmed': False}
     start = max(0.0, bounds[0] - LEAD_KEEP)
-    end = min(before, bounds[1] + tail_keep(text))
+    end = min(before, bounds[1] + tail_keep(text, sentence_tail, fragment_tail))
     if end <= start:
         return {'beforeSeconds': round(before, 3), 'afterSeconds': round(before, 3), 'trimmed': False}
     width = params.sampwidth * params.nchannels

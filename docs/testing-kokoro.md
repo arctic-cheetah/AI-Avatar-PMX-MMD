@@ -31,7 +31,7 @@ Kokoro weights are Apache-2.0; the wrapper is MIT licensed.
 ```bash
 .venv-kokoro/bin/python -m controller.kokoro_worker \
   --text "Good evening! I am ready to keep you company." \
-  --voice af_heart --speed 1.0 --threads 2
+  --voice af_heart:0.7,af_bella:0.3 --speed 1.0 --threads 2
 ```
 
 Open `assets/private/speech/kokoro-test.wav` in an audio player. This is Kokoro's
@@ -54,7 +54,7 @@ It is independent of Edge's existing −15% rate setting.
 
 ```bash
 .venv/bin/python -m controller.audition_kokoro \
-  --voice af_heart --threads 2 --rvc-threads 4
+  --voice af_heart:0.7,af_bella:0.3 --threads 2 --rvc-threads 4
 ```
 
 This produces two WAV files, transcripts, final-audio viseme tracks and
@@ -63,6 +63,53 @@ audition custom sentences. `--output-dir` selects a different results directory.
 The JSON report points to each WAV and records per-stage timings. These clips
 survive ordinary avatar runs; the separate `live/` directory is cleared by those
 runs. Listen for word endings, pronunciation, breath artifacts and voice identity.
+
+## 2a. Cadence and voice-style blending (#29)
+
+Kokoro receives **one sentence per request**, and the trimmer then cuts each
+clip to the speech plus a short tail. So two different knobs shape cadence:
+
+| Knob | Where it acts | Default | Range |
+| --- | --- | ---: | ---: |
+| `--clause-pause` (bridge: `--kokoro-clause-pause`) | Kokoro, inside a sentence: pause at commas, semicolons, dashes | 0.25 s | 0–0.5 s |
+| `--sentence-tail` | Trim, after a full sentence: the gap before the next clip | 0.4 s | 0–0.6 s |
+| `--fragment-tail` | Trim, after a fragment split by a mood tag: keeps it flowing | 0.1 s | 0–0.6 s |
+
+Kokoro's own `sentence_pause` is deliberately not exposed: with one sentence
+per request it would only add silence that the trimmer removes. The tails
+apply to Edge clips as well. Tails above about 0.3 s may bring back the soft
+RVC breath that the trimmer exists to remove, so listen for it.
+
+`--voice` also accepts a weighted blend of up to four voices with the same
+accent (all `a…` or all `b…`), for example `af_heart:0.7,af_bella:0.3`.
+Weights must be positive and are normalised to sum to 1. The style vectors
+are mixed once when the worker starts, so a blend costs nothing per sentence.
+
+Audition several settings with the same sentences, for example:
+
+```bash
+for pause in 0.05 0.1 0.25; do
+  .venv/bin/python -m controller.audition_kokoro \
+    --voice af_heart:0.7,af_bella:0.3 --clause-pause "$pause" --sentence-tail 0.25 \
+    --text "Well, I checked the logs, and the alert was a false positive." \
+    --text "Shall we tune the rule together?" \
+    --output-dir "assets/private/speech/kokoro-audition/pause-$pause"
+done
+```
+
+Compare `ttsSeconds` and `rvcSeconds` in each `results.json` with the
+measurements below; these settings only change parameters, so latency should
+stay the same.
+
+**Chosen defaults — 7 November 2026.** After listening to Kokoro → RVC clips,
+the user picked `af_heart:0.7,af_bella:0.3`, clause pause 0.25 s, sentence
+tail 0.4 s and fragment tail 0.1 s as the most natural.
+Measured on the same two sentences: `ttsSeconds`
+0.690 / 0.354 and `rvcSeconds` 2.15 / 1.15 (CPU RVC), versus 0.653 / 0.335 and
+2.34 / 1.19 for the old `af_heart` defaults — no latency cost. Pass
+`--kokoro-voice af_heart --kokoro-clause-pause 0.1 --sentence-tail 0.25` to
+return to the previous sound. The sentence tail also applies to Edge clips. Mood-driven prosody (per-sentence speed and pitch) follows in a
+separate PR.
 
 ## 3. Test on the avatar
 
@@ -88,7 +135,7 @@ llama-server, then run:
 
 ```bash
 .venv/bin/python -m controller.bridge --mode llm --speech \
-  --tts kokoro --kokoro-voice af_heart --kokoro-speed 1.0 \
+  --tts kokoro --kokoro-voice af_heart:0.7,af_bella:0.3 --kokoro-speed 1.0 \
   --kokoro-threads 2 --rvc-threads 4
 ```
 
@@ -139,7 +186,7 @@ visual lip-sync quality and preservation of soft endings need your listening che
   branch. RVC itself can run on the AMD GPU via `--applio-dir ../Applio-rocm`
   (verified 2026-10-23; see [the bridge guide](./running-the-bridge.md) and
   `docs/architecture-v2.md`). Prosody work (intonation, cadence, inflection)
-  is tracked in #29.
+  is tracked in #29; cadence controls and voice blending are in section 2a.
 
 Validation commands:
 

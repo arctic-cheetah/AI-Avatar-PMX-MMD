@@ -7,6 +7,7 @@ import asyncio
 import json
 import math
 from pathlib import Path
+import re
 import tempfile
 import threading
 import time
@@ -15,20 +16,63 @@ from controller.applio_worker import protocol_stream, read_stdin
 
 ROOT = Path(__file__).resolve().parents[1]
 MODEL_DIR = ROOT / 'models' / 'kokoro'
+VOICE_ID = re.compile(r'[ab][a-z]_[a-z]+')
+MAX_BLEND_VOICES = 4
+MAX_CLAUSE_PAUSE = 0.5
 
 
-def validate_settings(voice: str, speed: float, threads: int) -> None:
-    if not voice or not isinstance(voice, str):
-        raise ValueError('Kokoro voice must be a nonempty voice ID.')
+def parse_voice(spec) -> list[tuple[str, float]]:
+    """Parse ``af_heart`` or ``af_heart:0.7,af_bella:0.3`` into normalised (voice, weight) pairs.
+
+    Voices must be American or British English IDs of one accent, at most four,
+    without repeats; weights must be positive and finite and are scaled to sum to 1.
+    """
+    if not isinstance(spec, str) or not spec.strip():
+        raise ValueError('Kokoro voice must be a nonempty voice ID or blend.')
+    parts = []
+    for item in spec.split(','):
+        name, sep, weight = (part.strip() for part in item.partition(':'))
+        if not VOICE_ID.fullmatch(name):
+            raise ValueError(f'Invalid Kokoro voice in blend: {name!r}; use American or British English IDs.')
+        try:
+            value = float(weight) if sep else 1.0
+        except ValueError:
+            raise ValueError(f'Invalid weight for Kokoro voice {name}.') from None
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError(f'Kokoro voice weight for {name} must be positive and finite.')
+        parts.append((name, value))
+    names = [name for name, _ in parts]
+    if len(parts) > MAX_BLEND_VOICES:
+        raise ValueError(f'A Kokoro blend may use at most {MAX_BLEND_VOICES} voices.')
+    if len(set(names)) != len(names):
+        raise ValueError('A Kokoro blend must not repeat a voice.')
+    if len({name[0] for name in names}) != 1:
+        raise ValueError('A Kokoro blend must use voices of one accent (all a… or all b…).')
+    total = sum(weight for _, weight in parts)
+    return [(name, weight / total) for name, weight in parts]
+
+
+def blend_style(parts: list[tuple[str, float]], get_style):
+    """Weighted sum of the voices' style vectors (or the single voice's own vector)."""
+    if len(parts) == 1:
+        return get_style(parts[0][0])
+    return sum(weight * get_style(name) for name, weight in parts)
+
+
+def validate_settings(voice: str, speed: float, threads: int, clause_pause: float = 0.1) -> None:
+    parse_voice(voice)
     if not math.isfinite(speed) or not 0.5 <= speed <= 2.0:
         raise ValueError('Kokoro speed must be between 0.5 and 2.0.')
     if threads < 1:
         raise ValueError('Kokoro threads must be at least 1.')
+    if not math.isfinite(clause_pause) or not 0.0 <= clause_pause <= MAX_CLAUSE_PAUSE:
+        raise ValueError(f'Kokoro clause pause must be between 0 and {MAX_CLAUSE_PAUSE} seconds.')
 
 
 class Synthesizer:
-    def __init__(self, voice: str = 'af_heart', speed: float = 1.0, threads: int = 2):
-        validate_settings(voice, speed, threads)
+    def __init__(self, voice: str = 'af_heart:0.7,af_bella:0.3', speed: float = 1.0, threads: int = 2,
+                 clause_pause: float = 0.25):
+        validate_settings(voice, speed, threads, clause_pause)
         import onnxruntime
         from kokoro_onnx import Kokoro
         import soundfile
@@ -43,19 +87,22 @@ class Synthesizer:
             str(MODEL_DIR / 'kokoro-v1.0.onnx'), sess_options=options,
             providers=['CPUExecutionProvider'])
         self.model = Kokoro.from_session(session, str(MODEL_DIR / 'voices-v1.0.bin'))
-        if voice not in self.model.voices:
-            raise ValueError(f'Unknown Kokoro voice: {voice}; use --list-voices.')
-        if not voice.startswith(('a', 'b')):
-            raise ValueError('This test deployment supports American and British English voices.')
-        self.voice, self.speed, self.soundfile = voice, speed, soundfile
+        parts = parse_voice(voice)
+        for name, _ in parts:
+            if name not in self.model.voices:
+                raise ValueError(f'Unknown Kokoro voice: {name}; use --list-voices.')
+        # Mixed once here, so a blend costs nothing per sentence.
+        self.style = blend_style(parts, self.model.get_voice_style)
+        self.voice, self.speed, self.clause_pause, self.soundfile = voice, speed, clause_pause, soundfile
 
     def synthesize(self, text: str, path: str) -> dict:
         if not isinstance(text, str) or not text.strip() or len(text) > 16000:
             raise ValueError('Speech text must contain 1–16000 characters.')
         started = time.perf_counter()
         samples, rate = self.model.create(
-            text, voice=self.voice, speed=self.speed,
-            lang='en-gb' if self.voice.startswith('b') else 'en-us', trim=False)
+            text, voice=self.style, speed=self.speed,
+            lang='en-gb' if self.voice.lstrip().startswith('b') else 'en-us', trim=False,
+            clause_pause=self.clause_pause)
         if not len(samples):
             raise RuntimeError('Kokoro returned empty audio.')
         self.soundfile.write(path, samples, rate, subtype='PCM_16')
@@ -105,14 +152,15 @@ def main() -> None:
     parser.add_argument('--worker', action='store_true')
     parser.add_argument('--text', default='Hello, I am ready to keep you company. What shall we work on?')
     parser.add_argument('--output', type=Path, default=ROOT / 'assets/private/speech/kokoro-test.wav')
-    parser.add_argument('--voice', default='af_heart')
+    parser.add_argument('--voice', default='af_heart:0.7,af_bella:0.3')
     parser.add_argument('--speed', type=float, default=1.0)
+    parser.add_argument('--clause-pause', type=float, default=0.25)
     parser.add_argument('--threads', type=int, default=2)
     parser.add_argument('--list-voices', action='store_true')
     args = parser.parse_args()
     replies = protocol_stream() if args.worker else None
     started = time.perf_counter()
-    synthesizer = Synthesizer(args.voice, args.speed, args.threads)
+    synthesizer = Synthesizer(args.voice, args.speed, args.threads, args.clause_pause)
     load_seconds = time.perf_counter() - started
     if args.list_voices:
         print('\n'.join(sorted(name for name in synthesizer.model.voices if name.startswith(('a', 'b')))))

@@ -83,6 +83,13 @@ class TrimTests(unittest.TestCase):
         self.assertEqual(tail_keep('He said "Hi!"'), 0.25)
         self.assertEqual(tail_keep('Well'), 0.1)
 
+    def test_configured_tails(self):
+        self.assertEqual(tail_keep('Hello.', sentence_tail=0.4, fragment_tail=0.05), 0.4)
+        self.assertEqual(tail_keep('Well', sentence_tail=0.4, fragment_tail=0.05), 0.05)
+        trim_clip(self.source, self.output, 'Hello there.', sentence_tail=0.1)
+        # 0.05 s lead + 1.0 s speech + 0.1 s tail.
+        self.assertAlmostEqual(duration(self.output), 1.15, delta=0.02)
+
 
 class FakeStages:
     """Edge and RVC stand-ins that record timing, order and concurrency."""

@@ -31,6 +31,14 @@ for setup, commands and measurements. RVC itself can run on the AMD GPU via
 `--applio-dir ../Applio-rocm` (ROCm PyTorch, Radeon 8060S/gfx1151); measured
 2026-10-23 below and in [the bridge guide](./running-the-bridge.md).
 
+Cadence (#29, tier 1): RVC keeps the source's rhythm, so cadence is set before
+conversion. Kokoro's `clause_pause` shapes pauses inside a sentence; the gap
+between sentences comes from the trim tails (`sentence_tail`, `fragment_tail`
+in `ApplioSettings`), because each request is a single sentence and the
+trimmer cuts any trailing silence Kokoro adds. Voice-style blending (tier 3):
+`kokoro_voice` accepts `name:weight,…`; the worker mixes the style vectors
+once at startup. Both are parameter-only changes with no extra model pass.
+
 ```text
 User text -> llama-server (Qwen, Vulkan, 127.0.0.1:8080)
                     |

@@ -126,7 +126,7 @@ export class SpeechPlayer {
   /**
    * Start a clip from the beginning, replacing any clip already playing.
    * @param {SpeechClip} clip Loaded clip.
-   * @returns {Promise<void>}
+   * @returns {Promise<boolean>} Whether playback started (false if cancelled during setup).
    */
   async play(clip) {
     this.stop();
@@ -134,7 +134,7 @@ export class SpeechPlayer {
     const context = this.audioContext();
     await context.resume();
     const output = await this.volume.connect(context);
-    if (generation !== this.generation) return;
+    if (generation !== this.generation) return false;
     const source = context.createBufferSource();
     // Flush the limiter's delayed tail before onended advances the queue.
     // Keep the original clip and viseme timeline untouched.
@@ -151,6 +151,7 @@ export class SpeechPlayer {
       source.disconnect();
       if (this.source === source) {
         this.source = null;
+        this.clip = null;
         this.onEnded?.();
       }
     };
@@ -159,6 +160,7 @@ export class SpeechPlayer {
     this.startTime = context.currentTime;
     this.source = source;
     source.start(this.startTime);
+    return true;
   }
 
   /** Stop audio and release the mouth back to the mood. */
@@ -166,6 +168,7 @@ export class SpeechPlayer {
     this.generation += 1;
     const source = this.source;
     this.source = null;
+    this.clip = null;
     source?.stop();
     source?.disconnect();
     this.volume.resetLimiter?.();

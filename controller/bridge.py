@@ -1014,14 +1014,30 @@ def build_parser():
         "--sentence-tail",
         type=float,
         default=0.4,
-        help="Seconds of silence kept after a full sentence; the gap between clips (0-0.6).",
+        help="Seconds of silence kept after a full sentence; the gap between clips (0-0.8).",
     )
     parser.add_argument(
         "--fragment-tail",
         type=float,
         default=0.1,
-        help="Seconds kept after a fragment split by a mood tag (0-0.6).",
+        help="Seconds kept after a fragment split by a mood tag (0-0.8).",
     )
+    parser.add_argument(
+        "--punctuation-cadence",
+        action="store_true",
+        help="Shape delivery by punctuation: per-ending gaps, ! pitch by mood, slower ellipses, dashes as pauses.",
+    )
+    for flag, default, what in (
+        ("--ellipsis-tail", 0.6, "an ellipsis"),
+        ("--exclaim-tail", 0.3, "an exclamation"),
+        ("--question-tail", 0.4, "a question"),
+    ):
+        parser.add_argument(
+            flag,
+            type=float,
+            default=default,
+            help=f"Seconds kept after {what} with --punctuation-cadence (0-0.8).",
+        )
     parser.add_argument(
         "--mood-prosody",
         action="store_true",
@@ -1056,6 +1072,10 @@ def speech_settings(args):
         sentence_tail=args.sentence_tail,
         fragment_tail=args.fragment_tail,
         mood_prosody=args.mood_prosody,
+        punctuation_cadence=args.punctuation_cadence,
+        ellipsis_tail=args.ellipsis_tail,
+        exclaim_tail=args.exclaim_tail,
+        question_tail=args.question_tail,
         rvc_threads=args.rvc_threads,
         **({"pth": args.pth.expanduser().resolve()} if args.pth else {}),
         **({"index": args.index.expanduser().resolve()} if args.index else {}),

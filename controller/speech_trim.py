@@ -20,8 +20,9 @@ THRESHOLD_DB = -50.0     # dBFS; Edge's silence is far below this, soft endings 
 LEAD_KEEP = 0.05         # seconds kept before speech
 TAIL_KEEP = 0.25         # seconds kept after a sentence end
 FRAGMENT_TAIL_KEEP = 0.1 # seconds kept after a fragment split by a mood tag
-MAX_TAIL_KEEP = 0.6     # longer tails start to keep RVC's breath artifacts
+MAX_TAIL_KEEP = 0.8     # an ellipsis may linger; silence past the source's own is padded
 SENTENCE_ENDINGS = tuple('.!?…')
+CLOSERS = '"\')] ”’'
 
 
 def speech_bounds(source: Path, threshold_db: float = THRESHOLD_DB,
@@ -41,14 +42,34 @@ def speech_bounds(source: Path, threshold_db: float = THRESHOLD_DB,
     return loud[0] / ANALYSIS_RATE, (loud[-1] + size) / ANALYSIS_RATE
 
 
+def ending(text: str) -> str:
+    """The clip's final mark, ignoring closing quotes: ellipsis, exclaim, question, sentence or fragment."""
+    end = text.rstrip(CLOSERS)
+    if end.endswith(('…', '...')):
+        return 'ellipsis'
+    if end.endswith('!'):  # also ?! and !!
+        return 'exclaim'
+    if end.endswith('?'):
+        return 'question'
+    return 'sentence' if end.endswith(SENTENCE_ENDINGS) else 'fragment'
+
+
 def tail_keep(text: str, sentence_tail: float = TAIL_KEEP,
-              fragment_tail: float = FRAGMENT_TAIL_KEEP) -> float:
-    """A full stop earns a natural pause; a mood-tag split should flow on."""
-    return sentence_tail if text.rstrip('"\')] ').endswith(SENTENCE_ENDINGS) else fragment_tail
+              fragment_tail: float = FRAGMENT_TAIL_KEEP, ellipsis_tail: float | None = None,
+              exclaim_tail: float | None = None, question_tail: float | None = None) -> float:
+    """A full stop earns a natural pause; a mood-tag split should flow on.
+
+    Ellipsis, exclamation and question tails default to the sentence tail.
+    """
+    kind = ending(text)
+    if kind == 'fragment':
+        return fragment_tail
+    chosen = {'ellipsis': ellipsis_tail, 'exclaim': exclaim_tail, 'question': question_tail}.get(kind)
+    return sentence_tail if chosen is None else chosen
 
 
 def trim_clip(source: Path, wav: Path, text: str, sentence_tail: float = TAIL_KEEP,
-              fragment_tail: float = FRAGMENT_TAIL_KEEP) -> dict:
+              fragment_tail: float = FRAGMENT_TAIL_KEEP, **ending_tails: float) -> dict:
     """Trim ``wav`` in place to the speech in ``source`` plus margins; return before/after seconds."""
     with wave.open(str(wav), 'rb') as clip:
         params = clip.getparams()
@@ -58,13 +79,15 @@ def trim_clip(source: Path, wav: Path, text: str, sentence_tail: float = TAIL_KE
     if bounds is None:
         return {'beforeSeconds': round(before, 3), 'afterSeconds': round(before, 3), 'trimmed': False}
     start = max(0.0, bounds[0] - LEAD_KEEP)
-    end = min(before, bounds[1] + tail_keep(text, sentence_tail, fragment_tail))
+    end = bounds[1] + tail_keep(text, sentence_tail, fragment_tail, **ending_tails)
     if end <= start:
         return {'beforeSeconds': round(before, 3), 'afterSeconds': round(before, 3), 'trimmed': False}
     width = params.sampwidth * params.nchannels
     first, last = int(start * params.framerate), int(end * params.framerate)
+    # A tail longer than the silence the clip has is padded with digital silence.
+    padding = max(0, last - params.nframes)
     with wave.open(str(wav), 'wb') as clip:
         clip.setparams(params)
-        clip.writeframes(frames[first * width:last * width])
+        clip.writeframes(frames[first * width:last * width] + bytes(padding * width))
     return {'beforeSeconds': round(before, 3), 'afterSeconds': round((last - first) / params.framerate, 3),
             'trimmed': True}

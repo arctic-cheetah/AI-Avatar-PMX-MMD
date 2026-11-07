@@ -15,7 +15,10 @@ async def audition(args) -> None:
                              kokoro_speed=args.speed, kokoro_threads=args.threads,
                              kokoro_clause_pause=args.clause_pause,
                              sentence_tail=args.sentence_tail, fragment_tail=args.fragment_tail,
-                             mood_prosody=args.mood_prosody, rvc_threads=args.rvc_threads)
+                             mood_prosody=args.mood_prosody,
+                             punctuation_cadence=args.punctuation_cadence,
+                             ellipsis_tail=args.ellipsis_tail, exclaim_tail=args.exclaim_tail,
+                             question_tail=args.question_tail, rvc_threads=args.rvc_threads)
     settings.check()
     worker = ApplioWorker(settings)
     directory = args.output_dir.resolve()
@@ -41,7 +44,8 @@ async def audition(args) -> None:
                                       'clausePause': args.clause_pause,
                                       'sentenceTail': args.sentence_tail,
                                       'fragmentTail': args.fragment_tail,
-                                      'moodProsody': args.mood_prosody}
+                                      'moodProsody': args.mood_prosody,
+                                  'punctuationCadence': args.punctuation_cadence}
                 results.append(result)
                 print(json.dumps(result), flush=True)
     finally:
@@ -76,6 +80,11 @@ def main() -> None:
     parser.add_argument('--rvc-threads', type=int, default=4)
     parser.add_argument('--mood', type=mood_arg, action='append',
                         help='Mood for every --text, as name or name:weight; repeat to compare.')
+    parser.add_argument('--punctuation-cadence', action='store_true',
+                        help='Per-ending gaps, ! pitch by mood, slower ellipses, dashes as pauses.')
+    parser.add_argument('--ellipsis-tail', type=float, default=0.6)
+    parser.add_argument('--exclaim-tail', type=float, default=0.3)
+    parser.add_argument('--question-tail', type=float, default=0.4)
     parser.add_argument('--mood-prosody', action='store_true',
                         help='Apply mood-driven speed, pauses and RVC pitch.')
     parser.add_argument('--output-dir', type=Path, default=ROOT / 'assets/private/speech/kokoro-audition')

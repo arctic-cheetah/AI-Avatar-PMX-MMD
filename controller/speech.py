@@ -22,7 +22,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from controller.prosody import Prosody, prosody_for
+from controller.prosody import Prosody, combine, prosody_for, punctuation_prosody
 from controller.speech_align import align
 from controller.speech_trim import FRAGMENT_TAIL_KEEP, MAX_TAIL_KEEP, trim_clip
 
@@ -34,6 +34,10 @@ DEFAULT_INDEX = Path("logs") / "Yidhari-zzz" / "Yidhari-zzz.index"
 CLIP_ID = re.compile(r"[0-9a-f]{16}")
 # A sentence ends at . ! ? or … (optionally followed by closing quotes) plus whitespace.
 SENTENCE_END = re.compile(r'(?<=[.!?…])["\')\]]*\s+')
+# An ellipsis run straight into a word ("Wait...what") still ends the sentence.
+ELLIPSIS_TOUCH = re.compile(r"(\.\.\.|…)(?=[^\W\d_])")
+DIGIT_RANGE = re.compile(r"(?<=\d)\s*[–—]\s*(?=\d)")
+DASH = re.compile(r"\s*[—–]\s*|\s+-\s+")
 WORKER_SCRIPT = Path(__file__).with_name("applio_worker.py")
 WORKER_LOG = LIVE_DIR.parent / "applio-worker.log"
 LOG = logging.getLogger(__name__)
@@ -66,6 +70,10 @@ class ApplioSettings:
     sentence_tail: float = 0.4  # silence kept after a sentence: the gap between clips
     fragment_tail: float = FRAGMENT_TAIL_KEEP  # after a mood-tag fragment
     mood_prosody: bool = False  # mood tags also nudge speed, pauses and RVC pitch (#29)
+    punctuation_cadence: bool = False  # endings, ! pitch, … pace, dashes shape delivery (#84)
+    ellipsis_tail: float = 0.6  # used with punctuation_cadence
+    exclaim_tail: float = 0.3
+    question_tail: float = 0.4
 
     def __post_init__(self) -> None:
         self.applio_dir = Path(self.applio_dir).expanduser()
@@ -98,7 +106,7 @@ class ApplioSettings:
             raise ValueError("TTS provider must be edge or kokoro.")
         if self.rvc_threads < 0:
             raise ValueError("RVC threads must be nonnegative.")
-        for name in ("sentence_tail", "fragment_tail"):
+        for name in ("sentence_tail", "fragment_tail", "ellipsis_tail", "exclaim_tail", "question_tail"):
             value = getattr(self, name)
             if not math.isfinite(value) or not 0.0 <= value <= MAX_TAIL_KEEP:
                 raise ValueError(f"{name} must be between 0 and {MAX_TAIL_KEEP} seconds.")
@@ -154,6 +162,15 @@ def clean_for_tts(text: str) -> str:
     return " ".join("".join(kept).split()).lstrip("-– ")
 
 
+def shape_punctuation(text: str) -> str:
+    """Turn dashes into commas so Kokoro's clause pause applies; keep number ranges and hyphenated words."""
+    text = DIGIT_RANGE.sub(" to ", text)
+    text = DASH.sub(", ", text)
+    text = re.sub(r",(\s*,)+", ",", text)
+    text = re.sub(r",\s*(?=[.!?…])", "", text)
+    return " ".join(text.split()).strip(" ,")
+
+
 def speakable(text: str) -> bool:
     return any(char.isalnum() for char in text)
 
@@ -182,7 +199,7 @@ class Segmenter:
             self.buffer = ""
             self.expression, self.weight = event["name"], event["weight"]
         elif event["type"] == "say":
-            self.buffer += event["text"]
+            self.buffer = ELLIPSIS_TOUCH.sub(r"\1 ", self.buffer + event["text"])
             parts = SENTENCE_END.split(self.buffer)
             for sentence in parts[:-1]:
                 self._emit(sentence)
@@ -418,23 +435,30 @@ async def synthesise(
     extension = "wav" if worker.settings.tts_provider == "kokoro" else "mp3"
     source = directory / f"{clip_id}.src.{extension}"
     wav = directory / f"{clip_id}.wav"
-    text_path.write_text(segment.text + "\n", encoding="utf-8")
-    try:
-        prosody = (
+    settings = worker.settings
+    text = shape_punctuation(segment.text) if settings.punctuation_cadence else segment.text
+    text_path.write_text(text + "\n", encoding="utf-8")
+    tails = {"sentence_tail": settings.sentence_tail, "fragment_tail": settings.fragment_tail}
+    if settings.punctuation_cadence:
+        tails.update(
+            ellipsis_tail=settings.ellipsis_tail,
+            exclaim_tail=settings.exclaim_tail,
+            question_tail=settings.question_tail,
+        )
+    prosody = None
+    if settings.mood_prosody or settings.punctuation_cadence:
+        prosody = combine(
             prosody_for(segment.expression, segment.weight)
-            if worker.settings.mood_prosody
-            else None
+            if settings.mood_prosody
+            else Prosody(),
+            punctuation_prosody(text, segment.expression, segment.weight)
+            if settings.punctuation_cadence
+            else Prosody(),
         )
-        reply = await worker.request(segment.text, source, wav, run, prosody=prosody)
+    try:
+        reply = await worker.request(text, source, wav, run, prosody=prosody)
         # Trim before aligning so the lip-sync timings match the audio that plays.
-        trim = await asyncio.to_thread(
-            trim_clip,
-            source,
-            wav,
-            segment.text,
-            sentence_tail=worker.settings.sentence_tail,
-            fragment_tail=worker.settings.fragment_tail,
-        )
+        trim = await asyncio.to_thread(trim_clip, source, wav, text, **tails)
         source.unlink(missing_ok=True)
         track = await asyncio.to_thread(
             align, wav, text_path, worker.settings.recognizer

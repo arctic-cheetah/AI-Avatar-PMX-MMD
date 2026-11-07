@@ -22,6 +22,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from controller.kokoro_worker import MAX_EMPHASIS
 from controller.prosody import Prosody, combine, prosody_for, punctuation_prosody
 from controller.speech_align import align
 from controller.speech_trim import FRAGMENT_TAIL_KEEP, MAX_TAIL_KEEP, apply_gain, trim_clip
@@ -39,7 +40,8 @@ SENTENCE_END = re.compile(r'(?<=[.!?…])(["\')\]*]*)\s+')
 ELLIPSIS_TOUCH = re.compile(r"(\.\.\.|…)(?=[^\W\d_])")
 DIGIT_RANGE = re.compile(r"(?<=\d)\s*[–—]\s*(?=\d)")
 # Single-asterisk emphasis such as *really*; **bold** and a * b are not emphasis.
-EMPHASIS = re.compile(r"(?<![*\w])\*(?![\s*])([^*\n]+?)(?<!\s)\*(?![*\w])")
+# Only one word: multi-word spans like *giggles softly* are roleplay actions (PR #88 review).
+EMPHASIS = re.compile(r"(?<![*\w])\*([^\s*]+)\*(?![*\w])")
 EMPHASIS_MARK = "\ue000"  # private-use marker kept through cleaning, then removed
 DASH = re.compile(r"\s*[—–]\s*|\s+-(?:\s+|$)")
 WORKER_SCRIPT = Path(__file__).with_name("applio_worker.py")
@@ -207,12 +209,15 @@ class Segmenter:
     _done: list[Segment] = field(default_factory=list)
 
     def _emit(self, text: str) -> None:
+        # A stray marker from the LLM must not create a phantom emphasis.
+        text = text.replace(EMPHASIS_MARK, "")
         marked = clean_for_tts(EMPHASIS.sub(lambda m: EMPHASIS_MARK + m.group(1), text))
+        # Untrusted markup: keep the first marks the worker accepts rather than fail the sentence.
         emphasis = tuple(
             index
             for index, word in enumerate(spoken_words(marked))
             if EMPHASIS_MARK in word
-        )
+        )[:MAX_EMPHASIS]
         cleaned = " ".join(marked.replace(EMPHASIS_MARK, "").split())
         if speakable(cleaned):
             self._done.append(Segment(cleaned, self.expression, self.weight, emphasis))

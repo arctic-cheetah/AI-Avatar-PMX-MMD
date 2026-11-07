@@ -131,6 +131,11 @@ EMPHASIS_PROMPT = (
 )
 
 
+def prompts_emphasis(settings):
+    """Only Kokoro pauses for *word* emphasis, so only then teach the LLM to write it."""
+    return bool(settings and settings.emphasis and settings.tts_provider == "kokoro")
+
+
 def system_prompt(catalog, emphasis=False):
     return (
         "You are Yidhari, a warm, lovable, concise companion. Answer the user. Act like a waifu. "
@@ -601,7 +606,7 @@ async def handle_connection(socket, args, catalog):
 
     worker = getattr(args, "speech_worker", None)
     speech_settings = getattr(args, "speech_settings", None)
-    system = system_prompt(catalog, emphasis=bool(speech_settings and speech_settings.emphasis))
+    system = system_prompt(catalog, emphasis=prompts_emphasis(speech_settings))
     tool_session = None
     if getattr(args, "tools", False):
         from controller.tools import ToolSession, TOOL_PROMPT

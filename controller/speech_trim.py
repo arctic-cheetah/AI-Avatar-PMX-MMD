@@ -1,6 +1,6 @@
 """Trim silence and RVC breath artifacts from the start and end of a clip.
 
-Speech bounds come from the Edge TTS source, which has clean silence. RVC keeps
+Speech bounds come from the TTS source (Kokoro or Edge), which has clean silence. RVC keeps
 timing, so cutting the converted WAV at the source's bounds also removes the
 breath-like noise RVC sometimes adds in the silent tail. Run before alignment so
 lip-sync timings match the trimmed audio.
@@ -23,6 +23,7 @@ TAIL_KEEP = 0.25         # seconds kept after a sentence end
 FRAGMENT_TAIL_KEEP = 0.1 # seconds kept after a fragment split by a mood tag
 MAX_TAIL_KEEP = 0.8     # an ellipsis may linger; silence past the source's own is padded
 SENTENCE_ENDINGS = tuple('.!?…')
+PAD_FADE = 0.02         # seconds faded out before padded tail silence
 PEAK_LIMIT_DB = -1.0    # gain never pushes a sample above this
 LIMITER_BLOCK = 0.001   # seconds per limiter gain step
 LIMITER_LOOKAHEAD = 0.003  # start reducing this long before a peak
@@ -162,8 +163,21 @@ def trim_clip(source: Path, wav: Path, text: str, sentence_tail: float = TAIL_KE
     first, last = int(start * params.framerate), int(end * params.framerate)
     # A tail longer than the silence the clip has is padded with digital silence.
     padding = max(0, last - params.nframes)
+    kept = frames[first * width:last * width]
+    if padding and params.sampwidth == 2:
+        # Fade RVC's residual tail out, so it never stops abruptly into digital silence.
+        fade = min(len(kept) // width, int(PAD_FADE * params.framerate)) * params.nchannels
+        tail = array('h')
+        tail.frombytes(kept[len(kept) - fade * 2:])
+        if sys.byteorder == 'big':
+            tail.byteswap()
+        n = len(tail)
+        tail = array('h', (int(x * (n - 1 - i) / max(1, n)) for i, x in enumerate(tail)))
+        if sys.byteorder == 'big':
+            tail.byteswap()
+        kept = kept[:len(kept) - fade * 2] + tail.tobytes()
     with wave.open(str(wav), 'wb') as clip:
         clip.setparams(params)
-        clip.writeframes(frames[first * width:last * width] + bytes(padding * width))
+        clip.writeframes(kept + bytes(padding * width))
     return {'beforeSeconds': round(before, 3), 'afterSeconds': round((last - first) / params.framerate, 3),
             'trimmed': True}

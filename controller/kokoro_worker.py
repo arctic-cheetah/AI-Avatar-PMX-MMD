@@ -351,7 +351,7 @@ class Synthesizer:
             validate_holds(holds)
         lang = 'en-gb' if self.voice.lstrip().startswith('b') else 'en-us'
         started = time.perf_counter()
-        pauses, found = None, {}
+        pauses, found, skipped = None, {}, 'misaligned'
         timed = bool(emphasis or spans or holds)
         phonemes = (self.model.tokenizer.phonemize(text, lang)
                     if timed or needs_respelling(text) else None)
@@ -378,6 +378,9 @@ class Synthesizer:
                          for k, (s, e) in found.items()}
             if emphasis:
                 pauses = len(points)
+                if not points:
+                    skipped = ('no-timings' if not timings else
+                               'first-word' if all(i == 0 for i in emphasis) else 'not-found')
         elif spoken and spoken != phonemes:  # pronunciation fix only
             samples, rate = self.model.create(
                 spoken, voice=self.style, speed=speed, lang=lang, trim=False,
@@ -400,6 +403,8 @@ class Synthesizer:
                    'ttsRtf': round(seconds / duration, 3)}
         if pauses is not None:
             metrics['emphasisPauses'] = pauses
+            if pauses == 0:
+                metrics['emphasisSkipped'] = skipped
         if spans is not None:
             metrics['wordSpans'] = [list(found[i]) for i in spans if i in found]
             metrics['spanWords'] = [i for i in spans if i in found]

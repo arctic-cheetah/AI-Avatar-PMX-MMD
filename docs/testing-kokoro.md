@@ -228,12 +228,14 @@ about 4 st inside "Aww, …", so the peak is roughly 4 + bend:
 
 Two octaves is therefore not offered; ±12 st is the limit.
 
-**Hold:** "Aww" should last about 0.6–1 s, but Kokoro tops out near 0.45 s
-before the vowel splits into syllables. With `--interjection-contours`, an
-`aw`/`aww` word is lengthened to `--interjection-hold` seconds (default 0.8,
-0–1.2; 0 turns it off) by repeating whole pitch periods from the steady
-middle of the vowel, with short crossfades, before RVC re-voices it. The pitch
-bend then covers the longer word.
+**Hold (off by default):** with `--interjection-hold SECONDS` (0–1.2) and
+`--interjection-contours`, an `aw`/`aww` word is lengthened by repeating whole
+pitch periods from the steady middle of the vowel, with short crossfades,
+before RVC re-voices it; the pitch bend then covers the longer word. A first
+default of 0.8 s (asked for as 0.6–1 s) sounded like "aw-aw-aw" and slower
+than the rest of the speech when listened to, while the corrected vowel alone
+already lasts about 0.36–0.39 s, so the default is 0 (Kokoro's own length).
+Short holds (≤ 0.45 s) repeat few cycles and stutter least.
 
 How it works, without touching Kokoro's model:
 

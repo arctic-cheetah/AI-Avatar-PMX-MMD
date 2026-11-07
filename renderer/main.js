@@ -34,7 +34,7 @@ import { connectBridge } from "./bridge-client.js";
 import { SpeechPlayer, loadSpeechShapes } from "./speech-player.js";
 import { VoiceVolume, bindVoiceVolume } from "./voice-volume.js";
 import { LiveSpeechSession } from "./speech-session.js";
-import { LastSpeechReplay, replayQueueItems } from "./speech-replay.js";
+import { LastSpeechReplay, dropQueuedReplay, replayQueueItems } from "./speech-replay.js";
 import { FillerSession } from "./filler-session.js";
 import { ThinkingPose, THINKING_POSE } from "./thinking-pose.js";
 import { buildThinkingRig } from "./thinking-rig.js";
@@ -178,7 +178,7 @@ const speechQueue = [];
 /** Bumped on every new response or stop, so stale clip loads are discarded. */
 let liveRun = 0;
 let speechTurn = 0;
-let pendingAgentTurn = false;
+let playingReplay = false;
 let speechStarting = false;
 let sampleStarting = false;
 let replayStarting = false;
@@ -1032,6 +1032,7 @@ function syncReplayControls() {
  */
 function stopSpeech(message) {
   liveRun += 1;
+  playingReplay = false;
   speechQueue.length = 0;
   fillerSpeech.reset();
   speech?.stop();
@@ -1067,6 +1068,11 @@ function applyMood(name, weight) {
  * @returns {void}
  */
 function enqueueSpeech({ id, expression, weight, text }) {
+  const kept = dropQueuedReplay(speechQueue);
+  speechQueue.length = 0;
+  speechQueue.push(...kept);
+  const interruptReplay = playingReplay;
+  playingReplay = false;
   liveSpeech.clipQueued();
   const fillerId = fillerSpeech.takeForAnswer();
   if (fillerId !== null) {
@@ -1077,9 +1083,8 @@ function enqueueSpeech({ id, expression, weight, text }) {
   const clip = speech.load(`${LIVE_CLIP_DIR}${id}.wav`, `${LIVE_CLIP_DIR}${id}.visemes.json`);
   clip.catch(() => {}); // Reported when its turn comes.
   speechQueue.push({ clip, expression, weight, text, turn: speechTurn });
-  if (!speech.playing && !speechStarting) {
-    playNextSpeech();
-  }
+  if (interruptReplay) speech.stop();
+  if (interruptReplay || (!speech.playing && !speechStarting)) playNextSpeech();
   syncReplayControls();
 }
 
@@ -1108,6 +1113,7 @@ async function playNextSpeech() {
       }
       if (!started) continue;
       if (!next.filler && !next.replay) lastSpeech.remember({ ...next, clip, turn: next.turn });
+      playingReplay = Boolean(next.replay);
       speechButton.textContent = "■ Stop";
       speechStatus.textContent = `${next.replay ? "Replaying" : "Speaking"} (${next.expression}): ${next.text}`;
       break;
@@ -1195,6 +1201,7 @@ function onModelLoaded(loaded, data) {
   audition = new MorphAudition(mesh, buildMorphInventory(data, mesh));
   speech = new SpeechPlayer(mesh, SPEECH_SHAPES, voiceVolume);
   speech.onEnded = () => {
+    playingReplay = false;
     if (speechQueue.length > 0) {
       playNextSpeech();
       return;
@@ -1262,8 +1269,6 @@ function onModelLoaded(loaded, data) {
   connectBridge({
     catalog: EXPRESSION_CATALOG,
     onStart: () => {
-      speechTurn += 1;
-      pendingAgentTurn = false;
       chatResponding = true;
       for (const section of document.querySelectorAll('#panel > section:not(:first-child)')) section.inert = true;
       expressions.stopLoop();
@@ -1276,10 +1281,6 @@ function onModelLoaded(loaded, data) {
       transcript.textContent = '';
     },
     onFinish: () => {
-      if (pendingAgentTurn) {
-        pendingAgentTurn = false;
-        speechTurn += 1;
-      }
       chatResponding = false;
       for (const section of document.querySelectorAll('#panel > section:not(:first-child)')) section.inert = false;
       liveSpeech.responseFinished();
@@ -1287,7 +1288,6 @@ function onModelLoaded(loaded, data) {
       syncReplayControls();
     },
     onReset: () => {
-      pendingAgentTurn = false;
       // Silence any reply still speaking; the bridge has already cancelled it.
       lastSpeech.clear();
       stopSpeech("");
@@ -1299,10 +1299,9 @@ function onModelLoaded(loaded, data) {
     onText: (text) => { transcript.textContent = (transcript.textContent + text).slice(-50000); },
     onFiller: ({ id }) => fillerSpeech.reserve(id),
     onSpeak: enqueueSpeech,
+    onTurn: () => { speechTurn += 1; },
     onAgentSay: (chatBusy) => {
-      if (chatBusy) pendingAgentTurn = true;
-      else speechTurn += 1;
-      // Outside a chat reply, agent speech is its own finished response, so the face relaxes after it.
+      // The bubble arrives when the item is queued. The turn opens on the later turn event.
       if (!chatBusy) liveSpeech.responseFinished();
     },
     onAgentMood: (name, weight) => {

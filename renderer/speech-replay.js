@@ -34,6 +34,7 @@ export class LastSpeechReplay {
    * @returns {boolean} Whether this clip was retained.
    */
   remember({ clip, expression, weight, text, turn }) {
+    if (this.turn === turn && (this.partial || this.expired)) return false;
     const same = this.turn === turn && this.entries.length > 0;
     const base = same ? this.entries : [];
     const duration = base.reduce((sum, item) => sum + item.clip.buffer.duration, 0) + clip.buffer.duration;
@@ -77,6 +78,11 @@ export class LastSpeechReplay {
  * @param {{ clip: import('./speech-player.js').SpeechClip, expression: string, weight: number, text: string }[]} entries
  * @returns {{ clip: Promise<import('./speech-player.js').SpeechClip>, expression: string, weight: number, text: string, replay: true }[]}
  */
+/** Drop replay clips so a live sentence is next, without removing live clips already waiting. */
+export function dropQueuedReplay(queue) {
+  return queue.filter(item => !item.replay);
+}
+
 export function replayQueueItems(entries) {
   return entries.map(({ clip, expression, weight, text }) => ({
     clip: Promise.resolve(clip),

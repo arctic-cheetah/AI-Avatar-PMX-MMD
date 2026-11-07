@@ -55,7 +55,7 @@ export function agentEvent(event, catalog) {
   throw new Error('Unknown agent event');
 }
 
-export function connectBridge({ catalog, onStart, onFinish, onExpression, onText, onSpeak, onFiller, onReset, onAgentSay, onAgentMood }) {
+export function connectBridge({ catalog, onStart, onFinish, onExpression, onText, onSpeak, onFiller, onReset, onAgentSay, onAgentMood, onTurn }) {
   const button = document.querySelector('#bridge-start');
   const status = document.querySelector('#bridge-status');
   const chatBar = document.querySelector('#chat-bar');
@@ -226,6 +226,8 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
             if (typeof event.id !== 'string' || !CLIP_ID.test(event.id) || !Object.hasOwn(catalog, event.expression) ||
               typeof event.weight !== 'number' || !Number.isFinite(event.weight) || typeof event.text !== 'string') throw new Error('Invalid speak');
             onSpeak({ id: event.id, expression: event.expression, weight: Math.max(0, Math.min(1, event.weight)), text: event.text }); break;
+          case 'turn':
+            onTurn?.(); break;
           case 'agent': {
             const agent = agentEvent(event, catalog);
             if (agent.kind === 'say') {

@@ -729,6 +729,7 @@ async def handle_connection(socket, args, catalog):
                 clear_live_clips()
                 segmenter, queue = Segmenter(), asyncio.Queue()
                 run = secrets.token_hex(8)
+                await send({"type": "turn"})
                 speaker = asyncio.create_task(speak_segments(queue, send, worker, run))
             async for chunk in chunks:
                 if thinking and worker is None:

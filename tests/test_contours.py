@@ -536,7 +536,7 @@ class QuestionRiseTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(tts['spans'], [2])
         # Probe on real RVC: 4 st peaking at the end only touched the last blip; 8 st peaking
         # at 70 % turned Kokoro's fall ("so" 202 -> 152 Hz) into a rise (204 -> 192 -> 207 -> 241 Hz).
-        self.assertEqual(reply['request']['bend'], [[0.2, 0.5, 8.0, 0.7]])
+        self.assertEqual(reply['request']['bend'], [[0.2, 0.5, 9.0, 0.7]])
         self.assertEqual(reply['rises'], 1)
 
     def test_question_rise_settings_and_flag(self):

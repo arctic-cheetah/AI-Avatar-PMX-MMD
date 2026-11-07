@@ -22,6 +22,10 @@ MAX_CLAUSE_PAUSE = 0.5
 # Optional per-sentence request fields.
 PROSODY_FIELDS = ('speed', 'clause_pause', 'emphasis', 'emphasis_pause', 'spans')
 MAX_SPANS = 4  # word spans reported per sentence (for RVC pitch bends)
+# espeak says "aww" as ɔːwə ("aw-wuh", heard as "awah"); one long vowel sounds right.
+AWW_WORD = re.compile(r'a+w{2,}h*', re.IGNORECASE)
+AWW_PHONEMES = re.compile('ɔːʊ?wə')
+WORD_EDGES = '.,!?…;:"\'()[]—–-*“”‘’'
 SPAN_PUNCTUATION = frozenset(',.!?…;:—"\'()')
 MAX_EMPHASIS = 3          # emphasised words per sentence
 MAX_EMPHASIS_PAUSE = 0.3  # seconds
@@ -102,6 +106,26 @@ def _spoken_words(timings):
             current = []
         else:
             current.append(timing)
+
+
+def needs_respelling(text: str) -> bool:
+    return any(AWW_WORD.fullmatch(word.strip(WORD_EDGES)) for word in text.split())
+
+
+def respell_phonemes(text: str, phonemes: str) -> str:
+    """Replace espeak's "aw-wuh" for aww/awww with one long ɔːɔː; other words are untouched.
+
+    Only applied when the phoneme words line up with the text's spoken words.
+    """
+    if not aligned(text, phonemes):
+        return phonemes
+    words = [word for word in text.split() if _is_word(word)]
+    tokens = phonemes.split(' ')
+    spoken = (i for i, token in enumerate(tokens) if _is_word(token))
+    for word, index in zip(words, spoken):
+        if AWW_WORD.fullmatch(word.strip(WORD_EDGES)):
+            tokens[index] = AWW_PHONEMES.sub('ɔːɔː', tokens[index])
+    return ' '.join(tokens)
 
 
 def word_spans(timings, words) -> dict[int, tuple[float, float]]:
@@ -230,10 +254,13 @@ class Synthesizer:
         lang = 'en-gb' if self.voice.lstrip().startswith('b') else 'en-us'
         started = time.perf_counter()
         pauses, found = None, {}
-        phonemes = self.model.tokenizer.phonemize(text, lang) if emphasis or spans else None
-        if phonemes and aligned(text, phonemes):
+        timed = bool(emphasis or spans)
+        phonemes = (self.model.tokenizer.phonemize(text, lang)
+                    if timed or needs_respelling(text) else None)
+        spoken = respell_phonemes(text, phonemes) if phonemes else None
+        if timed and phonemes and aligned(text, phonemes):
             samples, rate, timings = self.model.create_timed(
-                phonemes, voice=self.style, speed=speed, lang=lang, is_phonemes=True,
+                spoken, voice=self.style, speed=speed, lang=lang, is_phonemes=True,
                 trim=False, clause_pause=clause_pause)
             points = pause_points(timings, emphasis or [])
             found = shift_spans(word_spans(timings, spans or []), points, emphasis_pause)
@@ -241,6 +268,12 @@ class Synthesizer:
                 samples = splice_silence(list(samples), rate, points, emphasis_pause)
             if emphasis:
                 pauses = len(points)
+        elif spoken and spoken != phonemes:  # pronunciation fix only
+            samples, rate = self.model.create(
+                spoken, voice=self.style, speed=speed, lang=lang, trim=False,
+                clause_pause=clause_pause, is_phonemes=True)
+            if emphasis:
+                pauses = 0
         else:
             samples, rate = self.model.create(
                 text, voice=self.style, speed=speed, lang=lang, trim=False,

@@ -57,12 +57,13 @@ class FakeParent extends FakeNode {
   }
 }
 
-function fakeDocument(styles = []) {
+function fakeDocument(styleSheets = []) {
   return {
     head: new FakeParent("head"),
     body: new FakeParent("body"),
+    styleSheets,
     createComment: (text) => new FakeNode(`<!--${text}-->`),
-    querySelectorAll: () => styles,
+    createElement: (tag) => new FakeParent(tag),
   };
 }
 
@@ -105,7 +106,10 @@ function fakeWindow(document = fakeDocument()) {
 }
 
 function stage() {
-  const styles = [new FakeNode("styles.css")];
+  const styles = [
+    { href: "http://127.0.0.1:8770/renderer/styles.css", cssRules: [{ cssText: "#view { display: block; }" }, { cssText: "[hidden] { display: none; }" }] },
+    { href: "https://cdn.example/other.css", get cssRules() { throw new Error("SecurityError"); } },
+  ];
   const host = fakeWindow(fakeDocument(styles));
   const main = new FakeParent("stage");
   const canvas = new FakeNode("canvas");
@@ -193,7 +197,13 @@ test("opening moves the avatar into an always-on-top window with the page styles
   assert.equal(view, pipApi.pip);
   assert.equal(popOut.window, view);
   assert.deepEqual(pipApi.requests, [{ width: 360, height: 480 }]);
-  assert.deepEqual(view.document.head.names(), ["styles.css copy"]);
+  const [inline, linked] = view.document.head.children;
+  assert.equal(inline.name, "style");
+  assert.equal(inline.textContent, "#view { display: block; }\n[hidden] { display: none; }",
+    "same-origin rules are copied inline so the first resize already sees them");
+  assert.equal(linked.name, "link");
+  assert.deepEqual([linked.rel, linked.href], ["stylesheet", "https://cdn.example/other.css"],
+    "a sheet whose rules cannot be read is linked instead");
   assert.ok(view.document.body.classList.contains("pop-out"));
   assert.deepEqual(view.document.body.names(), ["canvas", "bubble"]);
   assert.deepEqual(main.names(), ["<!--pop-out-->", "<!--pop-out-->", "controls"],

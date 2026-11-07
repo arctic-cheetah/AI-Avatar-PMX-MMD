@@ -204,6 +204,7 @@ for limits and listening checks.
 | `--mood-prosody`   | on                                  | Let each sentence's mood tag nudge Kokoro speed/pauses and RVC pitch (clamped) |
 | `--interjection-contours` | on                           | Kokoro: "Aww"/"Ooh" rise then fall via an RVC pitch bend (`--interjection-bend` 8 st; optional `--interjection-hold`) |
 | `--word-lifts`     | on                                  | Kokoro: endearments in address ("sweetheart!") and the word before `!` get a rise-fall lift, the word before `?` a rise (`--word-lift-bend` 4 st, `--question-rise-bend` 9 st) |
+| `--dynamic-emphasis` | off                               | Kokoro: a deeper, drawn-out "buuut" / skeptical "suuure" (`--drawl-bend` −3 st); brighter `*word*` |
 | `--quote-voice`    | on                                  | Kokoro: a pause before a `"quote"` and a slight pitch dip across it (`--quote-bend` −2 st) |
 | `--emphasis`       | on                                  | Kokoro: `*word*` from the LLM adds a short pause before the word (`--emphasis-pause` 0.12 s) |
 | `--punctuation-cadence` | on                             | Gap by ending (`--ellipsis-tail` 0.6, `--exclaim-tail` 0.3, `--question-tail` 0.4 s), louder `!` (`--exclaim-gain` 3 dB), slower `…`, dashes as pauses |

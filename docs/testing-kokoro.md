@@ -326,6 +326,34 @@ separate clips, which risks audible joins.
   --output-dir assets/private/speech/kokoro-audition/issue-84-quotes
 ```
 
+## 2g. Dynamic emphasis (#83)
+
+Some words carry meaning in their delivery: a contrastive "**buuut**" said
+deeper and drawn out, or a sarcastic "suuure". With `--dynamic-emphasis`
+(Kokoro only, off until auditioned; `--plain-voice` turns it off):
+
+- **Drawl (deeper and longer):** a sentence-opening *But / Well / So / Now /
+  Okay*; the attitude words *sure, really, right, totally, obviously* when
+  the mood is skeptical, suspicious, unimpressed, sad-sceptical, annoyed,
+  sulky, pout or smug; and `*word*` marks in those moods. The Kokoro worker
+  gives the word primary stress and a long vowel (`bˌʌt` → `bˈʌːːt`), and a
+  `--drawl-bend` dip (default −3 st, ±12) is bent over it.
+- **Bright emphasis:** a `*word*` mark in any other mood also gets the word
+  lift (`--word-lift-bend`), on top of its pause.
+
+**Stress-mark check (#83 scope 3):** on ordinary words, Kokoro's marks change
+length, not loudness:
+
+| Word | Phonemes | Length | Loudness |
+| --- | --- | ---: | ---: |
+| really | `ɹˈiəli` → `ɹˈˈiəli` | 1.33× | −0.6 dB |
+| really | `ɹˈiəli` → `ɹˈiːːəli` | 1.22× | −0.4 dB |
+| but | `bˌʌt` → `bˈʌt` | 1.50× | +0.5 dB |
+| but | `bˌʌt` → `bˈʌːːt` | 2.25× (0.225 s) | ±0 dB |
+
+So drawls use Kokoro's own lengthening rather than the pitch-period hold, and
+loudness stays with the exclamation gain.
+
 ## 3. Test on the avatar
 
 Run these commands in separate terminals:

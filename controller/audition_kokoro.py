@@ -21,6 +21,9 @@ def join_wavs(paths: list[Path], output: Path) -> None:
 
 
 async def audition(args) -> None:
+    if args.plain_voice:
+        for name in ('mood_prosody', 'punctuation_cadence', 'emphasis', 'interjection_contours', 'word_lifts'):
+            setattr(args, name, False)
     settings = ApplioSettings(tts_provider='kokoro', kokoro_voice=args.voice,
                              kokoro_speed=args.speed, kokoro_threads=args.threads,
                              kokoro_clause_pause=args.clause_pause,
@@ -102,23 +105,25 @@ def main() -> None:
     parser.add_argument('--rvc-threads', type=int, default=4)
     parser.add_argument('--mood', type=mood_arg, action='append',
                         help='Mood for every --text, as name or name:weight; repeat to compare.')
-    parser.add_argument('--punctuation-cadence', action='store_true',
+    parser.add_argument('--punctuation-cadence', action=argparse.BooleanOptionalAction, default=True,
                         help='Per-ending gaps, louder !, slower ellipses, dashes as pauses.')
     parser.add_argument('--ellipsis-tail', type=float, default=0.6)
     parser.add_argument('--exclaim-tail', type=float, default=0.3)
     parser.add_argument('--question-tail', type=float, default=0.4)
     parser.add_argument('--exclaim-gain', type=float, default=3.0)
-    parser.add_argument('--emphasis', action='store_true', help='Pause before *word* emphasis.')
+    parser.add_argument('--emphasis', action=argparse.BooleanOptionalAction, default=True, help='Pause before *word* emphasis.')
     parser.add_argument('--emphasis-pause', type=float, default=0.12)
-    parser.add_argument('--interjection-contours', action='store_true',
+    parser.add_argument('--interjection-contours', action=argparse.BooleanOptionalAction, default=True,
                         help='Rise-then-fall pitch contour on "Aww"/"Ooh".')
     parser.add_argument('--interjection-bend', type=float, default=8.0)
     parser.add_argument('--interjection-hold', type=float, default=0.0)
-    parser.add_argument('--word-lifts', action='store_true',
+    parser.add_argument('--word-lifts', action=argparse.BooleanOptionalAction, default=True,
                         help='Lift endearments in address and the word before "!".')
     parser.add_argument('--word-lift-bend', type=float, default=4.0)
     parser.add_argument('--question-rise-bend', type=float, default=9.0)
-    parser.add_argument('--mood-prosody', action='store_true',
+    parser.add_argument('--plain-voice', action='store_true',
+                        help='Turn every expressive voice part off.')
+    parser.add_argument('--mood-prosody', action=argparse.BooleanOptionalAction, default=True,
                         help='Apply mood-driven speed, pauses and RVC pitch.')
     parser.add_argument('--output-dir', type=Path, default=ROOT / 'assets/private/speech/kokoro-audition')
     asyncio.run(audition(parser.parse_args()))

@@ -125,6 +125,13 @@ failure in `SummariserTests.test_prompt_rules_and_secret_free_input`: it expects
 “3” in a prompt that now allows 1–10 sentences. The failure was reproduced in
 an untouched archive of the starting commit. It is outside this volume change.
 
+After stacking on PR #86 (`feature/84-punctuation-cadence`), the renderer suite
+still passes all 70 tests. The combined Python suite runs 243 tests: 239 pass,
+the same prompt test fails, and three `test_prosody.ProtocolFieldTests` error
+because their echo workers inherit a nonexistent sibling `Applio` working
+directory in this worktree layout. All three errors were also reproduced in
+an untouched archive of #86's head. No Python files are changed by this PR.
+
 Human listening validation remains required: compare quiet and emphatic speech
 at 0, +6 and +12 dB on the user's headset; move the slider during speech; listen
 for clicks, pumping, background breath and changed character; inspect soft word

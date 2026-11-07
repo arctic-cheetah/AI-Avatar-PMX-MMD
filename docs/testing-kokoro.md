@@ -215,10 +215,25 @@ Yidhari's actor says "Aww" with a **rise, then a fall**; Kokoro always renders
 a straight drop of about 3 semitones, whatever the punctuation or spelling.
 With `--interjection-contours` (Kokoro only, off by default), `aw`/`aww`/`awww`,
 `ooh`/`oooh` and `ohh` get a smooth pitch bump of `--interjection-bend`
-semitones (default 4, range ±4) that peaks 40 % of the way through the word.
-The default was raised from 2 after listening (7 Nov 2026): "Aww, that is so
-sweet." peaked at +4.5 st with 2 and **+6.4 st** with 4, which sounded more
-convincing; a lone "Awww!" also stops sagging at the end (−1.6 → +0.7 st).
+semitones (default 8, range ±12) that peaks 40 % of the way through the word.
+After listening (7 Nov 2026) "Aww" needed far more lift. Kokoro already rises
+about 4 st inside "Aww, …", so the peak is roughly 4 + bend:
+
+| Bend | Peak | Clearly pitched frames | Verdict |
+| ---: | ---: | ---: | --- |
+| 4 | +7 st | 33/42 | smooth |
+| **8** | **+12 st (one octave)** | 32/42 | smooth (default) |
+| 12 | +15 st | 23/42 | rise turns breathy/rough |
+| 18 | +21 st | 17/42 | voice breaks up (beyond the RVC model's range) |
+
+Two octaves is therefore not offered; ±12 st is the limit.
+
+**Hold:** "Aww" should last about 0.6–1 s, but Kokoro tops out near 0.45 s
+before the vowel splits into syllables. With `--interjection-contours`, an
+`aw`/`aww` word is lengthened to `--interjection-hold` seconds (default 0.8,
+0–1.2; 0 turns it off) by repeating whole pitch periods from the steady
+middle of the vowel, with short crossfades, before RVC re-voices it. The pitch
+bend then covers the longer word.
 
 How it works, without touching Kokoro's model:
 

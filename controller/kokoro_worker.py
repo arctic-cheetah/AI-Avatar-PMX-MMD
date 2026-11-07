@@ -19,7 +19,11 @@ MODEL_DIR = ROOT / 'models' / 'kokoro'
 VOICE_ID = re.compile(r'[ab][a-z]_[a-z]+')
 MAX_BLEND_VOICES = 4
 MAX_CLAUSE_PAUSE = 0.5
-PROSODY_FIELDS = ('speed', 'clause_pause')  # optional per-sentence request fields
+# Optional per-sentence request fields.
+PROSODY_FIELDS = ('speed', 'clause_pause', 'emphasis', 'emphasis_pause')
+MAX_EMPHASIS = 3          # emphasised words per sentence
+MAX_EMPHASIS_PAUSE = 0.3  # seconds
+SPLICE_FADE = 0.005       # seconds faded out and in around a spliced pause
 
 
 def parse_voice(spec) -> list[tuple[str, float]]:
@@ -72,6 +76,64 @@ def validate_prosody(speed: float, clause_pause: float) -> None:
         raise ValueError(f'Kokoro clause pause must be between 0 and {MAX_CLAUSE_PAUSE} seconds.')
 
 
+def _is_word(token: str) -> bool:
+    """A word that is spoken: any letter or digit, so a lone dash or comma does not count."""
+    return any(char.isalnum() for char in token)
+
+
+def aligned(text: str, phonemes: str) -> bool:
+    """True when the phonemes have one spoken word per spoken word of the text."""
+    return sum(map(_is_word, text.split())) == sum(map(_is_word, phonemes.split()))
+
+
+def pause_points(timings, words) -> list[float]:
+    """Seconds, in the middle of the space before each spoken word index in ``words``.
+
+    ``timings`` are Kokoro's per-phoneme timings (``phoneme``, ``start``, ``end``),
+    spaces included. The first word and indices past the end get no pause.
+    """
+    spaces, current, gap, index = {}, '', None, 0
+    for timing in [*timings, None]:
+        if timing is None or timing.phoneme == ' ':
+            if _is_word(current):
+                if gap is not None:
+                    spaces[index] = gap
+                index += 1
+            if timing is not None:
+                gap = (timing.start + timing.end) / 2
+            current = ''
+        else:
+            current += timing.phoneme
+    return [round(spaces[word], 6) for word in sorted(set(words)) if word in spaces]
+
+
+def splice_silence(samples: list[float], rate: int, points: list[float], seconds: float) -> list[float]:
+    """Insert ``seconds`` of silence at each point, fading out before and in after."""
+    if not points or seconds <= 0:
+        return samples
+    fade = max(1, int(SPLICE_FADE * rate))
+    out, cut = [], 0
+    for point in sorted(points):
+        at = min(len(samples), max(cut, int(round(point * rate))))
+        head = samples[cut:at]
+        for k in range(1, min(fade, len(head)) + 1):
+            head[-k] *= (k - 1) / fade
+        out += head + [0.0] * int(round(seconds * rate))
+        cut = at
+    tail = samples[cut:]
+    for k in range(min(fade, len(tail))):
+        tail[k] *= (k + 1) / fade
+    return out + tail
+
+
+def validate_emphasis(emphasis, pause) -> None:
+    if (not isinstance(emphasis, list) or len(emphasis) > MAX_EMPHASIS
+            or any(isinstance(i, bool) or not isinstance(i, int) or not 0 <= i < 1000 for i in emphasis)):
+        raise ValueError(f'Emphasis must be a list of up to {MAX_EMPHASIS} word indices.')
+    if not _number(pause) or not 0.0 <= pause <= MAX_EMPHASIS_PAUSE:
+        raise ValueError(f'Emphasis pause must be between 0 and {MAX_EMPHASIS_PAUSE} seconds.')
+
+
 def validate_settings(voice: str, speed: float, threads: int, clause_pause: float = 0.25) -> None:
     parse_voice(voice)
     validate_prosody(speed, clause_pause)
@@ -106,26 +168,50 @@ class Synthesizer:
         self.voice, self.speed, self.clause_pause, self.soundfile = voice, speed, clause_pause, soundfile
 
     def synthesize(self, text: str, path: str, speed: float | None = None,
-                   clause_pause: float | None = None) -> dict:
-        """Write ``text`` to ``path``; ``speed``/``clause_pause`` override the settings for one sentence."""
+                   clause_pause: float | None = None, emphasis: list[int] | None = None,
+                   emphasis_pause: float = 0.12) -> dict:
+        """Write ``text`` to ``path``.
+
+        ``speed``/``clause_pause`` override the settings for one sentence.
+        ``emphasis`` lists spoken-word indices that get ``emphasis_pause`` seconds
+        of silence before them, when Kokoro's phonemes line up with the words.
+        """
         if not isinstance(text, str) or not text.strip() or len(text) > 16000:
             raise ValueError('Speech text must contain 1–16000 characters.')
         speed = self.speed if speed is None else speed
         clause_pause = self.clause_pause if clause_pause is None else clause_pause
         validate_prosody(speed, clause_pause)
+        if emphasis is not None:
+            validate_emphasis(emphasis, emphasis_pause)
+        lang = 'en-gb' if self.voice.lstrip().startswith('b') else 'en-us'
         started = time.perf_counter()
-        samples, rate = self.model.create(
-            text, voice=self.style, speed=speed,
-            lang='en-gb' if self.voice.lstrip().startswith('b') else 'en-us', trim=False,
-            clause_pause=clause_pause)
+        pauses = None
+        phonemes = self.model.tokenizer.phonemize(text, lang) if emphasis else None
+        if phonemes and aligned(text, phonemes):
+            samples, rate, timings = self.model.create_timed(
+                phonemes, voice=self.style, speed=speed, lang=lang, is_phonemes=True,
+                trim=False, clause_pause=clause_pause)
+            points = pause_points(timings, emphasis)
+            if points:
+                samples = splice_silence(list(samples), rate, points, emphasis_pause)
+            pauses = len(points)
+        else:
+            samples, rate = self.model.create(
+                text, voice=self.style, speed=speed, lang=lang, trim=False,
+                clause_pause=clause_pause)
+            if emphasis:
+                pauses = 0
         if not len(samples):
             raise RuntimeError('Kokoro returned empty audio.')
         self.soundfile.write(path, samples, rate, subtype='PCM_16')
         seconds = time.perf_counter() - started
         duration = len(samples) / rate
-        return {'ttsProvider': 'kokoro', 'ttsSeconds': round(seconds, 3),
-                'sourceSeconds': round(duration, 3), 'sampleRate': rate,
-                'ttsRtf': round(seconds / duration, 3)}
+        metrics = {'ttsProvider': 'kokoro', 'ttsSeconds': round(seconds, 3),
+                   'sourceSeconds': round(duration, 3), 'sampleRate': rate,
+                   'ttsRtf': round(seconds / duration, 3)}
+        if pauses is not None:
+            metrics['emphasisPauses'] = pauses
+        return metrics
 
 
 async def serve(lines: asyncio.Queue, synthesize, reply) -> None:

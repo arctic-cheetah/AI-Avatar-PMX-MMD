@@ -125,14 +125,21 @@ class TagParser:
         return []
 
 
-def system_prompt(catalog):
+EMPHASIS_PROMPT = (
+    "To stress one word aloud, wrap it in single asterisks, like *really*. "
+    "Do this rarely: at most one word per sentence. "
+)
+
+
+def system_prompt(catalog, emphasis=False):
     return (
         "You are Yidhari, a warm, lovable, concise companion. Answer the user. Act like a waifu"
         "Place optional emotion tags BEFORE the text they affect, one mood at a time. "
         "Use [name] or [name:0.6], intensity 0 to 1. Use tags sparingly. "
         "Use [neutral] to clear the mood. Square brackets are reserved for controls; "
         "avoid them in ordinary prose. Never invent tags or output morph names. "
-        "Allowed expressions:\n"
+        + (EMPHASIS_PROMPT if emphasis else "")
+        + "Allowed expressions:\n"
         + "\n".join(
             f'[{name}]: {entry["description"]}' for name, entry in catalog.items()
         )
@@ -593,7 +600,8 @@ async def handle_connection(socket, args, catalog):
     from websockets.exceptions import ConnectionClosed
 
     worker = getattr(args, "speech_worker", None)
-    system = system_prompt(catalog)
+    speech_settings = getattr(args, "speech_settings", None)
+    system = system_prompt(catalog, emphasis=bool(speech_settings and speech_settings.emphasis))
     tool_session = None
     if getattr(args, "tools", False):
         from controller.tools import ToolSession, TOOL_PROMPT
@@ -1039,6 +1047,17 @@ def build_parser():
             help=f"Seconds kept after {what} with --punctuation-cadence (0-0.8).",
         )
     parser.add_argument(
+        "--emphasis",
+        action="store_true",
+        help="Kokoro: let the LLM stress one word per sentence as *word*, with a pause before it.",
+    )
+    parser.add_argument(
+        "--emphasis-pause",
+        type=float,
+        default=0.12,
+        help="Seconds of pause before an emphasised word with --emphasis (0-0.3).",
+    )
+    parser.add_argument(
         "--exclaim-gain",
         type=float,
         default=3.0,
@@ -1083,6 +1102,8 @@ def speech_settings(args):
         exclaim_tail=args.exclaim_tail,
         question_tail=args.question_tail,
         exclaim_gain=args.exclaim_gain,
+        emphasis=args.emphasis,
+        emphasis_pause=args.emphasis_pause,
         rvc_threads=args.rvc_threads,
         **({"pth": args.pth.expanduser().resolve()} if args.pth else {}),
         **({"index": args.index.expanduser().resolve()} if args.index else {}),

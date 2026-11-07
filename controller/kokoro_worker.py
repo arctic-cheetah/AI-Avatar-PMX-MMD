@@ -19,6 +19,7 @@ MODEL_DIR = ROOT / 'models' / 'kokoro'
 VOICE_ID = re.compile(r'[ab][a-z]_[a-z]+')
 MAX_BLEND_VOICES = 4
 MAX_CLAUSE_PAUSE = 0.5
+PROSODY_FIELDS = ('speed', 'clause_pause')  # optional per-sentence request fields
 
 
 def parse_voice(spec) -> list[tuple[str, float]]:
@@ -59,14 +60,23 @@ def blend_style(parts: list[tuple[str, float]], get_style):
     return sum(weight * get_style(name) for name, weight in parts)
 
 
-def validate_settings(voice: str, speed: float, threads: int, clause_pause: float = 0.1) -> None:
-    parse_voice(voice)
-    if not math.isfinite(speed) or not 0.5 <= speed <= 2.0:
+def _number(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def validate_prosody(speed: float, clause_pause: float) -> None:
+    """Check speed and clause pause, whether configured or sent per sentence."""
+    if not _number(speed) or not 0.5 <= speed <= 2.0:
         raise ValueError('Kokoro speed must be between 0.5 and 2.0.')
+    if not _number(clause_pause) or not 0.0 <= clause_pause <= MAX_CLAUSE_PAUSE:
+        raise ValueError(f'Kokoro clause pause must be between 0 and {MAX_CLAUSE_PAUSE} seconds.')
+
+
+def validate_settings(voice: str, speed: float, threads: int, clause_pause: float = 0.25) -> None:
+    parse_voice(voice)
+    validate_prosody(speed, clause_pause)
     if threads < 1:
         raise ValueError('Kokoro threads must be at least 1.')
-    if not math.isfinite(clause_pause) or not 0.0 <= clause_pause <= MAX_CLAUSE_PAUSE:
-        raise ValueError(f'Kokoro clause pause must be between 0 and {MAX_CLAUSE_PAUSE} seconds.')
 
 
 class Synthesizer:
@@ -95,14 +105,19 @@ class Synthesizer:
         self.style = blend_style(parts, self.model.get_voice_style)
         self.voice, self.speed, self.clause_pause, self.soundfile = voice, speed, clause_pause, soundfile
 
-    def synthesize(self, text: str, path: str) -> dict:
+    def synthesize(self, text: str, path: str, speed: float | None = None,
+                   clause_pause: float | None = None) -> dict:
+        """Write ``text`` to ``path``; ``speed``/``clause_pause`` override the settings for one sentence."""
         if not isinstance(text, str) or not text.strip() or len(text) > 16000:
             raise ValueError('Speech text must contain 1–16000 characters.')
+        speed = self.speed if speed is None else speed
+        clause_pause = self.clause_pause if clause_pause is None else clause_pause
+        validate_prosody(speed, clause_pause)
         started = time.perf_counter()
         samples, rate = self.model.create(
-            text, voice=self.style, speed=self.speed,
+            text, voice=self.style, speed=speed,
             lang='en-gb' if self.voice.lstrip().startswith('b') else 'en-us', trim=False,
-            clause_pause=self.clause_pause)
+            clause_pause=clause_pause)
         if not len(samples):
             raise RuntimeError('Kokoro returned empty audio.')
         self.soundfile.write(path, samples, rate, subtype='PCM_16')
@@ -124,7 +139,8 @@ async def serve(lines: asyncio.Queue, synthesize, reply) -> None:
                 if request.get('run') in cancelled_runs:
                     reply({'id': request.get('id'), 'ok': False, 'cancelled': True})
                     return
-                metrics = await asyncio.to_thread(synthesize, request['text'], request['source'])
+                options = {key: request[key] for key in PROSODY_FIELDS if key in request}
+                metrics = await asyncio.to_thread(synthesize, request['text'], request['source'], **options)
             reply({'id': request.get('id'), 'ok': True, **metrics})
         except Exception as error:
             reply({'id': request.get('id'), 'ok': False,

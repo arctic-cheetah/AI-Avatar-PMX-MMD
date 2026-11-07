@@ -111,6 +111,42 @@ Measured on the same two sentences: `ttsSeconds`
 return to the previous sound. The sentence tail also applies to Edge clips. Mood-driven prosody (per-sentence speed and pitch) follows in a
 separate PR.
 
+## 2b. Mood-driven prosody (#29 tier 2)
+
+With `--mood-prosody` (off by default until auditioned), each sentence's mood
+tag also nudges the voice. Moods are grouped; the group's change is scaled by
+the tag's weight (0–1) and clamped so back-to-back clips do not sound stitched.
+
+| Group | Moods | Kokoro speed | Clause pause | RVC pitch |
+| --- | --- | ---: | ---: | ---: |
+| Energetic | excited, joyful, happy, grin, cocky, smug, mischievous, hopeful | ×1.05 | ×0.7 | +1 |
+| Reflective | thinking, skeptical, confused, suspicious, serious, worried, nervous, troubled | ×0.95 | ×1.4 | 0 |
+| Low | sad, sad-v2, sad-sceptical, sleepy, disappointed, cry, sulky | ×0.92 | ×1.4 | −1 |
+| Unchanged | every other mood (neutral, soft-smile, tender, angry, surprised, …) | ×1 | ×1 | 0 |
+
+- Speed and clause pause multiply `--kokoro-speed` and `--kokoro-clause-pause`;
+  pitch is added to the RVC model's configured pitch, in semitones.
+- Hard limits: speed ±8 %, pitch ±2 semitones, and the workers' own ranges
+  (speed 0.5–2.0, clause pause 0–0.5 s). Pitch rounds to whole semitones, so
+  a light tag such as `[excited:0.4]` changes only speed and pauses.
+- Each worker validates the per-sentence fields again; a request without them
+  behaves exactly as before.
+- With Edge, only the RVC pitch shift applies (Edge's rate stays global).
+- Intense moods (angry, scared, shocked, …) stay unchanged until auditioned.
+
+Audition moods directly; `--mood` takes `name` or `name:weight` and repeats:
+
+```bash
+.venv/bin/python -m controller.audition_kokoro --mood-prosody \
+  --mood soft-smile --mood excited --mood thinking --mood sad \
+  --text "Well, I checked the logs, and the alert was a false positive." \
+  --output-dir assets/private/speech/kokoro-audition/issue-29-moods
+```
+
+Each `results.json` entry records the mood, weight and applied prosody. On the
+avatar, add `--mood-prosody` to the bridge command and listen especially at
+mood changes in the middle of a sentence, where two clips meet.
+
 ## 3. Test on the avatar
 
 Run these commands in separate terminals:

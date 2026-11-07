@@ -78,7 +78,7 @@ class KokoroIntegrationTests(unittest.IsolatedAsyncioTestCase):
         metrics = {'ttsProvider': 'kokoro', 'ttsSeconds': 0.2, 'sourceSeconds': 1,
                    'sampleRate': 24000, 'ttsRtf': 0.2, 'rvcSeconds': 0.3}
 
-        async def prepare(text, source, output, run):
+        async def prepare(text, source, output, run, prosody=None):
             self.assertEqual(source.suffix, '.wav')
             source.touch()
             output.touch()
@@ -98,7 +98,7 @@ class KokoroIntegrationTests(unittest.IsolatedAsyncioTestCase):
         worker = Mock()
         worker.settings = ApplioSettings(tts_provider='kokoro', sentence_tail=0.4, fragment_tail=0.05)
 
-        async def prepare(text, source, output, run):
+        async def prepare(text, source, output, run, prosody=None):
             source.touch()
             output.touch()
             return {'rvcSeconds': 0.3}

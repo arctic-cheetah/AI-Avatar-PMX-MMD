@@ -34,13 +34,15 @@ import wave
 
 EDGE_ATTEMPTS = 3
 EDGE_CONCURRENCY = 2  # more parallel Edge requests make HTTP 429 likelier
+MAX_PITCH_SHIFT = 12  # semitones; mood prosody itself stays within ±2
 
 
 class Pipeline:
     """Run Edge ahead of RVC while keeping RVC serial and in request order.
 
     ``edge(text, path)`` is a coroutine returning retries used; ``convert(source,
-    output)`` is a blocking call run on one dedicated thread. ``reply`` receives
+    output, pitch)`` is a blocking call run on one dedicated thread; ``pitch`` is
+    the request's optional semitone shift (default 0). ``reply`` receives
     each result dict. Standard library only, so it can be tested without Applio.
     """
 
@@ -67,6 +69,10 @@ class Pipeline:
     async def _process(self, request: dict, previous: asyncio.Task | None) -> None:
         request_id = request.get('id')
         try:
+            pitch = request.get('pitch', 0)
+            # Per-sentence semitone shift from mood prosody; checked again here.
+            if isinstance(pitch, bool) or not isinstance(pitch, int) or abs(pitch) > MAX_PITCH_SHIFT:
+                raise ValueError(f'pitch must be an integer from -{MAX_PITCH_SHIFT} to {MAX_PITCH_SHIFT}')
             if self._cancelled(request):
                 self.reply({'id': request_id, 'ok': False, 'cancelled': True})
                 return
@@ -82,7 +88,7 @@ class Pipeline:
                 return
             started = time.perf_counter()
             await asyncio.get_running_loop().run_in_executor(
-                self.rvc_thread, self.convert, request['source'], request['output'])
+                self.rvc_thread, self.convert, request['source'], request['output'], pitch)
             self.reply({'id': request_id, 'ok': True, 'edgeSeconds': round(edge_seconds, 2),
                         'edgeRetries': retries, 'rvcSeconds': round(time.perf_counter() - started, 2)})
         except Exception as error:
@@ -152,11 +158,12 @@ class Worker:
         self.settings = settings
         self.converter = VoiceConverter()
 
-    def convert(self, source: str, output: str) -> None:
+    def convert(self, source: str, output: str, pitch: int = 0) -> None:
+        """Convert with the configured pitch plus a per-sentence semitone ``pitch`` shift."""
         s = self.settings
         self.converter.convert_audio(
             audio_input_path=source, audio_output_path=output,
-            model_path=s['pth'], index_path=s['index'], pitch=s['pitch'],
+            model_path=s['pth'], index_path=s['index'], pitch=s['pitch'] + pitch,
             index_rate=s['index_rate'], volume_envelope=s['volume_envelope'],
             protect=s['protect'], f0_method=s['f0_method'], export_format='WAV',
             embedder_model=s['embedder'], sid=s['sid'])

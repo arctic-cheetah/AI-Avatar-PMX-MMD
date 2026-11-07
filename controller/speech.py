@@ -22,6 +22,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from controller.prosody import Prosody, prosody_for
 from controller.speech_align import align
 from controller.speech_trim import FRAGMENT_TAIL_KEEP, MAX_TAIL_KEEP, trim_clip
 
@@ -64,6 +65,7 @@ class ApplioSettings:
     kokoro_threads: int = 2
     sentence_tail: float = 0.4  # silence kept after a sentence: the gap between clips
     fragment_tail: float = FRAGMENT_TAIL_KEEP  # after a mood-tag fragment
+    mood_prosody: bool = False  # mood tags also nudge speed, pauses and RVC pitch (#29)
 
     def __post_init__(self) -> None:
         self.applio_dir = Path(self.applio_dir).expanduser()
@@ -310,19 +312,46 @@ class ApplioWorker:
                 )
         pending.clear()
 
+    def _kokoro_fields(self, prosody: Prosody | None) -> dict:
+        """Per-sentence Kokoro speed and clause pause, kept inside the worker's ranges."""
+        if prosody is None:
+            return {}
+        s = self.settings
+        return {
+            "speed": round(min(2.0, max(0.5, s.kokoro_speed * prosody.speed)), 4),
+            "clause_pause": round(min(0.5, max(0.0, s.kokoro_clause_pause * prosody.clause_pause)), 4),
+        }
+
     async def request(
-        self, text: str, source: Path, output: Path, run: str | None = None
+        self,
+        text: str,
+        source: Path,
+        output: Path,
+        run: str | None = None,
+        prosody: Prosody | None = None,
+        fields: dict | None = None,
     ) -> dict:
-        """Synthesise ``text`` into ``source`` and convert into ``output``."""
+        """Synthesise ``text`` into ``source`` and convert into ``output``.
+
+        ``prosody`` adds optional per-sentence fields: speed and clause pause for
+        Kokoro, a semitone shift for RVC. ``fields`` are extra protocol fields for
+        this worker's own line (used for the nested Kokoro worker).
+        """
         await self.start()
         source_metrics = None
         if self.kokoro is not None:
-            source_metrics = await self.kokoro.request(text, source, output, run)
+            source_metrics = await self.kokoro.request(
+                text, source, output, run, fields=self._kokoro_fields(prosody)
+            )
         request_id = secrets.token_hex(8)
         future = asyncio.get_running_loop().create_future()
         self.pending[request_id] = future
+        own = dict(fields or {})
+        if prosody is not None:
+            own["pitch"] = prosody.pitch
         line = json.dumps(
             {
+                **own,
                 "id": request_id,
                 "run": run,
                 "text": text,
@@ -391,7 +420,12 @@ async def synthesise(
     wav = directory / f"{clip_id}.wav"
     text_path.write_text(segment.text + "\n", encoding="utf-8")
     try:
-        reply = await worker.request(segment.text, source, wav, run)
+        prosody = (
+            prosody_for(segment.expression, segment.weight)
+            if worker.settings.mood_prosody
+            else None
+        )
+        reply = await worker.request(segment.text, source, wav, run, prosody=prosody)
         # Trim before aligning so the lip-sync timings match the audio that plays.
         trim = await asyncio.to_thread(
             trim_clip,
@@ -427,6 +461,12 @@ async def synthesise(
         )
         if key in reply
     }
+    if prosody is not None:
+        metrics["prosody"] = {
+            "speed": prosody.speed,
+            "clausePause": prosody.clause_pause,
+            "pitch": prosody.pitch,
+        }
     return clip_id, {
         **metrics,
         "rvcSeconds": reply["rvcSeconds"],

@@ -115,7 +115,7 @@ class FakeStages:
         finally:
             self.edge_active -= 1
 
-    def convert(self, source, output):
+    def convert(self, source, output, pitch=0):
         if not self.rvc_lock.acquire(blocking=False):
             self.overlapping_rvc = True
             return

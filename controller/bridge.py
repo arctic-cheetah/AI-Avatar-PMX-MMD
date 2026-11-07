@@ -1076,7 +1076,7 @@ def build_parser():
     parser.add_argument(
         "--question-rise-bend",
         type=float,
-        default=8.0,
+        default=9.0,
         help="Semitones a question's last word rises with --word-lifts (-12 to 12).",
     )
     parser.add_argument(

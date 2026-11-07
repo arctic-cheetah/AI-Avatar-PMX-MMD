@@ -27,6 +27,8 @@ HOLD_WINDOW = 0.025   # seconds either side of the vowel's middle used to find i
 MAX_SPANS = 4  # word spans reported per sentence (for RVC pitch bends)
 # espeak says "aww" as ɔːwə ("aw-wuh", heard as "awah"); one long vowel sounds right.
 AWW_WORD = re.compile(r'a+w{2,}h*', re.IGNORECASE)
+# Any LLM spelling of "aww" (Awwww, Aaww, aWWW, Awwh); a plain "aw" is left alone.
+AWW_FAMILY = re.compile(r'\b(a)(?:a*w{2,}h*|a+w+h*|w+h+)\b', re.IGNORECASE)
 AWW_PHONEMES = re.compile('ɔːʊ?wə')
 WORD_EDGES = '.,!?…;:"\'()[]—–-*“”‘’'
 SPAN_PUNCTUATION = frozenset(',.!?…;:—"\'()')
@@ -109,6 +111,11 @@ def _spoken_words(timings):
             current = []
         else:
             current.append(timing)
+
+
+def canonical_aww(text: str) -> str:
+    """Rewrite every spelling of "aww" as Aww/aww, which respell_phonemes() knows how to fix."""
+    return AWW_FAMILY.sub(lambda m: 'Aww' if m.group(1) == 'A' else 'aww', text)
 
 
 def needs_respelling(text: str) -> bool:
@@ -332,6 +339,7 @@ class Synthesizer:
         """
         if not isinstance(text, str) or not text.strip() or len(text) > 16000:
             raise ValueError('Speech text must contain 1–16000 characters.')
+        text = canonical_aww(text)  # word count is unchanged, so spans and emphasis still line up
         speed = self.speed if speed is None else speed
         clause_pause = self.clause_pause if clause_pause is None else clause_pause
         validate_prosody(speed, clause_pause)

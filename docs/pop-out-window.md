@@ -42,6 +42,10 @@ flowchart LR
 - Opening a second renderer tab or a `window.open` popup instead would make
   a second bridge connection. That one would take agent speech away from
   the first and load the PMX twice, which is why that route was not taken.
+- The page's style rules are copied into the floating window inline (a
+  `<link>` only for sheets whose rules cannot be read), so the very first
+  resize measures a styled canvas. `resize()` never writes an inline CSS
+  size on the canvas; the stylesheet sizes it in both windows.
 - Browsers pause `requestAnimationFrame` in hidden or minimised tabs. While
   she is popped out, the render loop (and webcam gaze, if on) runs on the
   floating window's frames, so she keeps moving when the main tab is hidden.

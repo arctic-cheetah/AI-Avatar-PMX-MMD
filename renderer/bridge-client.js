@@ -55,7 +55,7 @@ export function agentEvent(event, catalog) {
   throw new Error('Unknown agent event');
 }
 
-export function connectBridge({ catalog, onStart, onFinish, onExpression, onText, onSpeak, onFiller, onReset, onAgentSay, onAgentMood, onTurn }) {
+export function connectBridge({ catalog, onStart, onFinish, onExpression, onText, onSpeak, onFiller, onReset, onAgentSay, onAgentMood, onTurn, greeting = null, onGreeting }) {
   const button = document.querySelector('#bridge-start');
   const status = document.querySelector('#bridge-status');
   const chatBar = document.querySelector('#chat-bar');
@@ -180,6 +180,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     socket.send(startFrame(prompt));
     status.textContent = 'Waiting for reply…';
   }
+  let greeted = false;
   function connect() {
     socket = new WebSocket('ws://127.0.0.1:8765');
     socket.onopen = () => {
@@ -188,6 +189,13 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
       chatBar.hidden = false;
       setChatEnabled(true);
       chatInput.focus();
+      // Page-open greeting (#72): once here, and the gate in main.js keeps it
+      // to once per session, so reconnects below never greet again.
+      if (greeting && !greeted) {
+        greeted = true;
+        addLine('yidhari').textContent = greeting.text;
+        onGreeting?.(greeting);
+      }
     };
     socket.onclose = () => {
       // Do not reset the expression here: while the bridge is down this

@@ -269,12 +269,16 @@ class SynthesiseContourTests(unittest.IsolatedAsyncioTestCase):
                 sent, _ = await self.run_segment(settings, Segment(text))
                 self.assertNotIn('contours', sent)
 
+    def test_listened_default_bend(self):
+        # Listening (7 Nov 2026): Aww needed more lift to sound convincing.
+        self.assertEqual(ApplioSettings().interjection_bend, 4.0)
+
     def test_settings_and_flags(self):
         for value in (-4.1, 4.1, float('nan')):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 ApplioSettings(applio_dir=Path('/nonexistent'), interjection_bend=value).check()
         defaults = speech_settings(build_parser().parse_args(['--speech']))
-        self.assertEqual((defaults.interjection_contours, defaults.interjection_bend), (False, 2.0))
+        self.assertEqual((defaults.interjection_contours, defaults.interjection_bend), (False, 4.0))
         settings = speech_settings(build_parser().parse_args(
             ['--speech', '--interjection-contours', '--interjection-bend', '3']))
         self.assertEqual((settings.interjection_contours, settings.interjection_bend), (True, 3.0))

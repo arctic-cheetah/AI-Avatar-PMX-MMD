@@ -274,7 +274,9 @@ class SynthesiseContourTests(unittest.IsolatedAsyncioTestCase):
         # Listening (7 Nov 2026): Aww needed far more lift; bend 8 peaks about one
         # octave up (Kokoro adds ~4 st itself) while RVC still voices it cleanly.
         self.assertEqual(ApplioSettings().interjection_bend, 8.0)
-        self.assertEqual(ApplioSettings().interjection_hold, 0.8)
+        # Listening: a 0.84 s hold sounded like "aw-aw-aw" and too slow for the rest of the
+        # speech; the fixed vowel alone is ~0.36-0.39 s, so the hold is off by default.
+        self.assertEqual(ApplioSettings().interjection_hold, 0.0)
 
     def test_settings_and_flags(self):
         for value in (-12.1, 12.1, float('nan')):
@@ -285,7 +287,7 @@ class SynthesiseContourTests(unittest.IsolatedAsyncioTestCase):
                 ApplioSettings(applio_dir=Path('/nonexistent'), interjection_hold=value).check()
         defaults = speech_settings(build_parser().parse_args(['--speech']))
         self.assertEqual((defaults.interjection_contours, defaults.interjection_bend,
-                          defaults.interjection_hold), (False, 8.0, 0.8))
+                          defaults.interjection_hold), (False, 8.0, 0.0))
         settings = speech_settings(build_parser().parse_args(
             ['--speech', '--interjection-contours', '--interjection-bend', '3',
              '--interjection-hold', '0.6']))
@@ -394,7 +396,8 @@ class AwwHoldTests(unittest.TestCase):
         return await SynthesiseContourTests.run_segment(self, settings, Segment(text, 'tender', 1.0))
 
     def test_only_aww_words_are_held(self):
-        settings = ApplioSettings(tts_provider='kokoro', interjection_contours=True)
+        settings = ApplioSettings(tts_provider='kokoro', interjection_contours=True,
+                                  interjection_hold=0.8)
         sent, _ = asyncio.run(self.run_request(settings, 'Aww, that is so sweet.'))
         self.assertEqual(sent['holds'], ((0, 0.8),))
         sent, _ = asyncio.run(self.run_request(settings, 'Ooh! Nice.'))

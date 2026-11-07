@@ -545,3 +545,26 @@ class QuestionRiseTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((sent['rises'], 'lifts' in sent), ((3,), False))
         sent, _ = await SynthesiseContourTests.run_segment(self, settings, Segment('Thank you, sweetheart!'))
         self.assertEqual((sent['lifts'], 'rises' in sent), ((2,), False))
+
+
+class AudibleSpanTests(unittest.TestCase):
+    """Kokoro's last phoneme often soaks up trailing silence ("so?" voiced 0.85-1.05 s, span to
+    1.425 s), so an end-peaked rise landed in silence. Spans are trimmed to what is audible."""
+
+    def test_span_shrinks_to_the_loud_part(self):
+        from controller.kokoro_worker import audible_span
+        rate = 1000
+        samples = [0.0] * 200 + [0.5] * 300 + [0.001] * 400 + [0.0] * 100   # loud 0.2-0.5 s
+        self.assertEqual(audible_span(samples, rate, 0.1, 0.9), (0.2, 0.5))
+        self.assertEqual(audible_span(samples, rate, 0.25, 0.45), (0.25, 0.45))   # already loud
+        self.assertEqual(audible_span([0.0] * 1000, rate, 0.1, 0.9), (0.1, 0.9))   # nothing to keep
+
+    def test_reported_spans_are_audible(self):
+        synthesizer = KokoroSpanTests.synthesizer(self)
+        rate = 24000
+        samples = [0.5] * int(1.3 * rate) + [0.0005] * int(0.45 * rate)   # quiet after 1.3 s
+        synthesizer.model.create_timed.return_value = (samples, rate, REALLY)
+        metrics = synthesizer.synthesize('I really like it.', 'out.wav', spans=[3])
+        start, end = metrics['wordSpans'][0]
+        self.assertEqual(start, 1.15)
+        self.assertAlmostEqual(end, 1.3, delta=0.011)   # was 1.55: the quiet tail is dropped

@@ -1,11 +1,33 @@
 // Pop Yidhari out into an always-on-top floating window (issue #52).
 //
-// Uses the Document Picture-in-Picture API. The canvas is moved, not copied,
-// so the page keeps its single bridge connection, AudioContext and WebGL
-// context. See docs/pop-out-window.md.
+// Uses the Document Picture-in-Picture API, or a window.open() popup where
+// that is missing (Firefox) or refused (Electron). The page's nodes are
+// moved, not copied, so the page keeps its single bridge connection,
+// AudioContext and WebGL context. See docs/pop-out-window.md.
 
 const UNSUPPORTED =
   "Pop out needs Chrome or Edge 116+ (Document Picture-in-Picture).";
+const BLOCKED =
+  "The browser blocked the pop-out window. Allow pop-ups for this page and try again.";
+
+/**
+ * Open an ordinary popup window of this page, for browsers without Document
+ * Picture-in-Picture. It is not kept on top; the window manager can pin it.
+ * @param {Window} host The main page's window.
+ * @returns {{ kind: "popup", requestWindow(size: { width: number, height: number }): Promise<Window> }}
+ */
+export function popupWindow(host) {
+  return {
+    kind: "popup",
+    async requestWindow({ width, height }) {
+      // A blank same-origin window, so the page can move its nodes into it.
+      const view = host.open("", "_blank", `popup,width=${width},height=${height}`);
+      if (!view) throw new Error(BLOCKED);
+      view.document.title = host.document.title;
+      return view;
+    },
+  };
+}
 
 /**
  * Copy the page's styles into the floating window. Readable (same-origin)
@@ -81,21 +103,24 @@ export class FrameLoop {
 }
 
 /**
- * Move a few page nodes into a Document Picture-in-Picture window and back.
- * A comment marker holds each node's place, so it returns exactly there.
+ * Move a few page nodes into a floating window and back. A comment marker
+ * holds each node's place, so it returns exactly there.
  */
 export class PopOut {
   /**
    * @param {object} options
    * @param {{ requestWindow(options: { width: number, height: number }): Promise<Window> } | undefined} options.api
    *   `window.documentPictureInPicture`, or undefined where unsupported.
+   * @param {{ kind?: string, requestWindow(options: { width: number, height: number }): Promise<Window> }} [options.fallback]
+   *   Used when `api` is missing or refuses, e.g. `popupWindow(window)`.
    * @param {Window} options.host The main page's window.
    * @param {Node[]} options.nodes Nodes to move, in order.
    * @param {{ width: number, height: number }} [options.size] Requested window size.
    * @param {(view: Window | null) => void} [options.onChange] Called with the floating window, then null on return.
    */
-  constructor({ api, host, nodes, size = { width: 360, height: 480 }, onChange = () => {} }) {
-    this.api = api;
+  constructor({ api, fallback, host, nodes, size = { width: 360, height: 480 }, onChange = () => {} }) {
+    this.api = typeof api?.requestWindow === "function" ? api : undefined;
+    this.fallback = fallback;
     this.host = host;
     this.nodes = nodes;
     this.size = size;
@@ -106,11 +131,15 @@ export class PopOut {
     this.opening = null;
     /** @type {[Node, Node][]} */
     this.markers = [];
+    /** Which window the next or current pop-out uses: "pip" or "popup". */
+    this.kind = this.api ? "pip" : fallback?.kind ?? "popup";
+    // A popup would outlive the page and keep the avatar; close it with the page.
+    host.addEventListener("pagehide", () => this.close());
   }
 
   /** @returns {boolean} Whether this browser can pop out at all. */
   get supported() {
-    return typeof this.api?.requestWindow === "function";
+    return Boolean(this.api || this.fallback);
   }
 
   /** @returns {string} Why pop out is unavailable. */
@@ -120,17 +149,37 @@ export class PopOut {
 
   /**
    * Open the floating window (must run from a click) and move the nodes in.
+   * @param {{ width: number, height: number }} [size] Window size for this opening.
    * @returns {Promise<Window>}
    */
-  open() {
+  open(size = this.size) {
     if (!this.supported) return Promise.reject(new Error(UNSUPPORTED));
     if (this.window) return Promise.resolve(this.window);
-    this.opening ??= this.#open().finally(() => { this.opening = null; });
+    this.opening ??= this.#open(size).finally(() => { this.opening = null; });
     return this.opening;
   }
 
-  async #open() {
-    const view = await this.api.requestWindow({ ...this.size });
+  /**
+   * @param {{ width: number, height: number }} size
+   * @returns {Promise<Window>}
+   */
+  async #request(size) {
+    if (this.api) {
+      try {
+        const view = await this.api.requestWindow({ ...size });
+        this.kind = "pip";
+        return view;
+      } catch (error) {
+        if (!this.fallback) throw error;
+      }
+    }
+    const view = await this.fallback.requestWindow({ ...size });
+    this.kind = this.fallback.kind ?? "popup";
+    return view;
+  }
+
+  async #open(size) {
+    const view = await this.#request(size);
     const { document } = view;
     copyStyles(this.host.document, document);
     document.body.classList.add("pop-out");

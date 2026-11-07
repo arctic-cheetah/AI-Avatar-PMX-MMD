@@ -94,15 +94,22 @@ body.chat-input-resizing { cursor: ns-resize; user-select: none; }
 progress, meter { display: block; width: 100%; height: 7px; accent-color: #bc8fc8; }
 #candidate-list { padding-left: 18px; } #candidate-list li { margin: 10px 0; }
 [hidden] { display: none !important; }
-/* Pop-out floating window (#52): the canvas, bubble and Return button move into it. */
+/* Pop-out floating window (#52): #stage, the divider and #panel move into it. */
 .pop-out-only { display: none; }
-#pop-out-note { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); margin: 0; color: var(--muted); }
-body.pop-out { display: block; position: relative; }
-body.pop-out #view { width: 100vw; height: 100vh; }
-body.pop-out #thinking-bubble { top: 12px; }
-body.pop-out .pop-out-only { display: block; position: absolute; top: 8px; right: 8px; z-index: 2;
-  padding: 4px 10px; font-size: 12px; opacity: .6; }
-body.pop-out .pop-out-only:hover, body.pop-out .pop-out-only:focus-visible { opacity: 1; }
+body.popped-out { display: flex; align-items: center; justify-content: center; }
+#pop-out-note { text-align: center; color: var(--muted); }
+body.pop-out #pop-out-controls { display: flex; gap: 6px; position: absolute; top: 8px; right: 8px; z-index: 6; }
+body.pop-out #pop-out-controls button { padding: 4px 9px; font-size: 13px; opacity: .65; }
+body.pop-out #pop-out-controls button:hover, body.pop-out #pop-out-controls button:focus-visible,
+body.pop-out #pop-out-controls button[aria-pressed='true'] { opacity: 1; }
+body.pop-out #pop-out-button { display: none; }
+/* Portrait only. */
+body.pop-out:not(.with-panel) { display: block; }
+body.pop-out:not(.with-panel) :is(#panel-resizer, #panel, #chat-bar, #camera-controls, #status, #hint) { display: none; }
+body.pop-out:not(.with-panel) #thinking-bubble { top: 12px; }
+/* With the chat and settings panel: the main page's layout, chat bar below the window controls. */
+body.pop-out.with-panel #chat-bar { top: 48px; }
+body.pop-out.with-panel #thinking-bubble { top: 112px; }
 @media (max-width: 720px) {
   body { grid-template-columns: 1fr; grid-template-rows: 52vh 6px 48vh; }
   #panel-resizer { width: 100%; height: 6px; cursor: row-resize; }

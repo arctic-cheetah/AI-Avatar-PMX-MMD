@@ -211,6 +211,12 @@ def lift_words(text: str) -> tuple[int, ...]:
     return tuple(lifts)
 
 
+def question_words(text: str) -> tuple[int, ...]:
+    """The last spoken word of a question, which should rise rather than fall."""
+    words = spoken_words(text)
+    return (len(words) - 1,) if words and ending(text) == "question" else ()
+
+
 def clean_for_tts(text: str) -> str:
     """Remove Markdown symbols, emoji and control characters; collapse whitespace."""
     kept = []
@@ -440,6 +446,7 @@ class ApplioWorker:
         contours: tuple[int, ...] = (),
         holds: tuple[tuple[int, float], ...] = (),
         lifts: tuple[int, ...] = (),
+        rises: tuple[int, ...] = (),
     ) -> dict:
         """Synthesise ``text`` into ``source`` and convert into ``output``.
 
@@ -451,7 +458,7 @@ class ApplioWorker:
         await self.start()
         source_metrics = None
         # Interjections first, so they keep their contour if the per-sentence cap is reached.
-        spanned = tuple(dict.fromkeys([*contours, *lifts]))[:MAX_SPANS]
+        spanned = tuple(dict.fromkeys([*contours, *rises, *lifts]))[:MAX_SPANS]
         if self.kokoro is not None:
             source_metrics = await self.kokoro.request(
                 text, source, output, run,
@@ -471,12 +478,12 @@ class ApplioWorker:
             spans = source_metrics.get("wordSpans", [])
             words = source_metrics.get("spanWords", list(spanned[: len(spans)]))
             for word, (start, end) in zip(words, spans):
-                semitones = (
-                    self.settings.interjection_bend
-                    if word in contours
-                    else self.settings.word_lift_bend
-                )
-                bends.append([start, end, semitones])
+                if word in contours:
+                    bends.append([start, end, self.settings.interjection_bend])
+                elif word in rises:  # a question rises to its end
+                    bends.append([start, end, self.settings.word_lift_bend, 1.0])
+                else:
+                    bends.append([start, end, self.settings.word_lift_bend])
                 bent.append(word)
             if bends:
                 own["bend"] = bends
@@ -514,8 +521,12 @@ class ApplioWorker:
             )
         if contours:
             message["contours"] = sum(word in contours for word in bent)
+        if rises:
+            message["rises"] = sum(word in rises and word not in contours for word in bent)
         if lifts:
-            message["lifts"] = sum(word in lifts and word not in contours for word in bent)
+            message["lifts"] = sum(
+                word in lifts and word not in contours and word not in rises for word in bent
+            )
         return message
 
     def cancel(self, run: str) -> None:
@@ -602,7 +613,10 @@ async def synthesise(
                 if holds:
                     options["holds"] = holds
         if settings.word_lifts and settings.tts_provider == "kokoro":
-            lifts = lift_words(text)
+            rises = question_words(text)
+            lifts = tuple(index for index in lift_words(text) if index not in rises)
+            if rises:
+                options["rises"] = rises
             if lifts:
                 options["lifts"] = lifts
         reply = await worker.request(text, source, wav, run, prosody=prosody, **options)
@@ -637,6 +651,7 @@ async def synthesise(
             "emphasisPauses",
             "contours",
             "lifts",
+            "rises",
         )
         if key in reply
     }

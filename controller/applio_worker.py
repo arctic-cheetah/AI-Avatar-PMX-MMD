@@ -42,27 +42,32 @@ BEND_PEAK = 0.4       # a bend rises to its peak 40 % of the way through its spa
 
 
 def validate_bends(bends) -> None:
-    """Check per-sentence pitch bends: up to MAX_BENDS [start, end, semitones] in source seconds."""
+    """Check per-sentence pitch bends: up to MAX_BENDS [start, end, semitones(, peak)] in source seconds."""
     def number(value):
         return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
     if not isinstance(bends, list) or len(bends) > MAX_BENDS:
         raise ValueError(f'bend must be a list of up to {MAX_BENDS} [start, end, semitones]')
     for bend in bends:
-        if not isinstance(bend, (list, tuple)) or len(bend) != 3 or not all(map(number, bend)):
-            raise ValueError('each bend must be [start, end, semitones]')
-        start, end, semitones = bend
+        if not isinstance(bend, (list, tuple)) or len(bend) not in (3, 4) or not all(map(number, bend)):
+            raise ValueError('each bend must be [start, end, semitones] or [start, end, semitones, peak]')
+        start, end, semitones = bend[:3]
+        if len(bend) == 4 and not 0.05 <= bend[3] <= 1.0:
+            raise ValueError('a bend peak must be between 0.05 and 1 of its span')
         if not 0 <= start < end <= 60 or abs(semitones) > MAX_BEND:
             raise ValueError(f'bend needs 0 <= start < end <= 60 s and at most ±{MAX_BEND} semitones')
 
 
-def bend_shape(t: float, start: float, end: float) -> float:
-    """0 outside the span; a smooth rise to 1 at BEND_PEAK, then a smooth fall back to 0."""
+def bend_shape(t: float, start: float, end: float, peak: float = BEND_PEAK) -> float:
+    """0 outside the span; a smooth rise to 1 at ``peak`` (fraction of the span), then a fall.
+
+    With ``peak`` 1 the bend rises all the way to the end of the span (a question).
+    """
     if t <= start or t >= end:
         return 0.0
     u = (t - start) / (end - start)
-    if u < BEND_PEAK:
-        return math.sin(math.pi / 2 * u / BEND_PEAK) ** 2
-    return math.cos(math.pi / 2 * (u - BEND_PEAK) / (1 - BEND_PEAK)) ** 2
+    if u < peak:
+        return math.sin(math.pi / 2 * u / peak) ** 2
+    return math.cos(math.pi / 2 * (u - peak) / (1 - peak)) ** 2
 
 
 def bend_factors(frames: int, frame_seconds: float, offset_seconds: float, bends) -> list[float]:
@@ -70,7 +75,7 @@ def bend_factors(frames: int, frame_seconds: float, offset_seconds: float, bends
     factors = []
     for i in range(frames):
         t = i * frame_seconds - offset_seconds
-        semitones = sum(peak * bend_shape(t, start, end) for start, end, peak in bends)
+        semitones = sum(bend[2] * bend_shape(t, bend[0], bend[1], *bend[3:4]) for bend in bends)
         factors.append(2 ** (semitones / 12))
     return factors
 

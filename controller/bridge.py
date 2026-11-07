@@ -1001,19 +1001,19 @@ def build_parser():
         help="Applio voice index (.index); default is the Yidhari index under --applio-dir.",
     )
     parser.add_argument("--tts", choices=["edge", "kokoro"], default="edge")
-    parser.add_argument("--kokoro-voice", default="af_heart")
+    parser.add_argument("--kokoro-voice", default="af_heart:0.7,af_bella:0.3")
     parser.add_argument("--kokoro-speed", type=float, default=1.0)
     parser.add_argument(
         "--kokoro-clause-pause",
         type=float,
-        default=0.1,
+        default=0.25,
         help="Seconds Kokoro pauses at commas and other clause breaks (0-0.5).",
     )
     parser.add_argument("--kokoro-threads", type=int, default=2)
     parser.add_argument(
         "--sentence-tail",
         type=float,
-        default=0.25,
+        default=0.4,
         help="Seconds of silence kept after a full sentence; the gap between clips (0-0.6).",
     )
     parser.add_argument(

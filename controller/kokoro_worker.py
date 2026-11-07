@@ -70,8 +70,8 @@ def validate_settings(voice: str, speed: float, threads: int, clause_pause: floa
 
 
 class Synthesizer:
-    def __init__(self, voice: str = 'af_heart', speed: float = 1.0, threads: int = 2,
-                 clause_pause: float = 0.1):
+    def __init__(self, voice: str = 'af_heart:0.7,af_bella:0.3', speed: float = 1.0, threads: int = 2,
+                 clause_pause: float = 0.25):
         validate_settings(voice, speed, threads, clause_pause)
         import onnxruntime
         from kokoro_onnx import Kokoro
@@ -152,9 +152,9 @@ def main() -> None:
     parser.add_argument('--worker', action='store_true')
     parser.add_argument('--text', default='Hello, I am ready to keep you company. What shall we work on?')
     parser.add_argument('--output', type=Path, default=ROOT / 'assets/private/speech/kokoro-test.wav')
-    parser.add_argument('--voice', default='af_heart')
+    parser.add_argument('--voice', default='af_heart:0.7,af_bella:0.3')
     parser.add_argument('--speed', type=float, default=1.0)
-    parser.add_argument('--clause-pause', type=float, default=0.1)
+    parser.add_argument('--clause-pause', type=float, default=0.25)
     parser.add_argument('--threads', type=int, default=2)
     parser.add_argument('--list-voices', action='store_true')
     args = parser.parse_args()

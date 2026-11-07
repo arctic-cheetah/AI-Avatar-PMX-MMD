@@ -45,10 +45,10 @@ async def audition(args) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--text', action='append')
-    parser.add_argument('--voice', default='af_heart')
+    parser.add_argument('--voice', default='af_heart:0.7,af_bella:0.3')
     parser.add_argument('--speed', type=float, default=1.0)
-    parser.add_argument('--clause-pause', type=float, default=0.1)
-    parser.add_argument('--sentence-tail', type=float, default=0.25)
+    parser.add_argument('--clause-pause', type=float, default=0.25)
+    parser.add_argument('--sentence-tail', type=float, default=0.4)
     parser.add_argument('--fragment-tail', type=float, default=0.1)
     parser.add_argument('--threads', type=int, default=2)
     parser.add_argument('--rvc-threads', type=int, default=4)

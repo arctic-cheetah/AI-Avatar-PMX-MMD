@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from controller.speech_align import align
-from controller.speech_trim import FRAGMENT_TAIL_KEEP, MAX_TAIL_KEEP, TAIL_KEEP, trim_clip
+from controller.speech_trim import FRAGMENT_TAIL_KEEP, MAX_TAIL_KEEP, trim_clip
 
 ROOT = Path(__file__).resolve().parents[1]
 LIVE_DIR = ROOT / "assets" / "private" / "speech" / "live"
@@ -57,11 +57,12 @@ class ApplioSettings:
     recognizer: str = "phonetic"
     rvc_threads: int = 0  # PyTorch CPU threads for RVC; 0 keeps PyTorch's default
     tts_provider: str = "edge"
-    kokoro_voice: str = "af_heart"
+    # Kokoro cadence and voice defaults chosen by listening on 7 Nov 2026 (#29).
+    kokoro_voice: str = "af_heart:0.7,af_bella:0.3"
     kokoro_speed: float = 1.0
-    kokoro_clause_pause: float = 0.1  # seconds at commas etc., inside one sentence
+    kokoro_clause_pause: float = 0.25  # seconds at commas etc., inside one sentence
     kokoro_threads: int = 2
-    sentence_tail: float = TAIL_KEEP  # silence kept after a sentence: the gap between clips
+    sentence_tail: float = 0.4  # silence kept after a sentence: the gap between clips
     fragment_tail: float = FRAGMENT_TAIL_KEEP  # after a mood-tag fragment
 
     def __post_init__(self) -> None:

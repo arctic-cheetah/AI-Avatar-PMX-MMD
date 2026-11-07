@@ -57,19 +57,26 @@ def ending(text: str) -> str:
         return 'exclaim'
     if end.endswith('?'):
         return 'question'
-    return 'sentence' if end.endswith(SENTENCE_ENDINGS) else 'fragment'
+    if end.endswith(SENTENCE_ENDINGS):
+        return 'sentence'
+    return 'clause' if end.endswith((',', ';', ':')) else 'fragment'
 
 
 def tail_keep(text: str, sentence_tail: float = TAIL_KEEP,
               fragment_tail: float = FRAGMENT_TAIL_KEEP, ellipsis_tail: float | None = None,
-              exclaim_tail: float | None = None, question_tail: float | None = None) -> float:
+              exclaim_tail: float | None = None, question_tail: float | None = None,
+              clause_tail: float | None = None) -> float:
     """A full stop earns a natural pause; a mood-tag split should flow on.
 
-    Ellipsis, exclamation and question tails default to the sentence tail.
+    Ellipsis, exclamation and question tails default to the sentence tail. A
+    clip ending in a clause mark (often a trailing dash) gets ``clause_tail``,
+    or the fragment tail when none is given.
     """
     kind = ending(text)
-    if kind == 'fragment':
+    if kind == 'fragment' or (kind == 'clause' and clause_tail is None):
         return fragment_tail
+    if kind == 'clause':
+        return clause_tail
     chosen = {'ellipsis': ellipsis_tail, 'exclaim': exclaim_tail, 'question': question_tail}.get(kind)
     return sentence_tail if chosen is None else chosen
 

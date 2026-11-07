@@ -37,7 +37,7 @@ SENTENCE_END = re.compile(r'(?<=[.!?…])["\')\]]*\s+')
 # An ellipsis run straight into a word ("Wait...what") still ends the sentence.
 ELLIPSIS_TOUCH = re.compile(r"(\.\.\.|…)(?=[^\W\d_])")
 DIGIT_RANGE = re.compile(r"(?<=\d)\s*[–—]\s*(?=\d)")
-DASH = re.compile(r"\s*[—–]\s*|\s+-\s+")
+DASH = re.compile(r"\s*[—–]\s*|\s+-(?:\s+|$)")
 WORKER_SCRIPT = Path(__file__).with_name("applio_worker.py")
 WORKER_LOG = LIVE_DIR.parent / "applio-worker.log"
 LOG = logging.getLogger(__name__)
@@ -171,7 +171,8 @@ def shape_punctuation(text: str) -> str:
     text = DASH.sub(", ", text)
     text = re.sub(r",(\s*,)+", ",", text)
     text = re.sub(r",\s*(?=[.!?…])", "", text)
-    return " ".join(text.split()).strip(" ,")
+    # Leading junk goes; a trailing comma from a dash stays, so its pause is kept.
+    return " ".join(text.split()).lstrip(" ,")
 
 
 def speakable(text: str) -> bool:
@@ -447,6 +448,7 @@ async def synthesise(
             ellipsis_tail=settings.ellipsis_tail,
             exclaim_tail=settings.exclaim_tail,
             question_tail=settings.question_tail,
+            clause_tail=settings.kokoro_clause_pause,
         )
     prosody = None
     if settings.mood_prosody or settings.punctuation_cadence:

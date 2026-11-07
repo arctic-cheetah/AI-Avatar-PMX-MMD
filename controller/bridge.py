@@ -1059,7 +1059,7 @@ def build_parser():
     parser.add_argument(
         "--interjection-bend",
         type=float,
-        default=2.0,
+        default=4.0,
         help="Semitones at the interjection contour's peak (-4 to 4).",
     )
     parser.add_argument(

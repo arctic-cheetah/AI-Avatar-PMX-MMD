@@ -86,7 +86,7 @@ class ApplioSettings:
     emphasis: bool = False  # Kokoro: pause before *word* emphasis from the LLM (#84)
     emphasis_pause: float = 0.12
     interjection_contours: bool = False  # Kokoro: "Aww"/"Ooh" rise then fall (#84)
-    interjection_bend: float = 2.0  # semitones at the contour's peak
+    interjection_bend: float = 4.0  # semitones at the peak; 4 chosen by listening (#84)
     exclaim_gain: float = 3.0  # dB louder for a clip ending in !, with punctuation_cadence
 
     def __post_init__(self) -> None:

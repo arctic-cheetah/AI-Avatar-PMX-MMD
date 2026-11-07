@@ -12,6 +12,7 @@
 //   5. Sway the upper body on slow sine waves (see body-sway.js).
 //   6. Audition every PMX morph on a manual layer (see morph-audition.js).
 //   7. Play the saved speech sample with lip sync (see speech-player.js).
+//   8. Pop out into an always-on-top window (see pop-out.js).
 //
 // What it does not own yet:
 //   Live LLM speech, hand poses, hair/coat physics.
@@ -43,6 +44,7 @@ import { CameraGaze } from "./camera-gaze.js";
 import { SWAY, SwayController, swayAnglesAt } from "./body-sway.js";
 import { Spring, TIMING, frameDelta } from "./smoothing.js";
 import { composeBlink, eyeClosure } from "./facial-layers.js";
+import { FrameLoop, PopOut } from "./pop-out.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
 const MODEL_URL = "/yidhari-mmd/伊德海莉.pmx";
@@ -210,14 +212,33 @@ const swayQuat = new THREE.Quaternion();
 const sway = new SwayController();
 const cameraGaze = new CameraGaze((target) => gaze.setCamera(target, cameraGazeToggle.checked));
 
-window.addEventListener("pointermove", (event) => {
+/**
+ * Only the window that shows the canvas has matching pointer coordinates,
+ * which is the floating window while she is popped out.
+ * @param {PointerEvent} event Pointer event from either window.
+ * @returns {boolean}
+ */
+function overCanvasWindow(event) {
+  return !event.view || event.view === canvas.ownerDocument.defaultView;
+}
+
+/** @param {PointerEvent} event */
+function followCursor(event) {
+  if (!overCanvasWindow(event)) return;
   const rect = canvas.getBoundingClientRect();
   gaze.setCursor(
     normalisePointer(event.clientX - rect.left, event.clientY - rect.top, rect.width, rect.height),
     cursorGazeToggle.checked,
   );
-});
-window.addEventListener("pointerleave", () => gaze.setCursor({ x: 0, y: 0 }, cursorGazeToggle.checked));
+}
+
+/** @param {PointerEvent} event */
+function centreCursor(event) {
+  if (overCanvasWindow(event)) gaze.setCursor({ x: 0, y: 0 }, cursorGazeToggle.checked);
+}
+
+window.addEventListener("pointermove", followCursor);
+window.addEventListener("pointerleave", centreCursor);
 cursorGazeToggle.addEventListener("change", () => gaze.setCursor({ x: 0, y: 0 }, cursorGazeToggle.checked));
 cameraGazeToggle.addEventListener("change", async () => {
   gaze.setCamera({ x: 0, y: 0 }, cameraGazeToggle.checked);
@@ -1397,9 +1418,58 @@ function animate() {
   outline.render(scene, camera);
 }
 
+/**
+ * Follow the canvas between the page and the pop-out window: frames, pixel
+ * ratio, size and cursor gaze come from whichever window shows her.
+ * @param {Window | null} view The floating window, or null after returning.
+ * @returns {void}
+ */
+function onPopOut(view) {
+  const shown = view ?? window;
+  frameLoop.use(shown);
+  cameraGaze.useFrames(shown);
+  renderer.setPixelRatio(Math.min(shown.devicePixelRatio, 2));
+  if (view) {
+    view.addEventListener("pointermove", followCursor);
+    view.addEventListener("pointerleave", centreCursor);
+    view.addEventListener("resize", resize);
+  }
+  gaze.setCursor({ x: 0, y: 0 }, cursorGazeToggle.checked);
+  popOutNote.hidden = !view;
+  popOutButton.textContent = view ? "↩ Return" : "📌 Pop out";
+  popOutButton.setAttribute("aria-pressed", String(Boolean(view)));
+  resize();
+}
+
+const popOutButton = document.querySelector("#pop-out-button");
+const popOutNote = document.querySelector("#pop-out-note");
+const popOut = new PopOut({
+  api: window.documentPictureInPicture,
+  host: window,
+  nodes: [canvas, thinkingBubble, document.querySelector("#pop-out-return")],
+  onChange: onPopOut,
+});
+popOutButton.disabled = !popOut.supported;
+popOutButton.title = popOut.supported
+  ? "Float her portrait in an always-on-top window"
+  : PopOut.unsupportedReason;
+popOutButton.addEventListener("click", async () => {
+  if (popOut.window) {
+    popOut.close();
+    return;
+  }
+  try {
+    await popOut.open();
+  } catch (error) {
+    setStatus(error.message);
+  }
+});
+document.querySelector("#pop-out-return").addEventListener("click", () => popOut.close());
+
+const frameLoop = new FrameLoop(animate, window);
 resize();
 new ResizeObserver(resize).observe(canvas);
 installPanelResizer();
 installChatBox();
-renderer.setAnimationLoop(animate);
+frameLoop.start();
 loadModel();

@@ -46,6 +46,10 @@ Punctuation cadence (#84, `--punctuation-cadence`): `trim_clip()` picks the
 tail by the clip's final mark and pads silence past the source's own;
 `punctuation_prosody()` adds `!` gain and `…` pace rules (gain applied by `apply_gain()` after trimming) that `combine()` stacks with the
 mood prosody; `shape_punctuation()` turns dashes into commas before TTS.
+Emphasis (#84 tier 4, `--emphasis`): the Segmenter records `*word*` positions in
+`Segment.emphasis`; the Kokoro worker phonemizes the text, checks `aligned()`,
+synthesises with `create_timed(is_phonemes=True)` and splices a faded pause at
+`pause_points()` before each emphasised word.
 
 ```text
 User text -> llama-server (Qwen, Vulkan, 127.0.0.1:8080)

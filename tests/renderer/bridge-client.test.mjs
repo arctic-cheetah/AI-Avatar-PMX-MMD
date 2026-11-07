@@ -14,6 +14,48 @@ test("new chat sends a reset frame", () => {
 
 const CATALOG = { neutral: {}, happy: {}, thinking: {} };
 
+test("a turn event opens speech and an agent bubble does not", (t) => {
+  const previousDocument = globalThis.document;
+  const previousSocket = globalThis.WebSocket;
+  t.after(() => {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+    if (previousSocket === undefined) delete globalThis.WebSocket;
+    else globalThis.WebSocket = previousSocket;
+  });
+  const element = () => ({
+    textContent: "", placeholder: "", hidden: false, disabled: false, className: "",
+    children: [], classList: { toggle() {} },
+    append(...nodes) { this.children.push(...nodes); },
+    addEventListener() {}, setAttribute() {}, focus() {},
+  });
+  const nodes = new Map();
+  globalThis.document = {
+    querySelector(selector) {
+      if (!nodes.has(selector)) nodes.set(selector, element());
+      return nodes.get(selector);
+    },
+    createElement: element,
+  };
+  let socket;
+  globalThis.WebSocket = class {
+    static OPEN = 1;
+    constructor() { socket = this; this.readyState = 1; }
+  };
+  const turns = [];
+  const bubbles = [];
+  connectBridge({
+    catalog: CATALOG, onStart() {}, onFinish() {}, onExpression() {}, onText() {}, onSpeak() {},
+    onTurn: () => turns.push("turn"),
+    onAgentSay: () => bubbles.push("bubble"),
+  });
+  const receive = (event) => socket.onmessage({ data: JSON.stringify(event) });
+  receive({ type: "agent", kind: "say", source: "Copilot", text: "On it." });
+  receive({ type: "turn" });
+  assert.deepEqual(bubbles, ["bubble"]);
+  assert.deepEqual(turns, ["turn"]);
+});
+
 test("agent say events keep the source and text for the chat log", () => {
   assert.deepEqual(agentEvent({ type: "agent", kind: "say", source: "Claude Code", text: "On it." }, CATALOG),
     { kind: "say", source: "Claude Code", text: "On it." });

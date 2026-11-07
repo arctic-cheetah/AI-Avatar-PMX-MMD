@@ -78,9 +78,34 @@ test('an oversized first clip of a new turn expires replay instead of keeping th
   assert.equal(replay.remember(huge), false);
   assert.deepEqual(replay.entries, []);
   assert.equal(replay.expired, true);
-  assert.equal(replay.remember(entry('A later sentence of that turn.', 2)), true);
-  assert.equal(replay.expired, false, 'a later fitting clip of the same turn restores replay');
-  assert.equal(replay.entries[0].text, 'A later sentence of that turn.');
+  assert.equal(replay.remember(entry('A later sentence of that turn.', 2)), false);
+  assert.equal(replay.expired, true, 'a capped turn does not restart from a later fragment');
+  assert.deepEqual(replay.entries, []);
+});
+
+test('a smaller clip after the cap does not leave a gap in the turn', () => {
+  const replay = new LastSpeechReplay();
+  replay.remember(entry('Keep the start.'));
+  const tooLong = entry('This sentence does not fit.');
+  tooLong.clip.buffer.duration = 119;
+  assert.equal(replay.remember(tooLong), false);
+  assert.equal(replay.partial, true);
+  const later = entry('Do not skip ahead to me.');
+  later.clip.buffer.duration = 1;
+  assert.equal(replay.remember(later), false);
+  assert.equal(replay.entries.length, 1);
+  assert.equal(replay.entries[0].text, 'Keep the start.');
+});
+
+test('live speech drops queued replay clips and keeps clips already waiting', async () => {
+  const { dropQueuedReplay } = await import('../../renderer/speech-replay.js');
+  const live = { text: 'A real sentence.', replay: false };
+  const kept = dropQueuedReplay([
+    { text: 'Replay one.', replay: true },
+    live,
+    { text: 'Replay two.', replay: true },
+  ]);
+  assert.deepEqual(kept, [live]);
 });
 
 test('replay bounds both displayed text and the retained transcript', () => {

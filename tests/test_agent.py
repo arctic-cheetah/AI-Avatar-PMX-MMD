@@ -372,6 +372,20 @@ class StageTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([s[0][0] for s in self.speech.spoken],
                          ["Line 0.", "Line 1.", "Line 2."])
 
+    async def test_turn_opens_when_speech_starts_not_when_the_next_item_is_queued(self):
+        self.speech.hold = asyncio.Event()
+        self.stage.enqueue(self.say("First sentence. Second sentence."))
+        await self.speech.started.wait()
+        self.assertEqual(self.sent, [{"type": "turn"}])
+        self.stage.enqueue(self.say("Next item."))
+        await settle()
+        self.assertEqual(self.sent, [{"type": "turn"}],
+                         "queueing the next item must not open its turn early")
+        self.speech.hold.set()
+        await settle()
+        self.assertEqual([event["type"] for event in self.sent],
+                         ["turn", "speak", "speak", "turn", "speak"])
+
     async def test_chat_cancels_agent_speech(self):
         self.speech.hold = asyncio.Event()
         self.stage.enqueue(self.say("First."))

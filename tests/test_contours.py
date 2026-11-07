@@ -436,7 +436,7 @@ class WordLiftTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(metrics['spanWords'], [3, 1])
         self.assertEqual(metrics['wordSpans'], [[1.15, 1.55], [0.625, 0.85]])
 
-    async def exchange(self, contours, lifts, worker_script):
+    async def exchange(self, contours, lifts, worker_script, rises=()):
         settings = ApplioSettings(tts_provider='kokoro', interjection_contours=True, word_lifts=True,
                                   interjection_bend=8.0, word_lift_bend=4.0)
         with tempfile.TemporaryDirectory() as scratch:
@@ -456,7 +456,8 @@ class WordLiftTests(unittest.IsolatedAsyncioTestCase):
             worker.kokoro.request = spy
             try:
                 reply = await worker.request('Aww, sweetheart!', Path('s.wav'), Path('o.wav'),
-                                             contours=contours, lifts=lifts)
+                                             contours=contours, lifts=lifts,
+                                             **({'rises': rises} if rises else {}))
             finally:
                 await worker.close()
         return seen['tts'], reply
@@ -498,3 +499,49 @@ class WordLiftTests(unittest.IsolatedAsyncioTestCase):
         settings = speech_settings(build_parser().parse_args(
             ['--speech', '--word-lifts', '--word-lift-bend', '5']))
         self.assertEqual((settings.word_lifts, settings.word_lift_bend), (True, 5.0))
+
+
+class QuestionRiseTests(unittest.IsolatedAsyncioTestCase):
+    """Kokoro ends questions on a fall ("Is that so?" drops ~8 st); the actor rises."""
+
+    def test_bend_can_peak_at_its_end(self):
+        n = 200
+        factors = bend_factors(n, FRAME, PAD, [(0.2, 0.4, 4.0, 1.0)])
+        frame = lambda t: round((t + PAD) / FRAME)
+        inside = [factors[frame(0.2 + i * 0.01)] for i in range(20)]
+        self.assertEqual(inside, sorted(inside))                       # rises all the way
+        self.assertAlmostEqual(factors[frame(0.39)], 2 ** (4 / 12), delta=0.01)
+        self.assertEqual(factors[frame(0.45)], 1.0)
+        # Three-element bends keep the rise-fall shape.
+        self.assertEqual(bend_factors(n, FRAME, PAD, [(0.2, 0.4, 4.0)]),
+                         bend_factors(n, FRAME, PAD, [(0.2, 0.4, 4.0, 0.4)]))
+
+    def test_peak_position_validation(self):
+        validate_bends([[0.1, 0.4, 4.0, 1.0]])
+        for bad in ([[0.1, 0.4, 4.0, 0.0]], [[0.1, 0.4, 4.0, 1.5]], [[0.1, 0.4, 4.0, True]],
+                    [[0.1, 0.4, 4.0, 1.0, 9]]):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                validate_bends(bad)
+
+    def test_question_words(self):
+        from controller.speech import question_words
+        cases = {'Are you okay?': (2,), 'Is that so?': (2,), 'Are you okay, honey?': (3,),
+                 '"Really?"': (0,), 'Really?!': (), 'Hello.': (), 'We did it!': ()}
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(question_words(text), expected)
+
+    async def test_rises_become_end_peaked_bends(self):
+        tts, reply = await WordLiftTests.exchange(self, (), (), SPANS_WORKER, rises=(2,))
+        self.assertEqual(tts['spans'], [2])
+        self.assertEqual(reply['request']['bend'], [[0.2, 0.5, 4.0, 1.0]])
+        self.assertEqual(reply['rises'], 1)
+
+    async def test_synthesise_rises_on_questions_instead_of_lifting(self):
+        settings = ApplioSettings(tts_provider='kokoro', word_lifts=True)
+        sent, _ = await SynthesiseContourTests.run_segment(self, settings, Segment('Are you okay?'))
+        self.assertEqual((sent['rises'], 'lifts' in sent), ((2,), False))
+        sent, _ = await SynthesiseContourTests.run_segment(self, settings, Segment('Are you okay, honey?'))
+        self.assertEqual((sent['rises'], 'lifts' in sent), ((3,), False))
+        sent, _ = await SynthesiseContourTests.run_segment(self, settings, Segment('Thank you, sweetheart!'))
+        self.assertEqual((sent['lifts'], 'rises' in sent), ((2,), False))

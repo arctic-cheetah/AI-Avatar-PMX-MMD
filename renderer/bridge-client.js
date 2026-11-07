@@ -301,9 +301,11 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     chatInputSized = true;
     const startY = event.clientY;
     const startHeight = chatInput.getBoundingClientRect().height;
-    const maxHeight = Number.parseFloat(getComputedStyle(chatInput).maxHeight);
+    // The chat bar may be in the pop-out window; ask its own document.
+    const page = chatInput.ownerDocument;
+    const maxHeight = Number.parseFloat(page.defaultView.getComputedStyle(chatInput).maxHeight);
     chatInputResizer.setPointerCapture(event.pointerId);
-    document.body.classList.add('chat-input-resizing');
+    page.body.classList.add('chat-input-resizing');
     function move(next) {
       const limit = Number.isFinite(maxHeight) ? maxHeight : startHeight + 320;
       const height = Math.min(limit, Math.max(38, startHeight + next.clientY - startY));
@@ -314,7 +316,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
       chatInputResizer.removeEventListener('pointermove', move);
       chatInputResizer.removeEventListener('pointerup', stop);
       chatInputResizer.removeEventListener('pointercancel', stop);
-      document.body.classList.remove('chat-input-resizing');
+      page.body.classList.remove('chat-input-resizing');
     }
     chatInputResizer.addEventListener('pointermove', move);
     chatInputResizer.addEventListener('pointerup', stop);

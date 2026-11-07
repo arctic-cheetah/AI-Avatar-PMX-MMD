@@ -44,6 +44,7 @@ async def audition(args) -> None:
                              question_rise_bend=args.question_rise_bend,
                              quote_voice=args.quote_voice, quote_bend=args.quote_bend,
                              dynamic_emphasis=args.dynamic_emphasis, drawl_bend=args.drawl_bend,
+                             drawl_hold=args.drawl_hold,
                              rvc_threads=args.rvc_threads)
     settings.check()
     worker = ApplioWorker(settings)
@@ -138,6 +139,7 @@ def main() -> None:
     parser.add_argument('--quote-bend', type=float, default=-2.0)
     parser.add_argument('--dynamic-emphasis', action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument('--drawl-bend', type=float, default=-3.0)
+    parser.add_argument('--drawl-hold', type=float, default=0.3)
     parser.add_argument('--plain-voice', action='store_true',
                         help='Turn every expressive voice part off.')
     parser.add_argument('--mood-prosody', action=argparse.BooleanOptionalAction, default=True,

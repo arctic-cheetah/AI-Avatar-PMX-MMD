@@ -1095,6 +1095,12 @@ def build_parser():
         help="Semitones at a drawled word's dip (-12 to 12).",
     )
     parser.add_argument(
+        "--drawl-hold",
+        type=float,
+        default=0.3,
+        help="Seconds a drawled word's own vowel is held (0-0.45).",
+    )
+    parser.add_argument(
         "--quote-voice",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -1188,6 +1194,7 @@ def speech_settings(args):
         quote_voice=args.quote_voice and not plain,
         dynamic_emphasis=args.dynamic_emphasis and not plain,
         drawl_bend=args.drawl_bend,
+        drawl_hold=args.drawl_hold,
         quote_bend=args.quote_bend,
         emphasis_pause=args.emphasis_pause,
         rvc_threads=args.rvc_threads,

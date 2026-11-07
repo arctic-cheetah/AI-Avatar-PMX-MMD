@@ -106,6 +106,7 @@ class ApplioSettings:
     word_lift_bend: float = 4.0  # semitones at the lift's peak
     dynamic_emphasis: bool = False  # Kokoro: deeper, drawn-out "buuut"; brighter *word* (#83)
     drawl_bend: float = -3.0  # semitones at a drawl's dip
+    drawl_hold: float = 0.3  # seconds a drawled word's own vowel is held (<= 0.45 avoids stutter)
     quote_voice: bool = True  # Kokoro: pause before and a slight pitch dip across quotes (#84)
     quote_bend: float = -2.0  # semitones at the quote's dip
     question_rise_bend: float = 9.0  # semitones a question's last word rises (peak at 70 %)
@@ -153,6 +154,8 @@ class ApplioSettings:
             raise ValueError("word_lift_bend must be between -12 and 12 semitones.")
         if not math.isfinite(self.drawl_bend) or abs(self.drawl_bend) > 12.0:
             raise ValueError("drawl_bend must be between -12 and 12 semitones.")
+        if not math.isfinite(self.drawl_hold) or not 0.0 <= self.drawl_hold <= 0.45:
+            raise ValueError("drawl_hold must be between 0 and 0.45 seconds.")
         if not math.isfinite(self.quote_bend) or abs(self.quote_bend) > 12.0:
             raise ValueError("quote_bend must be between -12 and 12 semitones.")
         if not math.isfinite(self.question_rise_bend) or abs(self.question_rise_bend) > 12.0:
@@ -509,14 +512,19 @@ class ApplioWorker:
         source_metrics = None
         # Interjections first, so they keep their contour if the per-sentence cap is reached.
         quoted = [index for pair in quotes for index in pair]
+        # A drawl keeps Kokoro's own vowel and holds it ("bˈʌːːt" was heard as "boot").
+        held = [list(hold) for hold in holds]
+        if self.settings.drawl_hold > 0:
+            held += [[index, self.settings.drawl_hold] for index in drawls
+                     if index not in {hold[0] for hold in holds}]
+        held = held[:MAX_SPANS]
         spanned = tuple(dict.fromkeys([*contours, *drawls, *rises, *quoted, *lifts]))[:MAX_SPANS]
         if self.kokoro is not None:
             source_metrics = await self.kokoro.request(
                 text, source, output, run,
                 fields={
                     **self._kokoro_fields(prosody, emphasis, spanned),
-                    **({"holds": [list(hold) for hold in holds]} if holds else {}),
-                    **({"drawls": list(drawls)} if drawls else {}),
+                    **({"holds": held} if held else {}),
                 },
             )
         request_id = secrets.token_hex(8)

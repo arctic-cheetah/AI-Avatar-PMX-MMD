@@ -55,7 +55,7 @@ test('an oversized later clip keeps the start of the turn', () => {
   for (const oversize of [
     e => { e.clip.buffer.duration = 119; },
     e => { e.clip.buffer.length = 8 * 1024 * 1024; },
-    e => { e.clip.visemes = new Array(19999); },
+    e => { e.clip.visemes = new Array(20000); },
   ]) {
     const replay = new LastSpeechReplay();
     const first = entry('Keep me.');

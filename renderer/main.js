@@ -34,6 +34,7 @@ import { connectBridge } from "./bridge-client.js";
 import { SpeechPlayer, loadSpeechShapes } from "./speech-player.js";
 import { VoiceVolume, bindVoiceVolume } from "./voice-volume.js";
 import { LiveSpeechSession } from "./speech-session.js";
+import { LastSpeechReplay } from "./speech-replay.js";
 import { FillerSession } from "./filler-session.js";
 import { ThinkingPose, THINKING_POSE } from "./thinking-pose.js";
 import { buildThinkingRig } from "./thinking-rig.js";
@@ -70,6 +71,8 @@ const SPEECH_SHAPES = await loadSpeechShapes().catch((error) => {
 const canvas = document.querySelector("#view");
 const speechButton = document.querySelector("#speech-button");
 const speechStatus = document.querySelector("#speech-status");
+const replayButton = document.querySelector("#speech-replay");
+const replayStatus = document.querySelector("#speech-replay-status");
 const voiceVolume = new VoiceVolume();
 bindVoiceVolume(voiceVolume, {
   input: document.querySelector('#voice-volume'),
@@ -170,11 +173,15 @@ let auditionPanel = null;
 let speech = null;
 /** @type {Promise<import("./speech-player.js").SpeechClip> | null} */
 let speechClip = null;
-/** @type {{ clip: Promise<import("./speech-player.js").SpeechClip>, expression: string, weight: number, text: string }[]} */
+/** @type {{ clip: Promise<import("./speech-player.js").SpeechClip>, expression: string, weight: number, text: string, filler?: boolean }[]} */
 const speechQueue = [];
 /** Bumped on every new response or stop, so stale clip loads are discarded. */
 let liveRun = 0;
 let speechStarting = false;
+let sampleStarting = false;
+let replayStarting = false;
+let chatResponding = false;
+const lastSpeech = new LastSpeechReplay();
 const liveSpeech = new LiveSpeechSession();
 const fillerSpeech = new FillerSession();
 // Linger on the last mood briefly after the final word, then ease to neutral.
@@ -962,12 +969,15 @@ async function toggleSpeech() {
   expressions.stopLoop();
   audition.stopSweep();
   globalThis.__yidhariHold = null;
+  const run = liveRun;
+  sampleStarting = true;
+  syncReplayControls();
   speechButton.disabled = true;
   speechStatus.textContent = "Loading sample…";
   try {
     speechClip ??= speech.load(SPEECH_SAMPLE.audio, SPEECH_SAMPLE.track);
     const clip = await speechClip;
-    await speech.play(clip);
+    if (run !== liveRun || !await speech.play(clip) || run !== liveRun) return;
     speechButton.textContent = "■ Stop";
     speechStatus.textContent = `Speaking in ${expressions.activeExpression}: ${clip.transcript ?? ""}`;
   } catch (error) {
@@ -975,11 +985,49 @@ async function toggleSpeech() {
     console.error(error);
     speechStatus.textContent = error instanceof Error ? error.message : "Could not play the sample.";
   } finally {
+    sampleStarting = false;
     speechButton.disabled = false;
+    syncReplayControls();
   }
 }
 
 speechButton.addEventListener("click", toggleSpeech);
+
+/** Replay never contacts the bridge, changes chat history, or answers a pending ask. */
+async function replayLastSpeech() {
+  if (replayButton.disabled || !lastSpeech.entry) return;
+  const entry = lastSpeech.entry;
+  const run = liveRun;
+  replayStarting = true;
+  syncReplayControls();
+  expressions.stopLoop();
+  audition.stopSweep();
+  globalThis.__yidhariHold = null;
+  try {
+    applyMood(entry.expression, entry.weight);
+    if (!await speech.play(entry.clip) || run !== liveRun) return;
+    liveSpeech.clipQueued();
+    liveSpeech.responseFinished();
+    speechButton.textContent = "■ Stop";
+    speechStatus.textContent = `Replaying (${entry.expression}): ${entry.text}`;
+  } catch (error) {
+    console.error(error);
+    speechStatus.textContent = "Could not replay the last speech. Try again.";
+  } finally {
+    replayStarting = false;
+    syncReplayControls();
+  }
+}
+
+replayButton.addEventListener("click", replayLastSpeech);
+
+/** Keep replay out of the shared speech lane while playback or a chat reply is busy. */
+function syncReplayControls() {
+  replayButton.disabled = !speech || !lastSpeech.entry || chatResponding || !speechIdle();
+  replayStatus.textContent = lastSpeech.entry
+    ? (replayButton.disabled ? "Replay available when speech is idle." : "Replay the last spoken clip, from the beginning.")
+    : (lastSpeech.expired ? "The latest clip was too long to keep for replay." : "No speech to replay yet.");
+}
 
 /**
  * Stop the current clip, drop queued live clips, and reset the speech controls.
@@ -993,6 +1041,7 @@ function stopSpeech(message) {
   speech?.stop();
   speechButton.textContent = "▶ Play sample";
   speechStatus.textContent = message;
+  syncReplayControls();
 }
 
 /** Keep the thinking gesture and bubble on the same path for previews and bridge moods. */
@@ -1027,7 +1076,7 @@ function enqueueSpeech({ id, expression, weight, text }) {
   if (fillerId !== null) {
     const filler = speech.load(`${FILLER_DIR}${fillerId}.wav`, `${FILLER_DIR}${fillerId}.visemes.json`);
     filler.catch(() => {}); // Reported when its turn comes.
-    speechQueue.push({ clip: filler, expression: "thinking", weight: 0.6, text: "Hmm…" });
+    speechQueue.push({ clip: filler, expression: "thinking", weight: 0.6, text: "Hmm…", filler: true });
   }
   const clip = speech.load(`${LIVE_CLIP_DIR}${id}.wav`, `${LIVE_CLIP_DIR}${id}.visemes.json`);
   clip.catch(() => {}); // Reported when its turn comes.
@@ -1035,6 +1084,7 @@ function enqueueSpeech({ id, expression, weight, text }) {
   if (!speech.playing && !speechStarting) {
     playNextSpeech();
   }
+  syncReplayControls();
 }
 
 /**
@@ -1043,6 +1093,7 @@ function enqueueSpeech({ id, expression, weight, text }) {
  */
 async function playNextSpeech() {
   speechStarting = true;
+  syncReplayControls();
   let run = liveRun;
   while (speechQueue.length > 0) {
     const next = speechQueue.shift();
@@ -1054,7 +1105,13 @@ async function playNextSpeech() {
         continue;
       }
       applyMood(next.expression, next.weight);
-      await speech.play(clip);
+      const started = await speech.play(clip);
+      if (run !== liveRun) {
+        run = liveRun;
+        continue;
+      }
+      if (!started) continue;
+      if (!next.filler) lastSpeech.remember({ ...next, clip });
       speechButton.textContent = "■ Stop";
       speechStatus.textContent = `Speaking (${next.expression}): ${next.text}`;
       break;
@@ -1064,6 +1121,7 @@ async function playNextSpeech() {
     }
   }
   speechStarting = false;
+  syncReplayControls();
   if (!speech.playing) {
     // The last queued clip could not be played; the response may still be over.
     relaxAfterSpeech();
@@ -1072,7 +1130,7 @@ async function playNextSpeech() {
 
 /** @returns {boolean} Whether no clip is playing, loading or queued. */
 function speechIdle() {
-  return !speech.playing && !speechStarting && speechQueue.length === 0;
+  return !speech?.playing && !speechStarting && !sampleStarting && !replayStarting && speechQueue.length === 0;
 }
 
 /**
@@ -1147,6 +1205,7 @@ function onModelLoaded(loaded, data) {
     }
     speechButton.textContent = "▶ Play sample";
     speechStatus.textContent = "Finished.";
+    syncReplayControls();
     relaxAfterSpeech();
   };
   speechButton.disabled = false;
@@ -1207,6 +1266,7 @@ function onModelLoaded(loaded, data) {
   connectBridge({
     catalog: EXPRESSION_CATALOG,
     onStart: () => {
+      chatResponding = true;
       for (const section of document.querySelectorAll('#panel > section:not(:first-child)')) section.inert = true;
       expressions.stopLoop();
       stopSpeech("");
@@ -1218,12 +1278,15 @@ function onModelLoaded(loaded, data) {
       transcript.textContent = '';
     },
     onFinish: () => {
+      chatResponding = false;
       for (const section of document.querySelectorAll('#panel > section:not(:first-child)')) section.inert = false;
       liveSpeech.responseFinished();
       relaxAfterSpeech();
+      syncReplayControls();
     },
     onReset: () => {
       // Silence any reply still speaking; the bridge has already cancelled it.
+      lastSpeech.clear();
       stopSpeech("");
       liveSpeech.reset();
       applyMood("neutral", 1);

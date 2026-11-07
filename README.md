@@ -309,6 +309,7 @@ avatar-yidhari/
 | [conversation-history.md](docs/conversation-history.md)           | Chat memory, context budget, New chat and reconnects   |
 | [external-llm.md](docs/external-llm.md)                           | Cloud / proxy OpenAI-compatible LLMs, API keys, headers |
 | [agent-voice.md](docs/agent-voice.md)                             | Coding agent → MCP → Yidhari speech (issue #27)         |
+| [chat-markdown.md](docs/chat-markdown.md)                         | Markdown in the chat log and how it stays safe (#89)    |
 | [pmx-morph-catalog.md](docs/pmx-morph-catalog.md)                 | Every PMX facial morph                                  |
 | [gaze-tracking.md](docs/gaze-tracking.md)                         | Cursor + webcam gaze tracking design (issue #6)         |
 | [body-sway.md](docs/body-sway.md)                               | Slow sine-wave body sway design (issue #4)              |

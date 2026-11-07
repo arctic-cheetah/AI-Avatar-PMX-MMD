@@ -215,7 +215,8 @@ short pause before it (`--emphasis-pause`, default 0.12 s, 0–0.3).
   `emphasisPauses`, and `emphasisSkipped` says why none was made (`misaligned`,
   `no-timings`, `first-word` or `not-found`). With `--punctuation-cadence`, a sentence whose dashes
   change the word count (`1–5` → "1 to 5") also skips the pause.
-- The chat log still shows the asterisks, as it does for other Markdown.
+- The chat log shows the marked word in italics, as Markdown
+  ([chat-markdown.md](chat-markdown.md)).
 - Stronger stress or loudness on the word itself is research in #83.
 
 ```bash

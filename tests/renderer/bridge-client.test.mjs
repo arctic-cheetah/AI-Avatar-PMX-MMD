@@ -2,6 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { startFrame, resetFrame, agentEvent, answerFrame, connectBridge } from "../../renderer/bridge-client.js";
+import { installPage } from "./fake-dom.mjs";
 
 test("typed and spoken prompts share one start frame; history lives in the bridge", () => {
   assert.deepEqual(JSON.parse(startFrame("another one")), { type: "start", prompt: "another one" });
@@ -15,33 +16,7 @@ test("new chat sends a reset frame", () => {
 const CATALOG = { neutral: {}, happy: {}, thinking: {} };
 
 test("a turn event opens speech and an agent bubble does not", (t) => {
-  const previousDocument = globalThis.document;
-  const previousSocket = globalThis.WebSocket;
-  t.after(() => {
-    if (previousDocument === undefined) delete globalThis.document;
-    else globalThis.document = previousDocument;
-    if (previousSocket === undefined) delete globalThis.WebSocket;
-    else globalThis.WebSocket = previousSocket;
-  });
-  const element = () => ({
-    textContent: "", placeholder: "", hidden: false, disabled: false, className: "",
-    children: [], classList: { toggle() {} },
-    append(...nodes) { this.children.push(...nodes); },
-    addEventListener() {}, setAttribute() {}, focus() {},
-  });
-  const nodes = new Map();
-  globalThis.document = {
-    querySelector(selector) {
-      if (!nodes.has(selector)) nodes.set(selector, element());
-      return nodes.get(selector);
-    },
-    createElement: element,
-  };
-  let socket;
-  globalThis.WebSocket = class {
-    static OPEN = 1;
-    constructor() { socket = this; this.readyState = 1; }
-  };
+  const page = installPage(t);
   const turns = [];
   const bubbles = [];
   connectBridge({
@@ -49,7 +24,7 @@ test("a turn event opens speech and an agent bubble does not", (t) => {
     onTurn: () => turns.push("turn"),
     onAgentSay: () => bubbles.push("bubble"),
   });
-  const receive = (event) => socket.onmessage({ data: JSON.stringify(event) });
+  const receive = page.receive;
   receive({ type: "agent", kind: "say", source: "Copilot", text: "On it." });
   receive({ type: "turn" });
   assert.deepEqual(bubbles, ["bubble"]);
@@ -93,44 +68,89 @@ test("agent asks carry an id; the next chat message answers it", () => {
 });
 
 test("tool notices stay in the chat log without becoming reply or speech text", (t) => {
-  const previousDocument = globalThis.document;
-  const previousSocket = globalThis.WebSocket;
-  t.after(() => {
-    if (previousDocument === undefined) delete globalThis.document;
-    else globalThis.document = previousDocument;
-    if (previousSocket === undefined) delete globalThis.WebSocket;
-    else globalThis.WebSocket = previousSocket;
-  });
-  const element = () => ({
-    textContent: '', children: [], classList: { toggle() {} },
-    append(...nodes) { this.children.push(...nodes); },
-    addEventListener() {}, setAttribute() {}, focus() {},
-  });
-  const nodes = new Map();
-  globalThis.document = {
-    querySelector(selector) {
-      if (!nodes.has(selector)) nodes.set(selector, element());
-      return nodes.get(selector);
-    },
-    createElement: element,
-  };
-  let socket;
-  globalThis.WebSocket = class {
-    static OPEN = 1;
-    constructor() { socket = this; this.readyState = 1; }
-  };
+  const page = installPage(t);
   const text = [], spoken = [];
   connectBridge({ catalog: {}, onStart() {}, onFinish() {}, onExpression() {},
     onText: (value) => text.push(value), onSpeak: (value) => spoken.push(value) });
-  const receive = (event) => socket.onmessage({ data: JSON.stringify(event) });
+  const receive = page.receive;
   receive({ type: 'start' });
   receive({ type: 'notice', text: 'Using get_time…' });
   receive({ type: 'say', text: 'Good morning.' });
   receive({ type: 'end' });
-  const lines = nodes.get('#chat-log').children;
+  const lines = page.log().children;
   assert.equal(lines[1].children[0].textContent, 'Status');
   assert.equal(lines[1].children[1].textContent, 'Using get_time…');
   assert.equal(lines[0].children[1].textContent, 'Good morning.');
   assert.deepEqual(text, ['Good morning.']);
   assert.deepEqual(spoken, []);
+});
+
+const noop = () => {};
+function connect(page, extra = {}) {
+  connectBridge({ catalog: CATALOG, onStart: noop, onFinish: noop, onExpression: noop, onText: noop, onSpeak: noop, ...extra });
+}
+const bodyOf = (line) => line.children[1];
+
+test("a streamed reply renders Markdown while speech text keeps the raw chunks", (t) => {
+  const page = installPage(t);
+  const text = [];
+  connect(page, { onText: (value) => text.push(value) });
+  const chunks = ["Here is **bo", "ld**.\n\n```", "js\nx = 1\n", "```"];
+  page.receive({ type: "start" });
+  page.receive({ type: "say", text: chunks[0] });
+  const body = bodyOf(page.log().children[0]);
+  assert.equal(body.textContent, "Here is **bo");
+  assert.equal(body.querySelectorAll("strong").length, 0);
+  page.receive({ type: "say", text: chunks[1] });
+  page.receive({ type: "say", text: chunks[2] });
+  assert.equal(body.querySelector("code").textContent, "x = 1");
+  page.receive({ type: "say", text: chunks[3] });
+  page.receive({ type: "end" });
+  assert.equal(body.innerHTML, '<p>Here is <strong>bold</strong>.</p><pre><code class="language-js">x = 1</code></pre>');
+  assert.deepEqual(text, chunks);
+});
+
+test("agent say, ask and report bubbles render Markdown", (t) => {
+  const page = installPage(t);
+  connect(page);
+  page.receive({ type: "agent", kind: "say", source: "Claude Code", text: "**Done**, see `x`" });
+  page.receive({ type: "agent", kind: "ask", source: "Claude Code", id: "ab12", text: "Commit **now**?" });
+  const [say, ask] = page.log().children;
+  assert.equal(bodyOf(say).innerHTML, "<p><strong>Done</strong>, see <code>x</code></p>");
+  assert.equal(bodyOf(ask).textContent, "❓ Commit now?");
+  assert.equal(bodyOf(ask).querySelectorAll("strong").length, 1);
+});
+
+test("a report keeps a plain-text summary and renders its expanded body", (t) => {
+  const page = installPage(t);
+  connect(page);
+  const long = `## Fixed **the bug** ${"x".repeat(100)}`;
+  page.receive({ type: "agent", kind: "report", source: "Claude Code", status: "done", text: `${long}\n\n- one\n- two` });
+  const body = bodyOf(page.log().children[0]);
+  const summary = body.querySelector("summary");
+  assert.equal(summary.children.length, 1);
+  assert.equal(summary.textContent, `Report · done: Fixed the bug ${"x".repeat(80 - "Fixed the bug ".length)}…`);
+  const details = body.querySelector("details");
+  assert.equal(details.querySelectorAll("h2").length, 1);
+  assert.deepEqual(details.querySelectorAll("li").map((item) => item.textContent), ["one", "two"]);
+  assert.equal(details.querySelectorAll("pre").length, 0);
+});
+
+test("unsafe HTML in an agent message stays text", (t) => {
+  const page = installPage(t);
+  connect(page);
+  page.receive({ type: "agent", kind: "say", source: "Agent", text: '<img src=x onerror="alert(1)"> [x](javascript:alert(1))' });
+  const body = bodyOf(page.log().children[0]);
+  assert.equal(body.querySelectorAll("img").length + body.querySelectorAll("a").length, 0);
+  assert.match(body.textContent, /^<img src=x onerror="alert\(1\)"> x$/);
+});
+
+test("the user's own message is shown exactly as typed", (t) => {
+  const page = installPage(t);
+  connect(page);
+  page.nodes.get("#chat-input").value = "**hi** <b>there</b>";
+  page.nodes.get("#chat-bar").listeners.submit[0]({ preventDefault() {} });
+  const body = bodyOf(page.log().children[0]);
+  assert.equal(body.textContent, "**hi** <b>there</b>");
+  assert.equal(body.descendants().length, 0);
 });

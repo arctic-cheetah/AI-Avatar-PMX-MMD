@@ -55,6 +55,9 @@ class SegmenterTests(unittest.TestCase):
         self.assertEqual(clean_for_tts("-- --pth-path=evil"), "pth-path=evil")
 
 
+LISTENED_DEFAULTS = ("af_heart:0.7,af_bella:0.3", 0.25, 0.4, 0.1)
+
+
 class ApplioSettingsTests(unittest.TestCase):
     def test_applio_dir_selects_matching_model_and_index(self):
         root = Path("/tmp/Applio-rocm")
@@ -99,8 +102,18 @@ class ApplioSettingsTests(unittest.TestCase):
         )
         defaults = speech_settings(build_parser().parse_args(["--speech"]))
         self.assertEqual(
-            (defaults.kokoro_clause_pause, defaults.sentence_tail, defaults.fragment_tail),
-            (0.1, 0.25, 0.1),
+            (defaults.kokoro_voice, defaults.kokoro_clause_pause,
+             defaults.sentence_tail, defaults.fragment_tail),
+            LISTENED_DEFAULTS,
+        )
+
+    def test_settings_defaults_match_listening_choice(self):
+        # Chosen by ear on 7 Nov 2026 (#29): natural cadence with the 70/30 blend.
+        settings = ApplioSettings()
+        self.assertEqual(
+            (settings.kokoro_voice, settings.kokoro_clause_pause,
+             settings.sentence_tail, settings.fragment_tail),
+            LISTENED_DEFAULTS,
         )
 
 

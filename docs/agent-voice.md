@@ -351,17 +351,21 @@ The turn is capped at 120 seconds, 32 MiB of decoded float audio across all
 channels, and 20,000 viseme cues. Text and transcript are capped at 2,000
 characters each. A new turn replaces the previous one only when its first clip
 starts; a failed load does not. If a later clip does not fit, the beginning is
-kept and the status says the rest was too long. If the first clip of a new turn
-does not fit, the previous turn is discarded. Replay does not regenerate expired
+kept and the status says the rest was too long. Later clips of that turn are
+not appended, so replay does not skip a sentence in the middle. If the first
+clip of a new turn does not fit, the previous turn is discarded and a later
+fragment does not become the start. Replay does not regenerate expired
 audio. **New chat**, a page reload or closing the tab clears replay.
 Disconnecting/reconnecting the bridge preserves it, and deleting bridge clip
 files does not affect it because no files are fetched during replay. Each tab's
 replay is local to that tab.
 
-A chat reply and an agent item that starts while the chat is idle are separate
-turns. An agent bubble that arrives during a chat opens its turn when that chat
-ends. Two agent items whose bubbles both arrive during the same chat can share
-one replay turn, because their speak events are not separately marked.
+The bridge sends a `turn` event when a chat reply or an agent item actually
+starts speaking, not when its bubble is queued. Replay uses that boundary, so a
+later queued `say` or `report` does not steal the tail of the item still
+speaking. A live clip drops any replay clips still waiting, and stops a replay
+sentence that is already playing, so an `ask` is not stuck behind the turn.
+The sentence already playing from a live reply is left alone.
 
 This widens the latest-clip replay from [#58](https://github.com/arctic-cheetah/AI-Avatar-PMX-MMD/issues/58).
 The turn is tracked in [#97](https://github.com/arctic-cheetah/AI-Avatar-PMX-MMD/issues/97).

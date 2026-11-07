@@ -44,7 +44,7 @@ an RVC semitone shift; `ApplioWorker.request()` adds them as optional fields to
 the per-sentence JSON lines, and each worker validates them again.
 Punctuation cadence (#84, `--punctuation-cadence`): `trim_clip()` picks the
 tail by the clip's final mark and pads silence past the source's own;
-`punctuation_prosody()` adds `!`/`…` rules that `combine()` stacks with the
+`punctuation_prosody()` adds `!` gain and `…` pace rules (gain applied by `apply_gain()` after trimming) that `combine()` stacks with the
 mood prosody; `shape_punctuation()` turns dashes into commas before TTS.
 
 ```text

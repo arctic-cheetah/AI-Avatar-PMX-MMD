@@ -152,20 +152,22 @@ mood changes in the middle of a sentence, where two clips meet.
 
 Based on listening to Yidhari's English voice actor: she lingers on ellipses,
 an exclamation rises with happy moods and falls with negative ones, and dashes
-read as a breath. `--punctuation-cadence` (off by default until auditioned)
+read as a breath, and an exclamation is louder. `--punctuation-cadence` (off by default until auditioned)
 turns on all of the following:
 
 | Rule | What happens | Default |
 | --- | --- | --- |
 | Gap by ending | Trim tail chosen by the clip's last mark: `…`/`...` `--ellipsis-tail`, `!` (incl. `?!`) `--exclaim-tail`, `?` `--question-tail`, `.` `--sentence-tail` | 0.6 / 0.3 / 0.4 / 0.4 s |
 | Ellipsis pace | A sentence ending in `…` is spoken ×0.96 | on |
-| Exclamation pitch | `!` adds +1 semitone with energetic moods and −1 with low or negative moods (sad group, angry, super-angry, annoyed, frown, disgusted, unimpressed), scaled by the tag's weight | on |
+| Exclamation volume | A clip ending in `!` (incl. `?!`) is made louder by `--exclaim-gain` dB (0–6), peak-limited to −1 dBFS so it never clips. An earlier extra ±1 semitone on `!` was too strong when listened to (7 Nov 2026) and was removed; mood pitch still applies | +3 dB |
 | Dashes | `—`, `–` and spaced ` - ` become a comma, so Kokoro's clause pause applies; `1–5` becomes "1 to 5" and hyphenated words are kept | on |
 
 - Tails range 0–0.8 s. Kokoro leaves about 0.5 s of silence after speech,
   so a longer tail is padded with digital silence instead of being capped.
 - Punctuation prosody stacks with `--mood-prosody` (speed multiplies, pitch
-  adds) inside the same clamps: speed ±8 %, pitch ±2 semitones.
+  and gain add) inside the same clamps: speed ±8 %, pitch ±2 semitones,
+  gain 0–6 dB. The gain is applied to the final WAV after trimming, so lip
+  sync is aligned on the louder audio.
 - An ellipsis touching the next word (`Wait...what?!`) now always splits the
   sentence there, like `Wait... what?!`; this needs no flag.
 

@@ -193,7 +193,7 @@ The voice model and Applio settings (RVC pitch, index rate, protect, plus Kokoro
 | `--fragment-tail`  | `0.1`                               | Seconds kept after a fragment split by a mood tag (0–0.8)                      |
 | `--kokoro-threads` | `2`                                 | CPU ONNX threads for the Kokoro worker                                         |
 | `--mood-prosody`   | off                                 | Let each sentence's mood tag nudge Kokoro speed/pauses and RVC pitch (clamped) |
-| `--punctuation-cadence` | off                            | Gap by ending (`--ellipsis-tail` 0.6, `--exclaim-tail` 0.3, `--question-tail` 0.4 s), mood-aware `!` pitch, slower `…`, dashes as pauses |
+| `--punctuation-cadence` | off                            | Gap by ending (`--ellipsis-tail` 0.6, `--exclaim-tail` 0.3, `--question-tail` 0.4 s), louder `!` (`--exclaim-gain` 3 dB), slower `…`, dashes as pauses |
 | `--applio-dir`     | `../Applio`                         | Applio install to launch; `../Applio-rocm` enables ROCm GPU RVC              |
 | `--pth`            | model under `--applio-dir`          | Applio voice model                                                             |
 | `--index`          | index under `--applio-dir`          | Applio voice index                                                             |
@@ -218,7 +218,7 @@ The voice model and Applio settings (RVC pitch, index rate, protect, plus Kokoro
 | `--kokoro-clause-pause` | Pause Kokoro inserts at clause breaks such as commas (0–0.5 s, default 0.25).                                                                                                       |
 | `--sentence-tail` / `--fragment-tail` | Silence kept after a full sentence (default 0.4 s) or a mood-tag fragment (default 0.1 s), 0–0.8 s; these set the gap between clips for Edge and Kokoro.               |
 | `--kokoro-speed`      | Kokoro speaking speed multiplier. `1.0` is the baseline.                                                                                                                             |
-| `--punctuation-cadence` | Punctuation shapes delivery: per-ending gaps, `!` pitch by mood, slower ellipses, dashes as pauses; see docs/testing-kokoro.md §2c.                                         |
+| `--punctuation-cadence` | Punctuation shapes delivery: per-ending gaps, louder exclamations, slower ellipses, dashes as pauses; see docs/testing-kokoro.md §2c.                                         |
 | `--mood-prosody`      | Mood tags also shape the voice per sentence: Kokoro speed and clause pause, RVC pitch (±2 semitones); see docs/testing-kokoro.md §2b.                                         |
 | `--kokoro-threads`    | CPU ONNX thread count for the Kokoro worker.                                                                                                                                           |
 | `--rvc-threads`       | PyTorch CPU thread count for RVC when using the CPU Applio path.                                                                                                                       |
@@ -239,7 +239,7 @@ The voice model and Applio settings (RVC pitch, index rate, protect, plus Kokoro
 | `--text`        | Text to synthesise; can be repeated in audition mode for multiple samples. |
 | `--output`      | Output WAV path for standalone Kokoro synthesis.                           |
 | `--output-dir`  | Output directory for Kokoro → RVC audition clips and `results.json`.    |
-| `--punctuation-cadence`, `--ellipsis-tail`, `--exclaim-tail`, `--question-tail` | Audition punctuation-driven cadence (#84). |
+| `--punctuation-cadence`, `--ellipsis-tail`, `--exclaim-tail`, `--question-tail`, `--exclaim-gain` | Audition punctuation-driven cadence (#84). |
 | `--mood` / `--mood-prosody` | Audition moods (`name` or `name:weight`, repeatable) with mood-driven prosody. |
 | `--worker`      | Runs Kokoro as the persistent JSON-line worker used by the bridge.         |
 

@@ -22,6 +22,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from controller.kokoro_worker import MAX_EMPHASIS
 from controller.prosody import Prosody, combine, prosody_for, punctuation_prosody
 from controller.speech_align import align
 from controller.speech_trim import FRAGMENT_TAIL_KEEP, MAX_TAIL_KEEP, apply_gain, trim_clip
@@ -33,10 +34,15 @@ DEFAULT_MODEL = Path("logs") / "Yidhari-zzz" / "Yidhari-zzz_75e_21450s.pth"
 DEFAULT_INDEX = Path("logs") / "Yidhari-zzz" / "Yidhari-zzz.index"
 CLIP_ID = re.compile(r"[0-9a-f]{16}")
 # A sentence ends at . ! ? or … (optionally followed by closing quotes) plus whitespace.
-SENTENCE_END = re.compile(r'(?<=[.!?…])["\')\]]*\s+')
+# Closing quotes, brackets and emphasis asterisks stay with their sentence (captured).
+SENTENCE_END = re.compile(r'(?<=[.!?…])(["\')\]*]*)\s+')
 # An ellipsis run straight into a word ("Wait...what") still ends the sentence.
 ELLIPSIS_TOUCH = re.compile(r"(\.\.\.|…)(?=[^\W\d_])")
 DIGIT_RANGE = re.compile(r"(?<=\d)\s*[–—]\s*(?=\d)")
+# Single-asterisk emphasis such as *really*; **bold** and a * b are not emphasis.
+# Only one word: multi-word spans like *giggles softly* are roleplay actions (PR #88 review).
+EMPHASIS = re.compile(r"(?<![*\w])\*([^\s*]+)\*(?![*\w])")
+EMPHASIS_MARK = "\ue000"  # private-use marker kept through cleaning, then removed
 DASH = re.compile(r"\s*[—–]\s*|\s+-(?:\s+|$)")
 WORKER_SCRIPT = Path(__file__).with_name("applio_worker.py")
 WORKER_LOG = LIVE_DIR.parent / "applio-worker.log"
@@ -74,6 +80,8 @@ class ApplioSettings:
     ellipsis_tail: float = 0.6  # used with punctuation_cadence
     exclaim_tail: float = 0.3
     question_tail: float = 0.4
+    emphasis: bool = False  # Kokoro: pause before *word* emphasis from the LLM (#84)
+    emphasis_pause: float = 0.12
     exclaim_gain: float = 3.0  # dB louder for a clip ending in !, with punctuation_cadence
 
     def __post_init__(self) -> None:
@@ -111,6 +119,8 @@ class ApplioSettings:
             value = getattr(self, name)
             if not math.isfinite(value) or not 0.0 <= value <= MAX_TAIL_KEEP:
                 raise ValueError(f"{name} must be between 0 and {MAX_TAIL_KEEP} seconds.")
+        if not math.isfinite(self.emphasis_pause) or not 0.0 <= self.emphasis_pause <= 0.3:
+            raise ValueError("emphasis_pause must be between 0 and 0.3 seconds.")
         if not math.isfinite(self.exclaim_gain) or not 0.0 <= self.exclaim_gain <= 6.0:
             raise ValueError("exclaim_gain must be between 0 and 6 dB.")
         if self.tts_provider == "kokoro":
@@ -146,6 +156,12 @@ class Segment:
     text: str
     expression: str = "neutral"
     weight: float = 1.0
+    emphasis: tuple[int, ...] = ()  # spoken-word indices marked *word* by the LLM
+
+
+def spoken_words(text: str) -> list[str]:
+    """Words that are spoken: any letter or digit (a lone dash or comma is not)."""
+    return [word for word in text.split() if any(char.isalnum() for char in word)]
 
 
 def clean_for_tts(text: str) -> str:
@@ -154,7 +170,7 @@ def clean_for_tts(text: str) -> str:
     for char in text:
         category = unicodedata.category(char)
         # So: emoji and other symbols; C*: control, format and unassigned; FE0x: emoji variation selectors.
-        drop = (
+        drop = char != EMPHASIS_MARK and (
             char in "*_`#>~|"
             or category == "So"
             or category.startswith("C")
@@ -193,9 +209,18 @@ class Segmenter:
     _done: list[Segment] = field(default_factory=list)
 
     def _emit(self, text: str) -> None:
-        cleaned = clean_for_tts(text)
+        # A stray marker from the LLM must not create a phantom emphasis.
+        text = text.replace(EMPHASIS_MARK, "")
+        marked = clean_for_tts(EMPHASIS.sub(lambda m: EMPHASIS_MARK + m.group(1), text))
+        # Untrusted markup: keep the first marks the worker accepts rather than fail the sentence.
+        emphasis = tuple(
+            index
+            for index, word in enumerate(spoken_words(marked))
+            if EMPHASIS_MARK in word
+        )[:MAX_EMPHASIS]
+        cleaned = " ".join(marked.replace(EMPHASIS_MARK, "").split())
         if speakable(cleaned):
-            self._done.append(Segment(cleaned, self.expression, self.weight))
+            self._done.append(Segment(cleaned, self.expression, self.weight, emphasis))
 
     def feed(self, event: dict) -> list[Segment]:
         if event["type"] == "expression":
@@ -204,7 +229,9 @@ class Segmenter:
             self.expression, self.weight = event["name"], event["weight"]
         elif event["type"] == "say":
             self.buffer = ELLIPSIS_TOUCH.sub(r"\1 ", self.buffer + event["text"])
-            parts = SENTENCE_END.split(self.buffer)
+            pieces = SENTENCE_END.split(self.buffer)
+            # split() alternates text and captured closers; reattach each closer.
+            parts = [a + b for a, b in zip(pieces[0::2], pieces[1::2] + [""])]
             for sentence in parts[:-1]:
                 self._emit(sentence)
             self.buffer = parts[-1]
@@ -333,12 +360,16 @@ class ApplioWorker:
                 )
         pending.clear()
 
-    def _kokoro_fields(self, prosody: Prosody | None) -> dict:
-        """Per-sentence Kokoro speed and clause pause, kept inside the worker's ranges."""
-        if prosody is None:
-            return {}
+    def _kokoro_fields(self, prosody: Prosody | None, emphasis: tuple[int, ...] = ()) -> dict:
+        """Per-sentence Kokoro fields: speed and clause pause in the worker's ranges, emphasis."""
         s = self.settings
+        fields = {}
+        if emphasis:
+            fields = {"emphasis": list(emphasis), "emphasis_pause": s.emphasis_pause}
+        if prosody is None:
+            return fields
         return {
+            **fields,
             "speed": round(min(2.0, max(0.5, s.kokoro_speed * prosody.speed)), 4),
             "clause_pause": round(min(0.5, max(0.0, s.kokoro_clause_pause * prosody.clause_pause)), 4),
         }
@@ -351,6 +382,7 @@ class ApplioWorker:
         run: str | None = None,
         prosody: Prosody | None = None,
         fields: dict | None = None,
+        emphasis: tuple[int, ...] = (),
     ) -> dict:
         """Synthesise ``text`` into ``source`` and convert into ``output``.
 
@@ -362,7 +394,7 @@ class ApplioWorker:
         source_metrics = None
         if self.kokoro is not None:
             source_metrics = await self.kokoro.request(
-                text, source, output, run, fields=self._kokoro_fields(prosody)
+                text, source, output, run, fields=self._kokoro_fields(prosody, emphasis)
             )
         request_id = secrets.token_hex(8)
         future = asyncio.get_running_loop().create_future()
@@ -397,7 +429,9 @@ class ApplioWorker:
                         "sourceSeconds",
                         "sampleRate",
                         "ttsRtf",
+                        "emphasisPauses",
                     )
+                    if key in source_metrics
                 }
             )
         return message
@@ -463,7 +497,16 @@ async def synthesise(
             else Prosody(),
         )
     try:
-        reply = await worker.request(text, source, wav, run, prosody=prosody)
+        options = {}
+        if (
+            settings.emphasis
+            and settings.tts_provider == "kokoro"
+            and segment.emphasis
+            # Dash shaping can change the word count ("1–5" → "1 to 5"); skip rather than misplace.
+            and len(spoken_words(text)) == len(spoken_words(segment.text))
+        ):
+            options["emphasis"] = segment.emphasis
+        reply = await worker.request(text, source, wav, run, prosody=prosody, **options)
         # Trim before aligning so the lip-sync timings match the audio that plays.
         trim = await asyncio.to_thread(trim_clip, source, wav, text, **tails)
         gain = None
@@ -492,6 +535,7 @@ async def synthesise(
             "sourceSeconds",
             "sampleRate",
             "ttsRtf",
+            "emphasisPauses",
         )
         if key in reply
     }

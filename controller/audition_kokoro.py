@@ -29,6 +29,7 @@ async def audition(args) -> None:
                              punctuation_cadence=args.punctuation_cadence,
                              ellipsis_tail=args.ellipsis_tail, exclaim_tail=args.exclaim_tail,
                              question_tail=args.question_tail, exclaim_gain=args.exclaim_gain,
+                             emphasis=args.emphasis, emphasis_pause=args.emphasis_pause,
                              rvc_threads=args.rvc_threads)
     settings.check()
     worker = ApplioWorker(settings)
@@ -42,7 +43,8 @@ async def audition(args) -> None:
         settings_used = {'voice': args.voice, 'speed': args.speed,
                          'clausePause': args.clause_pause, 'sentenceTail': args.sentence_tail,
                          'fragmentTail': args.fragment_tail, 'moodProsody': args.mood_prosody,
-                         'punctuationCadence': args.punctuation_cadence}
+                         'punctuationCadence': args.punctuation_cadence,
+                         'emphasis': args.emphasis}
         for mood, weight in args.mood or [('soft-smile', 0.6)]:
             for number, text in enumerate(texts, 1):
                 # Split like the live bridge, so each sentence gets its own clip and tail.
@@ -100,6 +102,8 @@ def main() -> None:
     parser.add_argument('--exclaim-tail', type=float, default=0.3)
     parser.add_argument('--question-tail', type=float, default=0.4)
     parser.add_argument('--exclaim-gain', type=float, default=3.0)
+    parser.add_argument('--emphasis', action='store_true', help='Pause before *word* emphasis.')
+    parser.add_argument('--emphasis-pause', type=float, default=0.12)
     parser.add_argument('--mood-prosody', action='store_true',
                         help='Apply mood-driven speed, pauses and RVC pitch.')
     parser.add_argument('--output-dir', type=Path, default=ROOT / 'assets/private/speech/kokoro-audition')

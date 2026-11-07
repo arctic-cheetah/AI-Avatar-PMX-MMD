@@ -178,6 +178,37 @@ turns on all of the following:
   --output-dir assets/private/speech/kokoro-audition/issue-84
 ```
 
+## 2d. Emphasis (#84 tier 4)
+
+Yidhari's actor leaves a slight pause **before** a stressed word. With
+`--emphasis` (Kokoro only, off by default), the LLM is told it may wrap one
+word per sentence in single asterisks, like `*really*`, and the voice adds a
+short pause before it (`--emphasis-pause`, default 0.12 s, 0–0.3).
+
+- The asterisks are never spoken; `**bold**` and `a * b` are not emphasis.
+- Only a **single word** counts: multi-word spans such as the roleplay action
+  `*giggles softly*` are not emphasis (they are still read out, as before). A
+  one-word action like `*giggles*` cannot be told apart from `*really*`.
+- At most three marked words per sentence are used; extra marks are ignored
+  rather than failing the sentence. The prompt rule is added only with
+  `--tts kokoro`, since Edge never pauses for emphasis.
+- The Kokoro worker phonemizes the sentence itself and checks that its words
+  line up one-to-one with the text's. Kokoro reports when each phoneme is
+  spoken, so the pause is spliced into the space before the word, with 5 ms
+  fades so it does not click.
+- If the words do not line up (numbers such as `1999` expand to several
+  words), the sentence is spoken without the pause; the clip metrics show
+  `emphasisPauses`. With `--punctuation-cadence`, a sentence whose dashes
+  change the word count (`1–5` → "1 to 5") also skips the pause.
+- The chat log still shows the asterisks, as it does for other Markdown.
+- Stronger stress or loudness on the word itself is research in #83.
+
+```bash
+.venv/bin/python -m controller.audition_kokoro --emphasis \
+  --text "I *really* like it." --text "That is *so* good, but who knows?" \
+  --output-dir assets/private/speech/kokoro-audition/issue-84-emphasis
+```
+
 ## 3. Test on the avatar
 
 Run these commands in separate terminals:

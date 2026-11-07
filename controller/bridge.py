@@ -1065,7 +1065,7 @@ def build_parser():
     parser.add_argument(
         "--interjection-hold",
         type=float,
-        default=0.8,
+        default=0.0,
         help='Seconds an "aww" is held with --interjection-contours (0-1.2; 0 keeps Kokoro\'s length).',
     )
     parser.add_argument(

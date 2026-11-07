@@ -111,7 +111,7 @@ def main() -> None:
     parser.add_argument('--interjection-contours', action='store_true',
                         help='Rise-then-fall pitch contour on "Aww"/"Ooh".')
     parser.add_argument('--interjection-bend', type=float, default=8.0)
-    parser.add_argument('--interjection-hold', type=float, default=0.8)
+    parser.add_argument('--interjection-hold', type=float, default=0.0)
     parser.add_argument('--mood-prosody', action='store_true',
                         help='Apply mood-driven speed, pauses and RVC pitch.')
     parser.add_argument('--output-dir', type=Path, default=ROOT / 'assets/private/speech/kokoro-audition')

@@ -87,7 +87,7 @@ class ApplioSettings:
     emphasis_pause: float = 0.12
     interjection_contours: bool = False  # Kokoro: "Aww"/"Ooh" rise then fall (#84)
     interjection_bend: float = 8.0  # semitones at the peak: about one octave with Kokoro's rise (#84)
-    interjection_hold: float = 0.8  # seconds an "aww" is held (0 = Kokoro's length)
+    interjection_hold: float = 0.0  # seconds an "aww" is held; 0 keeps Kokoro's ~0.36 s (#84)
     exclaim_gain: float = 3.0  # dB louder for a clip ending in !, with punctuation_cadence
 
     def __post_init__(self) -> None:

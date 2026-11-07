@@ -1084,7 +1084,7 @@ def build_parser():
     parser.add_argument(
         "--quote-voice",
         action=argparse.BooleanOptionalAction,
-        default=False,
+        default=True,
         help='Kokoro: a pause before a "quote" and a slight pitch dip across it.',
     )
     parser.add_argument(

@@ -123,7 +123,7 @@ def main() -> None:
                         help='Lift endearments in address and the word before "!".')
     parser.add_argument('--word-lift-bend', type=float, default=4.0)
     parser.add_argument('--question-rise-bend', type=float, default=9.0)
-    parser.add_argument('--quote-voice', action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument('--quote-voice', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--quote-bend', type=float, default=-2.0)
     parser.add_argument('--plain-voice', action='store_true',
                         help='Turn every expressive voice part off.')

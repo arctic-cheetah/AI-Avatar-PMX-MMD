@@ -98,7 +98,7 @@ class ApplioSettings:
     interjection_bend: float = 8.0  # semitones at the peak: about one octave with Kokoro's rise (#84)
     word_lifts: bool = True  # Kokoro: lift endearments in address and the word before ! (#84)
     word_lift_bend: float = 4.0  # semitones at the lift's peak
-    quote_voice: bool = False  # Kokoro: pause before and a slight pitch dip across quotes (#84)
+    quote_voice: bool = True  # Kokoro: pause before and a slight pitch dip across quotes (#84)
     quote_bend: float = -2.0  # semitones at the quote's dip
     question_rise_bend: float = 9.0  # semitones a question's last word rises (peak at 70 %)
     interjection_hold: float = 0.0  # seconds an "aww" is held; 0 keeps Kokoro's ~0.36 s (#84)

@@ -263,8 +263,14 @@ of word get a smaller rise-fall bump of `--word-lift-bend` semitones (default
   and "honey cake" are left alone);
 - the word right before `!`: "We did *it*!".
 
+- the word right before `?` gets a **rise to the end** instead of a rise-fall
+  (Kokoro ends questions on a fall: "Is that so?" drops about 8 st), also by
+  `--word-lift-bend`. A question's last word rises even if it is an
+  endearment ("Are you okay, *honey*?").
+
 Interjections keep their own, larger contour. At most four bends are used
-per sentence, interjections first.
+per sentence, interjections first. A bend can carry an optional fourth value,
+the position of its peak (0.4 = rise-fall, 1.0 = rise to the end).
 
 The wrapper is installed only if `get_f0` still has the signature it was
 written for; otherwise the worker logs it and speaks without bends. A plain

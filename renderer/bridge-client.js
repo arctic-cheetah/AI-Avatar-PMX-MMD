@@ -1,5 +1,6 @@
 /** Bridge client: chat input, voice input, text preview, moods, and (with bridge --speech) spoken clip IDs. */
 import { VoiceInput, voiceSupported } from './voice-input.js';
+import { renderMarkdown, plainText } from './markdown.js';
 
 const CLIP_ID = /^[0-9a-f]{16}$/;
 const MAX_PROMPT = 2000;
@@ -7,6 +8,7 @@ const MAX_REPLY = 50000;
 const MAX_SOURCE = 40;
 const REPORT_STATUS = new Set(['progress', 'done', 'error']);
 const ASK_ID = /^[0-9a-f]{1,32}$/;
+const SUMMARY_LENGTH = 80;
 
 /** The one message that starts a reply, whether the prompt was typed or spoken. */
 export function startFrame(prompt) {
@@ -68,6 +70,8 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
   let socket;
   let busy = false;
   let reply = null;
+  /** The streamed reply's Markdown source; the bubble is rendered from it, never read back. */
+  let replySource = '';
   /** A coding agent's open question; while set, the chat bar answers it. */
   let pendingAsk = null;
   const chatPlaceholder = chatInput.placeholder;
@@ -78,30 +82,35 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     chatBar.classList.toggle('answering', Boolean(ask));
   }
 
-  /** Append a chat bubble (user, Yidhari, or Yidhari speaking for an agent); returns the message element. */
+  /**
+   * Append a chat bubble (user, Yidhari, or Yidhari speaking for an agent); returns the message element.
+   * Yidhari's and agents' bubbles hold Markdown (#89); the user's and status lines stay plain text.
+   */
   function addLine(who, source = null) {
-    const line = document.createElement('p');
+    const line = document.createElement('div');
     line.className = `chat-line chat-${who}`;
     const label = document.createElement('span');
     label.className = 'chat-who';
     label.textContent = who === 'you' ? 'You' : who === 'tool' ? 'Status' : who === 'agent' ? `Yidhari · for ${source}` : 'Yidhari';
-    const body = document.createElement('span');
+    const body = document.createElement('div');
+    body.className = who === 'you' || who === 'tool' ? 'chat-text' : 'chat-text chat-md';
     line.append(label, body);
     chatLog.append(line);
     chatLog.scrollTop = chatLog.scrollHeight;
     return body;
   }
 
-  /** A report bubble: status and first line as the summary, the full text when opened. */
+  /** A report bubble: status and plain first line as the summary, the full Markdown when opened. */
   function addReport({ source, status, text }) {
     const body = addLine('agent', source);
     body.parentElement.classList.add(`chat-report-${status}`);
     const details = document.createElement('details');
     const summary = document.createElement('summary');
-    const first = text.split('\n', 1)[0];
-    summary.textContent = `Report · ${status}: ${first.length > 80 ? `${first.slice(0, 80)}…` : first}`;
-    const full = document.createElement('pre');
-    full.textContent = text;
+    const first = plainText(text.trimStart().split('\n', 1)[0]);
+    summary.textContent = `Report · ${status}: ${first.length > SUMMARY_LENGTH ? `${first.slice(0, SUMMARY_LENGTH)}…` : first}`;
+    const full = document.createElement('div');
+    full.className = 'chat-report-body chat-md';
+    renderMarkdown(full, text);
     details.append(summary, full);
     body.append(details);
   }
@@ -205,7 +214,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
         switch (event.type) {
           case 'start':
             busy = true; button.disabled = true; setChatEnabled(false);
-            onStart(); reply = addLine('yidhari'); status.textContent = 'Receiving…'; break;
+            onStart(); reply = addLine('yidhari'); replySource = ''; status.textContent = 'Receiving…'; break;
           case 'expression':
             if (!Object.hasOwn(catalog, event.name) || typeof event.weight !== 'number' || !Number.isFinite(event.weight)) throw new Error('Invalid expression');
             onExpression(event.name, Math.max(0, Math.min(1, event.weight))); break;
@@ -213,7 +222,8 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
             if (typeof event.text !== 'string') throw new Error('Invalid text');
             onText(event.text);
             if (reply) {
-              reply.textContent = (reply.textContent + event.text).slice(-MAX_REPLY);
+              replySource = (replySource + event.text).slice(-MAX_REPLY);
+              renderMarkdown(reply, replySource);
               chatLog.scrollTop = chatLog.scrollHeight;
             }
             break;
@@ -231,13 +241,13 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
           case 'agent': {
             const agent = agentEvent(event, catalog);
             if (agent.kind === 'say') {
-              addLine('agent', agent.source).textContent = agent.text;
+              renderMarkdown(addLine('agent', agent.source), agent.text);
               onAgentSay?.(busy);
             } else if (agent.kind === 'report') {
               addReport(agent);
               onAgentSay?.(busy);
             } else if (agent.kind === 'ask') {
-              addLine('agent', agent.source).textContent = `❓ ${agent.text}`;
+              renderMarkdown(addLine('agent', agent.source), `❓ ${agent.text}`);
               setPendingAsk({ id: agent.id, source: agent.source });
               status.textContent = `${agent.source} is asking · your next message answers`;
               onAgentSay?.(busy);
@@ -256,15 +266,15 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
             addLine('tool').textContent = event.text;
             status.textContent = event.text; break;
           case 'end':
-            busy = false; reply = null; onFinish(); button.disabled = false; setChatEnabled(true);
+            busy = false; reply = null; replySource = ''; onFinish(); button.disabled = false; setChatEnabled(true);
             status.textContent = 'Complete'; break;
           case 'error':
             if (typeof event.text !== 'string') throw new Error('Invalid error');
-            busy = false; reply = null; onFinish(); button.disabled = false; setChatEnabled(true);
+            busy = false; reply = null; replySource = ''; onFinish(); button.disabled = false; setChatEnabled(true);
             status.textContent = event.text; break;
           case 'reset':
             // The bridge has forgotten every turn; clear what the user sees to match.
-            busy = false; reply = null; setPendingAsk(null); chatLog.replaceChildren(); onReset?.(); onFinish();
+            busy = false; reply = null; replySource = ''; setPendingAsk(null); chatLog.replaceChildren(); onReset?.(); onFinish();
             button.disabled = false; setChatEnabled(true);
             status.textContent = 'New chat · ready'; break;
           default: throw new Error('Unknown event');

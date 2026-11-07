@@ -162,3 +162,11 @@ test("plainText drops Markdown markers for concise summaries", () => {
   assert.equal(plainText("- [ ] <b>raw</b> stays text"), "[ ] <b>raw</b> stays text");
   assert.equal(plainText("> 1. quoted _item_"), "quoted item");
 });
+
+test("thousands of unclosed markers in a long message still render quickly", () => {
+  for (const source of ["*a ".repeat(16000), "[".repeat(50000), `\`${" *a".repeat(16000)}`, "_x ~~y ".repeat(7000)]) {
+    const started = performance.now();
+    render(source);
+    assert.ok(performance.now() - started < 1000, `${source.slice(0, 6)}… took too long`);
+  }
+});

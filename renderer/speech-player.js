@@ -8,21 +8,24 @@
  * Speech owns articulation: while speaking it blends every speech morph from
  * the mood's value toward its own shape, so closed-lip shapes really close
  * the mouth. During pauses (X) and after the clip it hands the mouth back.
+ * Open-mouth mood shapes outside the speech catalog yield while articulating,
+ * so visemes do not stack on an already open jaw.
  */
 
 import { VoiceVolume } from './voice-volume.js';
 import { LOOKAHEAD_SECONDS } from './voice-limiter.js';
+import { TIMING, exponentialBlend } from './smoothing.js';
 
 /** Rhubarb rounds times to 10 ms. */
 const TOLERANCE = 0.011;
 /** Show each shape slightly before its sound, as real mouths do. */
 const LOOKAHEAD = 0.02;
-/** Shape easing rate per second: about 28 ms to close most of the gap. */
-const SHAPE_RATE = 35;
-/** Lip closures (A) are short; snap faster so they survive dropped frames. */
-const CLOSURE_RATE = 80;
-/** Rate for handing the mouth between speech and mood. */
-const ENVELOPE_RATE = 18;
+/**
+ * Mood mouth shapes that open the jaw on their own. Speech scales them by
+ * (1 - envelope), and the mood gets them back between words and after the clip.
+ * Mouth corners (口角上げ, 口角下げ) stay so the emotion still shows.
+ */
+export const YIELDING_MOUTH_MORPHS = Object.freeze(["□", "ワ", "ワ２"]);
 
 /**
  * @typedef {{ description: string, morphs: Record<string, number> }} SpeechShape
@@ -52,8 +55,9 @@ export class SpeechPlayer {
    * @param {import("three").SkinnedMesh} mesh Loaded PMX mesh.
    * @param {Record<string, SpeechShape>} shapes Speech shape catalog.
    * @param {VoiceVolume} volume Shared listening level and protected output.
+   * @param {{ yields?: readonly string[] }} [options] Mood mouth morphs that give way to speech.
    */
-  constructor(mesh, shapes, volume = new VoiceVolume()) {
+  constructor(mesh, shapes, volume = new VoiceVolume(), { yields = YIELDING_MOUTH_MORPHS } = {}) {
     this.mesh = mesh;
     this.shapes = shapes;
     this.volume = volume;
@@ -73,6 +77,11 @@ export class SpeechPlayer {
         }
       }
     }
+    /** @type {number[]} Mood-owned morph indices scaled down while speaking. */
+    this.yieldIndices = yields
+      .filter((morph) => !this.morphs.has(morph))
+      .map((morph) => mesh.morphTargetDictionary?.[morph])
+      .filter((index) => index != null);
     this.envelope = 0;
     /** @type {AudioContext | null} */
     this.context = null;
@@ -211,9 +220,10 @@ export class SpeechPlayer {
     const cue = this.playing ? this.cueAt(this.audioTime() + LOOKAHEAD) : null;
     const speaking = cue !== null && cue.shape !== "X";
     const targets = speaking ? this.shapes[cue.shape].morphs : {};
-    const shapeBlend = 1 - Math.exp(-(cue?.shape === "A" ? CLOSURE_RATE : SHAPE_RATE) * step);
-    this.envelope += ((speaking ? 1 : 0) - this.envelope) * (1 - Math.exp(-ENVELOPE_RATE * step));
+    const shapeBlend = exponentialBlend(step, cue?.shape === "A" ? TIMING.speechClosure : TIMING.speechShape);
+    this.envelope += ((speaking ? 1 : 0) - this.envelope) * exponentialBlend(step, TIMING.speechEnvelope);
     const influences = this.mesh.morphTargetInfluences;
+    for (const index of this.yieldIndices) influences[index] *= 1 - this.envelope;
     for (const [name, morph] of this.morphs) {
       morph.weight += ((targets[name] ?? 0) - morph.weight) * shapeBlend;
       influences[morph.index] = influences[morph.index] * (1 - this.envelope) + morph.weight * this.envelope;

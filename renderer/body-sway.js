@@ -3,6 +3,8 @@
 // tests/renderer/body-sway.test.mjs). Browser wiring lives in main.js,
 // which caches each bone's base quaternion and multiplies this delta on top.
 
+import { Spring, TIMING } from "./smoothing.js";
+
 export const DEG = Math.PI / 180;
 
 /** Sway channels: bone, local axis, amplitude (rad), period (s). */
@@ -41,7 +43,8 @@ export function maxSwayAmplitude() {
 }
 
 /**
- * Enabled state for the sway stop/start button.
+ * Enabled state for the sway stop/start button, plus a gain that fades the
+ * sway in and out instead of snapping it to rest.
  * Lives here (no DOM) so node --test can cover the toggle behaviour;
  * main.js owns one instance and mirrors it onto the button.
  */
@@ -49,6 +52,24 @@ export class SwayController {
   /** @param {boolean} enabled Whether sway starts enabled. */
   constructor(enabled = true) {
     this.enabled = enabled !== false;
+    this.fade = new Spring(this.enabled ? 1 : 0);
+  }
+
+  /** @returns {number} Current sway gain from 0 (rest) to 1 (full). */
+  get gain() {
+    return this.fade.value;
+  }
+
+  /**
+   * Ease the gain toward the enabled state for this frame.
+   * @param {number} delta Seconds since the previous frame.
+   * @returns {number} Gain to multiply the sway angles by.
+   */
+  update(delta) {
+    const target = this.enabled ? 1 : 0;
+    this.fade.step(target, delta, TIMING.swayFade);
+    this.fade.clamp(0, 1);
+    return this.fade.settle(target);
   }
 
   /** Flip the enabled state and report it. @returns {boolean} New state. */

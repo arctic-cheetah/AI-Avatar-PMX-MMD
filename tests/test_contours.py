@@ -534,8 +534,18 @@ class QuestionRiseTests(unittest.IsolatedAsyncioTestCase):
     async def test_rises_become_end_peaked_bends(self):
         tts, reply = await WordLiftTests.exchange(self, (), (), SPANS_WORKER, rises=(2,))
         self.assertEqual(tts['spans'], [2])
-        self.assertEqual(reply['request']['bend'], [[0.2, 0.5, 4.0, 1.0]])
+        # Probe on real RVC: 4 st peaking at the end only touched the last blip; 8 st peaking
+        # at 70 % turned Kokoro's fall ("so" 202 -> 152 Hz) into a rise (204 -> 192 -> 207 -> 241 Hz).
+        self.assertEqual(reply['request']['bend'], [[0.2, 0.5, 8.0, 0.7]])
         self.assertEqual(reply['rises'], 1)
+
+    def test_question_rise_settings_and_flag(self):
+        self.assertEqual(ApplioSettings().question_rise_bend, 8.0)
+        for value in (-12.1, 12.1, float('nan')):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                ApplioSettings(applio_dir=Path('/nonexistent'), question_rise_bend=value).check()
+        args = build_parser().parse_args(['--speech', '--question-rise-bend', '6'])
+        self.assertEqual(speech_settings(args).question_rise_bend, 6.0)
 
     async def test_synthesise_rises_on_questions_instead_of_lifting(self):
         settings = ApplioSettings(tts_provider='kokoro', word_lifts=True)

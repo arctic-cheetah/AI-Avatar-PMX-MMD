@@ -10,14 +10,17 @@ import wave
 from controller.speech import ApplioSettings, ApplioWorker, ROOT, Segmenter, synthesise
 
 
-def join_wavs(paths: list[Path], output: Path) -> None:
-    """Concatenate same-format WAV clips into ``output``."""
+def join_wavs(paths: list[Path], output: Path) -> bool:
+    """Concatenate same-format WAV clips into ``output``; False (and no file) if there are none."""
+    if not paths:
+        return False
     with wave.open(str(output), 'wb') as joined:
         for index, path in enumerate(paths):
             with wave.open(str(path), 'rb') as clip:
                 if index == 0:
                     joined.setparams(clip.getparams())
                 joined.writeframes(clip.readframes(clip.getnframes()))
+    return True
 
 
 async def audition(args) -> None:
@@ -52,7 +55,9 @@ async def audition(args) -> None:
                               'We can test my new local voice together.']
         settings_used = {'voice': args.voice, 'speed': args.speed,
                          'clausePause': args.clause_pause, 'sentenceTail': args.sentence_tail,
-                         'fragmentTail': args.fragment_tail, 'moodProsody': args.mood_prosody,
+                         'fragmentTail': args.fragment_tail, 'ellipsisTail': args.ellipsis_tail,
+                         'exclaimTail': args.exclaim_tail, 'questionTail': args.question_tail,
+                         'moodProsody': args.mood_prosody,
                          'punctuationCadence': args.punctuation_cadence,
                          'emphasis': args.emphasis,
                          'interjectionContours': args.interjection_contours}
@@ -74,7 +79,12 @@ async def audition(args) -> None:
                     results.append(result)
                     print(json.dumps(result), flush=True)
                 # One readable file per line, its clips back to back as the renderer plays them.
-                join_wavs(clips, directory / f'{mood}-{weight:g}-{number}.wav')
+                joined = directory / f'{mood}-{weight:g}-{number}.wav'
+                if join_wavs(clips, joined):
+                    for result in results[len(results) - len(clips):]:
+                        result['joined'] = str(joined)
+                else:
+                    print(json.dumps({'text': text, 'mood': mood, 'skipped': 'nothing speakable'}), flush=True)
     finally:
         await worker.close()
     directory.mkdir(parents=True, exist_ok=True)

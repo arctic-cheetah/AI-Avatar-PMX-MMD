@@ -178,6 +178,13 @@ The transcript shows up as your chat bubble and goes down the same `{"type":"sta
 
 The voice model and Applio settings (RVC pitch, index rate, protect, plus Kokoro voice/speed/threads) are in `ApplioSettings` in [controller/speech.py](controller/speech.py). Use `--pth /path/to/model.pth` and `--index /path/to/model.index` to try another voice model. Kokoro's log goes to `assets/private/speech/kokoro-worker.log`; Applio's own log goes to `assets/private/speech/applio-worker.log`.
 
+For quiet playback, use **Chat → Voice volume** in the renderer. It provides
+−24 to +18 dB of listening gain with peak protection, remembers the setting in
+this browser, and resets to the existing 0 dB baseline. Start with +6 dB; it
+applies to samples, chat and MCP speech without changing Kokoro/RVC input or
+restarting the bridge. See [voice volume and measurements](docs/voice-volume.md)
+for limits and listening checks.
+
 ### 🎛️ Bridge options
 
 | Option               | Default                               | Meaning                                                                        |

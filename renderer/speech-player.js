@@ -10,6 +10,9 @@
  * the mouth. During pauses (X) and after the clip it hands the mouth back.
  */
 
+import { VoiceVolume } from './voice-volume.js';
+import { LOOKAHEAD_SECONDS } from './voice-limiter.js';
+
 /** Rhubarb rounds times to 10 ms. */
 const TOLERANCE = 0.011;
 /** Show each shape slightly before its sound, as real mouths do. */
@@ -48,10 +51,14 @@ export class SpeechPlayer {
   /**
    * @param {import("three").SkinnedMesh} mesh Loaded PMX mesh.
    * @param {Record<string, SpeechShape>} shapes Speech shape catalog.
+   * @param {VoiceVolume} volume Shared listening level and protected output.
    */
-  constructor(mesh, shapes) {
+  constructor(mesh, shapes, volume = new VoiceVolume()) {
     this.mesh = mesh;
     this.shapes = shapes;
+    this.volume = volume;
+    this.generation = 0;
+    this.outputDelay = 0;
     /** @type {Map<string, { index: number, weight: number }>} Speech-owned morphs by PMX name. */
     this.morphs = new Map();
     /** @type {string[]} */
@@ -123,12 +130,25 @@ export class SpeechPlayer {
    */
   async play(clip) {
     this.stop();
+    const generation = this.generation;
     const context = this.audioContext();
     await context.resume();
+    const output = await this.volume.connect(context);
+    if (generation !== this.generation) return;
     const source = context.createBufferSource();
-    source.buffer = clip.buffer;
-    source.connect(context.destination);
+    // Flush the limiter's delayed tail before onended advances the queue.
+    // Keep the original clip and viseme timeline untouched.
+    this.outputDelay = Math.ceil(context.sampleRate * LOOKAHEAD_SECONDS) / context.sampleRate;
+    const original = clip.buffer;
+    const padded = context.createBuffer(original.numberOfChannels,
+      original.length + Math.ceil(this.outputDelay * original.sampleRate), original.sampleRate);
+    for (let channel = 0; channel < original.numberOfChannels; channel++) {
+      padded.copyToChannel(original.getChannelData(channel), channel);
+    }
+    source.buffer = padded;
+    source.connect(output);
     source.onended = () => {
+      source.disconnect();
       if (this.source === source) {
         this.source = null;
         this.onEnded?.();
@@ -143,9 +163,12 @@ export class SpeechPlayer {
 
   /** Stop audio and release the mouth back to the mood. */
   stop() {
+    this.generation += 1;
     const source = this.source;
     this.source = null;
     source?.stop();
+    source?.disconnect();
+    this.volume.resetLimiter?.();
   }
 
   /**
@@ -158,7 +181,7 @@ export class SpeechPlayer {
     const heard = Number.isFinite(output) && output > 0
       ? output
       : context.currentTime - (context.outputLatency || context.baseLatency || 0);
-    return heard - this.startTime;
+    return heard - this.startTime - this.outputDelay;
   }
 
   /**

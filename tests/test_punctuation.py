@@ -194,7 +194,7 @@ class SynthesisePunctuationTests(unittest.IsolatedAsyncioTestCase):
         worker.settings = settings
         sent = {}
 
-        async def prepare(text, source, output, run, prosody=None):
+        async def prepare(text, source, output, run, prosody=None, **options):
             sent.update(text=text, prosody=prosody)
             source.touch()
             output.touch()
@@ -211,7 +211,7 @@ class SynthesisePunctuationTests(unittest.IsolatedAsyncioTestCase):
         return sent, trim.call_args.kwargs
 
     async def test_enabled_cadence_shapes_text_tails_and_prosody(self):
-        settings = ApplioSettings(tts_provider='kokoro', punctuation_cadence=True)
+        settings = ApplioSettings(tts_provider='kokoro', punctuation_cadence=True, mood_prosody=False)
         sent, tails = await self.run_segment(settings, Segment('Yay — we did it!', 'excited', 1.0))
         self.assertEqual(sent['text'], 'Yay, we did it!')
         self.assertEqual(sent['prosody'], Prosody(gain_db=3.0))
@@ -243,14 +243,15 @@ class SynthesisePunctuationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_disabled_by_default_leaves_text_and_tails(self):
         sent, tails = await self.run_segment(
-            ApplioSettings(tts_provider='kokoro'), Segment('Yay — we did it!', 'excited', 1.0))
+            ApplioSettings(tts_provider='kokoro', punctuation_cadence=False, mood_prosody=False),
+            Segment('Yay — we did it!', 'excited', 1.0))
         self.assertEqual(sent['text'], 'Yay — we did it!')
         self.assertIsNone(sent['prosody'])
         self.assertEqual(tails, {'sentence_tail': 0.4, 'fragment_tail': 0.1})
 
     def test_bridge_flags(self):
         defaults = speech_settings(build_parser().parse_args(['--speech']))
-        self.assertFalse(defaults.punctuation_cadence)
+        self.assertTrue(defaults.punctuation_cadence)
         self.assertEqual((defaults.ellipsis_tail, defaults.exclaim_tail, defaults.question_tail),
                          (0.6, 0.3, 0.4))
         self.assertEqual(defaults.exclaim_gain, 3.0)

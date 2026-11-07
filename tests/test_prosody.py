@@ -199,7 +199,7 @@ class SynthesiseProsodyTests(unittest.IsolatedAsyncioTestCase):
         worker.settings = settings
         sent = {}
 
-        async def prepare(text, source, output, run, prosody=None):
+        async def prepare(text, source, output, run, prosody=None, **options):
             sent['prosody'] = prosody
             source.touch()
             output.touch()
@@ -214,18 +214,21 @@ class SynthesiseProsodyTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_enabled_mood_prosody_follows_segment(self):
         prosody, metrics = await self.run_segment(
-            ApplioSettings(tts_provider='kokoro', mood_prosody=True), Segment('Yay!', 'excited', 1.0))
+            ApplioSettings(tts_provider='kokoro', mood_prosody=True, punctuation_cadence=False),
+            Segment('Yay!', 'excited', 1.0))
         self.assertEqual(prosody, prosody_for('excited', 1.0))
         self.assertEqual(metrics['prosody'], {'speed': 1.05, 'clausePause': 0.7, 'pitch': 1})
 
     async def test_disabled_by_default(self):
         prosody, metrics = await self.run_segment(
-            ApplioSettings(tts_provider='kokoro'), Segment('Yay!', 'excited', 1.0))
+            ApplioSettings(tts_provider='kokoro', mood_prosody=False, punctuation_cadence=False),
+            Segment('Yay!', 'excited', 1.0))
         self.assertIsNone(prosody)
         self.assertNotIn('prosody', metrics)
 
     def test_bridge_flag(self):
-        self.assertFalse(speech_settings(build_parser().parse_args(['--speech'])).mood_prosody)
+        self.assertFalse(
+            speech_settings(build_parser().parse_args(['--speech', '--no-mood-prosody'])).mood_prosody)
         self.assertTrue(
             speech_settings(build_parser().parse_args(['--speech', '--mood-prosody'])).mood_prosody)
 

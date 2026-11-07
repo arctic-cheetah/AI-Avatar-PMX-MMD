@@ -209,7 +209,7 @@ class PipelineEmphasisTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_emphasis_not_sent_when_off_edge_or_reshaped(self):
         cases = [
-            (ApplioSettings(tts_provider='kokoro'), Segment('I really like it.', emphasis=(1,))),
+            (ApplioSettings(tts_provider='kokoro', emphasis=False), Segment('I really like it.', emphasis=(1,))),
             (ApplioSettings(tts_provider='edge', emphasis=True), Segment('I really like it.', emphasis=(1,))),
             # Dash shaping turns "1–5" into three words, so word positions would be wrong.
             (ApplioSettings(tts_provider='kokoro', emphasis=True, punctuation_cadence=True),
@@ -225,7 +225,7 @@ class PipelineEmphasisTests(unittest.IsolatedAsyncioTestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 ApplioSettings(applio_dir=Path('/nonexistent'), emphasis_pause=value).check()
         defaults = speech_settings(build_parser().parse_args(['--speech']))
-        self.assertEqual((defaults.emphasis, defaults.emphasis_pause), (False, 0.12))
+        self.assertEqual((defaults.emphasis, defaults.emphasis_pause), (True, 0.12))
         settings = speech_settings(build_parser().parse_args(
             ['--speech', '--emphasis', '--emphasis-pause', '0.2']))
         self.assertEqual((settings.emphasis, settings.emphasis_pause), (True, 0.2))
@@ -235,7 +235,7 @@ class PromptTests(unittest.TestCase):
     def test_rule_is_prompted_only_for_kokoro_emphasis(self):
         self.assertTrue(prompts_emphasis(ApplioSettings(tts_provider='kokoro', emphasis=True)))
         self.assertFalse(prompts_emphasis(ApplioSettings(tts_provider='edge', emphasis=True)))
-        self.assertFalse(prompts_emphasis(ApplioSettings(tts_provider='kokoro')))
+        self.assertFalse(prompts_emphasis(ApplioSettings(tts_provider='kokoro', emphasis=False)))
         self.assertFalse(prompts_emphasis(None))
 
     def test_emphasis_rule_only_when_enabled(self):

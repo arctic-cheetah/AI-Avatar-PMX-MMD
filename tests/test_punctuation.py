@@ -98,7 +98,7 @@ class GainTests(unittest.TestCase):
             before = self.peak(path)
             result = apply_gain(path, 6.0)
             self.assertAlmostEqual(self.peak(path) / before, 10 ** (6 / 20), delta=0.02)
-            self.assertAlmostEqual(result['gainDb'], 6.0, delta=0.05)
+            self.assertEqual((result['gainDb'], result['limitDb']), (6.0, 0.0))
 
     def test_peak_limited_below_clipping(self):
         with tempfile.TemporaryDirectory() as scratch:
@@ -106,14 +106,47 @@ class GainTests(unittest.TestCase):
             write_wav(path, 24000, [(0.2, 'tone')])  # peak 12000
             result = apply_gain(path, 12.0)  # ×3.98 would push 12000 past full scale
             self.assertLessEqual(self.peak(path), int(32767 * 10 ** (-1 / 20)) + 1)
-            self.assertLess(result['gainDb'], 12.0)
+            self.assertEqual(result['gainDb'], 12.0)
+            self.assertGreater(result['limitDb'], 0.0)
+
+    def rms(self, path, start, seconds):
+        import array
+        import math
+        with wave.open(str(path), 'rb') as clip:
+            rate = clip.getframerate()
+            clip.setpos(int(start * rate))
+            samples = array.array('h', clip.readframes(int(seconds * rate)))
+        return 20 * math.log10(math.sqrt(sum(x * x for x in samples) / len(samples)))
+
+    def test_soft_limiter_keeps_full_boost_away_from_peaks(self):
+        # Real RVC clips peak near -1.8 dBFS on brief transients, which left a clean
+        # peak limit only about 1 dB of room. The body must still get the full boost.
+        import array
+        import math
+        rate = 24000
+        body = [int(4000 * math.sin(2 * math.pi * 220 * i / rate)) for i in range(int(0.6 * rate))]
+        spike_at = int(0.3 * rate)
+        for i in range(spike_at, spike_at + int(0.005 * rate)):
+            body[i] = int(26500 * math.sin(2 * math.pi * 220 * i / rate))
+        with tempfile.TemporaryDirectory() as scratch:
+            path = Path(scratch) / 'clip.wav'
+            with wave.open(str(path), 'wb') as out:
+                out.setnchannels(1)
+                out.setsampwidth(2)
+                out.setframerate(rate)
+                out.writeframes(array.array('h', body).tobytes())
+            before = self.rms(path, 0.05, 0.15)
+            result = apply_gain(path, 3.0)
+            self.assertAlmostEqual(self.rms(path, 0.05, 0.15) - before, 3.0, delta=0.1)
+            self.assertLessEqual(self.peak(path), int(32767 * 10 ** (-1 / 20)) + 1)
+            self.assertGreater(result['limitDb'], 0.0)
 
     def test_zero_gain_and_silence_leave_clip_alone(self):
         with tempfile.TemporaryDirectory() as scratch:
             path = Path(scratch) / 'clip.wav'
             write_wav(path, 24000, [(0.2, 'silence')])
             before = path.read_bytes()
-            self.assertEqual(apply_gain(path, 3.0)['gainDb'], 0.0)
+            self.assertEqual(apply_gain(path, 3.0), {'gainDb': 0.0, 'limitDb': 0.0})
             write_wav(path, 24000, [(0.2, 'tone')])
             before = path.read_bytes()
             apply_gain(path, 0.0)

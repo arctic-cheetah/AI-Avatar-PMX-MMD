@@ -6,10 +6,8 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from controller.bridge import build_parser, speech_settings
-from controller.kokoro_worker import Synthesizer, drawl_token
 from controller.speech import ApplioSettings, ApplioWorker, Segment, drawl_words, synthesise
 from test_contours import SPANS_WORKER
-from test_emphasis import REALLY
 
 
 class DrawlWordTests(unittest.TestCase):
@@ -29,37 +27,14 @@ class DrawlWordTests(unittest.TestCase):
         self.assertEqual(drawl_words('That is *so* clever.', 'happy', emphasis=(2,)), ())
 
 
-class DrawlPhonemeTests(unittest.TestCase):
-    def test_primary_stress_and_a_long_vowel(self):
-        # Scope 3 measurement: ˌ→ˈ plus ːː drew "but" out 2.25× with no loudness change.
-        cases = {'bˌʌt': 'bˈʌːːt', 'ɹˈiəli': 'ɹˈiːːəli', 'wˈɛl,': 'wˈɛːːl,', 'sˌoʊ': 'sˈoːːʊ',
-                 'ʃˈʊɹ': 'ʃˈʊːːɹ', 'sˈoʊ?': 'sˈoːːʊ?', 'ɐ': 'ˈɐːː'}
-        for token, expected in cases.items():
-            with self.subTest(token=token):
-                self.assertEqual(drawl_token(token), expected)
-        self.assertEqual(drawl_token('—'), '—')
+class DrawlVowelTests(unittest.TestCase):
+    """Listening: "buuuut" sounded like "boot". A spectrum check showed bˈʌːːt is closer to
+    "buːt" (0.84) than to "bˌʌt" (0.80); holding Kokoro's own vowel stays "but" (0.85 vs 0.81)."""
 
-    def synthesizer(self):
-        synthesizer = Synthesizer.__new__(Synthesizer)
-        synthesizer.model = Mock()
-        synthesizer.model.tokenizer.phonemize.return_value = 'aɪ ɹˈiəli lˈaɪk ɪt.'
-        synthesizer.model.create.return_value = ([0.5] * 24000, 24000)
-        synthesizer.model.create_timed.return_value = ([0.5] * 42000, 24000, REALLY)
-        synthesizer.soundfile = Mock()
-        synthesizer.voice, synthesizer.style, synthesizer.speed = 'af_heart', object(), 1.0
-        synthesizer.clause_pause = 0.25
-        return synthesizer
-
-    def test_synthesize_draws_out_the_word_and_reports_its_span(self):
-        synthesizer = self.synthesizer()
-        metrics = synthesizer.synthesize('I really like it.', 'out.wav', drawls=[1], spans=[1])
-        self.assertEqual(synthesizer.model.create_timed.call_args.args[0], 'aɪ ɹˈiːːəli lˈaɪk ɪt.')
-        self.assertEqual(metrics['spanWords'], [1])
-
-    def test_bad_drawls_are_rejected(self):
-        for drawls in ('x', [True], [-1], [0] * 5):
-            with self.subTest(drawls=drawls), self.assertRaises(ValueError):
-                self.synthesizer().synthesize('I really like it.', 'out.wav', drawls=drawls)
+    def test_drawls_do_not_change_phonemes(self):
+        import controller.kokoro_worker as kokoro
+        self.assertFalse(hasattr(kokoro, 'drawl_token'))
+        self.assertNotIn('drawls', kokoro.PROSODY_FIELDS)
 
 
 class DrawlRequestTests(unittest.IsolatedAsyncioTestCase):
@@ -85,7 +60,8 @@ class DrawlRequestTests(unittest.IsolatedAsyncioTestCase):
                 reply = await worker.request('But I like it.', Path('s.wav'), Path('o.wav'), drawls=(0,))
             finally:
                 await worker.close()
-        self.assertEqual((seen['tts']['drawls'], seen['tts']['spans']), ([0], [0]))
+        self.assertEqual((seen['tts']['holds'], seen['tts']['spans']), ([[0, 0.3]], [0]))
+        self.assertNotIn('drawls', seen['tts'])
         self.assertEqual(reply['request']['bend'], [[0.2, 0.5, -3.0]])
         self.assertEqual(reply['drawls'], 1)
 
@@ -127,7 +103,11 @@ class SynthesiseDynamicTests(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn('drawls', sent)
 
     def test_settings_and_flags(self):
-        self.assertEqual((ApplioSettings().dynamic_emphasis, ApplioSettings().drawl_bend), (False, -3.0))
+        self.assertEqual((ApplioSettings().dynamic_emphasis, ApplioSettings().drawl_bend,
+                          ApplioSettings().drawl_hold), (False, -3.0, 0.3))
+        for value in (-0.1, 0.46, float('nan')):
+            with self.subTest(hold=value), self.assertRaises(ValueError):
+                ApplioSettings(applio_dir=Path('/nonexistent'), drawl_hold=value).check()
         for value in (-12.1, 12.1, float('nan')):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 ApplioSettings(applio_dir=Path('/nonexistent'), drawl_bend=value).check()

@@ -24,6 +24,10 @@ FRAGMENT_TAIL_KEEP = 0.1 # seconds kept after a fragment split by a mood tag
 MAX_TAIL_KEEP = 0.8     # an ellipsis may linger; silence past the source's own is padded
 SENTENCE_ENDINGS = tuple('.!?…')
 PEAK_LIMIT_DB = -1.0    # gain never pushes a sample above this
+LIMITER_BLOCK = 0.001   # seconds per limiter gain step
+LIMITER_LOOKAHEAD = 0.003  # start reducing this long before a peak
+LIMITER_ATTACK = 0.002  # time constant easing into a peak
+LIMITER_RELEASE = 0.05  # time constant recovering after a peak
 CLOSERS = '"\')] ”’'
 
 
@@ -70,31 +74,67 @@ def tail_keep(text: str, sentence_tail: float = TAIL_KEEP,
     return sentence_tail if chosen is None else chosen
 
 
+def _limiter_gains(peaks: list[float], limit: float, look: int, attack: float,
+                   release: float) -> list[float]:
+    """Per-block gain (<= 1) that keeps every block's peak at or below ``limit``.
+
+    Each block needs ``limit / peak`` at most. Looking ``look`` blocks ahead and
+    behind starts the reduction before a transient; a backward attack ramp and a
+    forward release ramp keep the changes smooth. Every step only lowers the
+    gain, so no block ends above what it needs.
+    """
+    need = [min(1.0, limit / peak) if peak else 1.0 for peak in peaks]
+    count = len(need)
+    ahead = [min(need[max(0, i - look):i + look + 1]) for i in range(count)]
+    gains, level = [], 1.0
+    for value in ahead:  # release: recover slowly after a peak
+        level = value if value < level else level + (value - level) * release
+        gains.append(level)
+    level = 1.0
+    for i in range(count - 1, -1, -1):  # attack: ease down into a peak
+        level = gains[i] if gains[i] < level else level + (gains[i] - level) * attack
+        gains[i] = min(gains[i], level)
+    return gains
+
+
 def apply_gain(wav: Path, gain_db: float) -> dict:
-    """Make a 16-bit PCM clip louder by up to ``gain_db``, peak-limited to PEAK_LIMIT_DB; return the gain used."""
+    """Make a 16-bit PCM clip ``gain_db`` louder, soft-limiting peaks to PEAK_LIMIT_DB.
+
+    Returns the gain applied and the largest peak reduction, both in dB.
+    """
+    unchanged = {'gainDb': 0.0, 'limitDb': 0.0}
     with wave.open(str(wav), 'rb') as clip:
         params = clip.getparams()
         frames = clip.readframes(params.nframes)
     if gain_db <= 0 or params.sampwidth != 2:
-        return {'gainDb': 0.0}
+        return unchanged
     samples = array('h')
     samples.frombytes(frames)
     if sys.byteorder == 'big':
         samples.byteswap()
-    peak = max((abs(sample) for sample in samples), default=0)
-    if not peak:
-        return {'gainDb': 0.0}
+    if not any(samples):
+        return unchanged
+    gain = 10 ** (gain_db / 20)
     limit = 32767 * 10 ** (PEAK_LIMIT_DB / 20)
-    scale = min(10 ** (gain_db / 20), limit / peak)
-    if scale <= 1:
-        return {'gainDb': 0.0}
-    louder = array('h', (int(round(sample * scale)) for sample in samples))
+    block = max(1, int(params.framerate * params.nchannels * LIMITER_BLOCK))
+    starts = range(0, len(samples), block)
+    peaks = [max(abs(x) for x in samples[i:i + block]) * gain for i in starts]
+    blocks_per_second = 1 / LIMITER_BLOCK
+    gains = _limiter_gains(
+        peaks, limit, look=round(LIMITER_LOOKAHEAD * blocks_per_second),
+        attack=1 - math.exp(-1 / (LIMITER_ATTACK * blocks_per_second)),
+        release=1 - math.exp(-1 / (LIMITER_RELEASE * blocks_per_second)))
+    louder = array('h')
+    for index, i in enumerate(starts):
+        scale = gain * gains[index]
+        # The clamp is a last safety net; the limiter already holds peaks at the limit.
+        louder.extend(int(max(-limit, min(limit, round(x * scale)))) for x in samples[i:i + block])
     if sys.byteorder == 'big':
         louder.byteswap()
     with wave.open(str(wav), 'wb') as clip:
         clip.setparams(params)
         clip.writeframes(louder.tobytes())
-    return {'gainDb': round(20 * math.log10(scale), 2)}
+    return {'gainDb': round(gain_db, 2), 'limitDb': round(-20 * math.log10(min(gains)), 2)}
 
 
 def trim_clip(source: Path, wav: Path, text: str, sentence_tail: float = TAIL_KEEP,

@@ -501,6 +501,7 @@ async def synthesise(
         }
         if gain is not None:
             metrics["prosody"]["gainDb"] = gain["gainDb"]
+            metrics["prosody"]["limitDb"] = gain.get("limitDb", 0.0)
     return clip_id, {
         **metrics,
         "rvcSeconds": reply["rvcSeconds"],

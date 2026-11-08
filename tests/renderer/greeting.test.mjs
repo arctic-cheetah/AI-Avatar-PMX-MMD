@@ -39,13 +39,14 @@ test('each bucket greeting fits its mood and uses a fixed phrase', () => {
   }
 });
 
-test('once per session: second claim and a reloaded gate in the same session stay silent', () => {
+test('once per page load: a second claim is silent, but a new page load greets again', () => {
   const session = storage();
   const gate = new GreetingGate({ session, local: storage() });
   assert.ok(gate.claim(at(9)));
-  assert.equal(gate.claim(at(9)), null);
-  // A page reload keeps the same sessionStorage, so a new gate must not greet again.
-  assert.equal(new GreetingGate({ session, local: storage() }).claim(at(9)), null);
+  assert.equal(gate.claim(at(9)), null, 'same page load must not greet twice');
+  // sessionStorage is copied into new windows and restored tabs, so it must
+  // not suppress the greeting: a new gate (a new page load) greets again.
+  assert.ok(new GreetingGate({ session, local: storage() }).claim(at(9)), 'new window/page load should greet');
 });
 
 test('greeting can be switched off persistently, and off does not consume the session greeting', () => {

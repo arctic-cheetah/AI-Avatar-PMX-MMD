@@ -1313,7 +1313,7 @@ function onModelLoaded(loaded, data) {
     : `Ready · ${morphCount} morphs`);
   scheduleBlink(performance.now() / 1000);
   const transcript = document.querySelector('#bridge-transcript');
-  // Page-open greeting (#72): claimed once per session here, shown on first connect.
+  // Page-open greeting (#72): claimed once per page load here, shown on first connect.
   const greetingGate = bindGreetingToggle(new GreetingGate(), document.querySelector('#greeting-toggle'));
   connectBridge({
     catalog: EXPRESSION_CATALOG,

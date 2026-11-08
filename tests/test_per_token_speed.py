@@ -60,7 +60,17 @@ class StretchSoundTests(unittest.TestCase):
                 self.assertEqual(stretch_sounds(word), positions)
 
     def test_primary_stress_wins_over_secondary(self):
-        self.assertEqual(stretch_sounds('ˌʌndɚstˈænd'), [8, 9])
+        self.assertEqual(stretch_sounds('ˌʌndɚstˈænd'), [8])
+
+    def test_no_extra_syllables(self):
+        # Listening (9 Nov 2026): "really" drawn out over i, ə and l sounded like "reality".
+        # Only a real diphthong's second half joins the vowel, and a consonant only when it
+        # ends the word ("wellll", "suuure"), not when it starts the next syllable.
+        cases = {'ɹˈiəli': [2], 'sˈiəɹɪəsli': [2], 'wˈʌt': [2], 'wˈaʊ': [2, 3], 'ʃˈʊɹ,': [2, 3],
+                 'kjˈuːt': [3, 4], 'ɹˈaɪt': [2, 3], 'hˈɛloʊ': [2]}
+        for word, positions in cases.items():
+            with self.subTest(word=word):
+                self.assertEqual(stretch_sounds(word), positions)
 
     def test_nothing_to_stretch(self):
         self.assertEqual(stretch_sounds('ʃ'), [])

@@ -112,6 +112,9 @@ These come from face-framed captures in the renderer at weight 1.
 - **One-sided brows (`上左`, `上右`) barely show** at portrait size, because
   the bangs cover them. They add a little asymmetry but can't carry an
   expression alone.
+- **See-through brows (renderer).** Since #99 step 4, the renderer draws the
+  brows a second time over the hair, so the two notes above apply only when
+  that layer is off. See [See-through brows](#see-through-brows) below.
 - **The eyes carry most of the emotion at portrait size.** `じと目`, `悲しむ`,
   `眼角下` and `下眼上` read clearly. Mouth-only morphs (`口左`, `口右`,
   `口上`, `口下`, `齿上`, `齿下`) are subtle.
@@ -119,6 +122,35 @@ These come from face-framed captures in the renderer at weight 1.
   purpose, and the idle blink combines with it instead of overwriting it.
 
 The PMX panel and names establish what controls exist, **not** whether a combination looks natural or whether it can safely share a morph with blinking or lip sync. Add new expressions to the semantic catalog only after a visual preview and a transition test back to neutral.
+
+## See-through brows
+
+The brows sit under the bangs, so brow morphs barely read and some poke
+through the hair as a skin-toned stroke. Many anime models draw brows over
+the hair instead. The renderer does the same at runtime, in
+[see-through-brows.js](../renderer/see-through-brows.js). The PMX file is not
+changed.
+
+- **Which triangles.** `睫眉` holds the lashes, the brows and the skin-coloured
+  eyelid covers. Drawing that whole material over the hair would paint over the
+  eyes. Instead, the renderer picks the triangles whose corners move only with
+  brow morphs and never with eye morphs: 102 of `睫眉`'s 994 on this model.
+  Those triangles are added again at the end of the index, as a new geometry
+  group.
+- **How they are drawn.** The new group uses a clone of the `睫眉` material at
+  60% opacity, with depth testing and depth writes off, and no outline. It is
+  part of the same mesh, so every brow morph, blink and bone moves it with the
+  original.
+- **Morph data.** three r170's `MMDLoader` stores morph targets as absolute
+  positions (`morphTargetsRelative` is false), so "moved" means "differs
+  from the base position".
+- **Setting.** The *See-through brows · 透け眉* checkbox under Independent
+  channels is on by default. It is remembered in `localStorage`
+  (`yidhari.see-through-brows`). Comparison grids show the layer whenever it is
+  on, because it is part of what the face looks like.
+- **Limits.** The layer stays visible when the head turns away, and the pale
+  brows read only faintly over the pale hair. Fading with head yaw, or a
+  slightly darker tint, are possible follow-ups.
 
 ## Comparison grids
 

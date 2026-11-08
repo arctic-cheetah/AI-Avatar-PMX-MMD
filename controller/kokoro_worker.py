@@ -41,6 +41,7 @@ MAX_STRETCH = 0.125       # seconds one sound may be drawn out to: 5 frames soun
 STRESS_MARKS = ('ˈ', 'ˌ')  # primary first
 VOWELS = frozenset('aeiouyæɐɑɒɔəɘɚɛɜɝɞɤɨɪɯɵøœɶʉʊʌʏᵻː')  # ː lengthens the vowel before it
 HOLDABLE = frozenset('lmnŋɹrɾsʃzʒfvθðjwɫ')  # consonants that can be held; stops cannot be drawn out
+DIPHTHONGS = frozenset({'aɪ', 'aʊ', 'eɪ', 'oʊ', 'ɔɪ', 'əʊ'})  # both halves are drawn out
 
 
 def parse_voice(spec) -> list[tuple[str, float]]:
@@ -208,17 +209,22 @@ def stretch_sounds(word: str) -> list[int]:
     """Positions in one word's phonemes to draw out.
 
     The stressed vowel (primary stress, else secondary, else the first vowel),
-    with both halves of a diphthong and any length mark, and a consonant that
-    can be held right after it ("wellll", "suuure"). Stops such as t are left.
+    with its length mark or a real diphthong's second half, and a consonant that
+    can be held when it ends the word ("wellll", "suuure"). A consonant that
+    starts the next syllable is left alone: "really" over i, ə and l sounded
+    like "reality". Stops such as t are never drawn out.
     """
     after = next((word.index(mark) + 1 for mark in STRESS_MARKS if mark in word), 0)
     first = next((i for i in range(after, len(word)) if word[i] in VOWELS), None)
     if first is None:
         return []
     last = first
-    while last + 1 < len(word) and word[last + 1] in VOWELS:
+    if word[first:first + 2] in DIPHTHONGS:
         last += 1
-    if last + 1 < len(word) and word[last + 1] in HOLDABLE:
+    while last + 1 < len(word) and word[last + 1] == 'ː':
+        last += 1
+    spoken_end = len(word.rstrip(WORD_EDGES))
+    if last + 2 == spoken_end and word[last + 1] in HOLDABLE:
         last += 1
     return list(range(first, last + 1))
 

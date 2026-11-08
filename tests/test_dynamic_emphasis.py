@@ -113,7 +113,7 @@ class SynthesiseDynamicTests(unittest.IsolatedAsyncioTestCase):
 
     def test_settings_and_flags(self):
         self.assertEqual((ApplioSettings().dynamic_emphasis, ApplioSettings().drawl_bend,
-                          ApplioSettings().drawl_hold), (False, -2.0, 0.0))
+                          ApplioSettings().drawl_hold), (True, -2.0, 0.0))
         for value in (-0.1, 0.46, float('nan')):
             with self.subTest(hold=value), self.assertRaises(ValueError):
                 ApplioSettings(applio_dir=Path('/nonexistent'), drawl_hold=value).check()

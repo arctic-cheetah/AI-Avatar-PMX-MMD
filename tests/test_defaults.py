@@ -4,8 +4,9 @@ import unittest
 from controller.bridge import build_parser, speech_settings
 from controller.speech import ApplioSettings
 
+# dynamic_emphasis: drawn-out drawls approved by listening, 9 Nov 2026 (#83).
 FEATURES = ('mood_prosody', 'punctuation_cadence', 'emphasis', 'interjection_contours', 'word_lifts',
-            'quote_voice')
+            'quote_voice', 'dynamic_emphasis')
 
 
 class ExpressiveDefaultTests(unittest.TestCase):

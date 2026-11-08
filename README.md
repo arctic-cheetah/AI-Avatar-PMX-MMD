@@ -19,6 +19,7 @@ This is a companion project, kept outside `my_code_pc` so it does not compete fo
 - 👀 **Idle life and tuning:** automatic blinking, plus wink controls and a morph test bench for tuning expressions.
 - 🌊 **Slow sway:** her upper body drifts on gentle sine waves with a breathing motion, and settles back to still when toggled off — see [docs/body-sway.md](docs/body-sway.md).
 - 👁️ **Gaze tracking:** her eyes (and gently, her head) follow your mouse cursor and/or your face on webcam — see [docs/gaze-tracking.md](docs/gaze-tracking.md). The webcam only starts when you toggle it on, and frames never leave the browser.
+- 📌 **Pop-out window:** click **📌 Pop out** to float her portrait in an always-on-top picture-in-picture window while you work in other apps (Chrome/Edge 116+; Firefox and VS Code's browser get a popup window; on Ubuntu Wayland pin either with **Super+T**). **💬** adds the chat and settings panel beside her; speech, moods and agent voice keep working — see [docs/pop-out-window.md](docs/pop-out-window.md).
 
 ## 🧭 How it works
 
@@ -205,7 +206,7 @@ for limits and listening checks.
 | `--mood-prosody`   | on                                  | Let each sentence's mood tag nudge Kokoro speed/pauses and RVC pitch (clamped) |
 | `--interjection-contours` | on                           | Kokoro: "Aww"/"Ooh" rise then fall via an RVC pitch bend (`--interjection-bend` 8 st; optional `--interjection-hold`) |
 | `--word-lifts`     | on                                  | Kokoro: endearments in address ("sweetheart!") and the word before `!` get a rise-fall lift, the word before `?` a rise (`--word-lift-bend` 4 st, `--question-rise-bend` 9 st) |
-| `--dynamic-emphasis` | off                               | Kokoro: a slightly deeper "But…" / skeptical "sure" (`--drawl-bend` −2 st; lengthening waits for #83); brighter `*word*` |
+| `--dynamic-emphasis` | off                               | Kokoro: a deeper, drawn-out "buuut…" / skeptical "suuure" (`--drawl-bend` −2 st, `--drawl-stretch` 0.125 s per sound via per-token speed); brighter `*word*` |
 | `--quote-voice`    | on                                  | Kokoro: a pause before a `"quote"` and a slight pitch dip across it (`--quote-bend` −2 st) |
 | `--emphasis`       | on                                  | Kokoro: `*word*` from the LLM adds a short pause before the word (`--emphasis-pause` 0.12 s) |
 | `--punctuation-cadence` | on                             | Gap by ending (`--ellipsis-tail` 0.6, `--exclaim-tail` 0.3, `--question-tail` 0.4 s), louder `!` (`--exclaim-gain` 3 dB), slower `…`, dashes as pauses |
@@ -310,10 +311,12 @@ avatar-yidhari/
 | [conversation-history.md](docs/conversation-history.md)           | Chat memory, context budget, New chat and reconnects   |
 | [external-llm.md](docs/external-llm.md)                           | Cloud / proxy OpenAI-compatible LLMs, API keys, headers |
 | [agent-voice.md](docs/agent-voice.md)                             | Coding agent → MCP → Yidhari speech (issue #27)         |
+| [chat-markdown.md](docs/chat-markdown.md)                         | Markdown in the chat log and how it stays safe (#89)    |
 | [pmx-morph-catalog.md](docs/pmx-morph-catalog.md)                 | Every PMX facial morph                                  |
 | [gaze-tracking.md](docs/gaze-tracking.md)                         | Cursor + webcam gaze tracking design (issue #6)         |
 | [body-sway.md](docs/body-sway.md)                               | Slow sine-wave body sway design (issue #4)              |
 | [animation-transitions.md](docs/animation-transitions.md)         | Smooth, interruptible transitions and layer rules (#54) |
+| [pop-out-window.md](docs/pop-out-window.md)                       | Floating window, Firefox popup, platform limits (#52)   |
 | [shared-expression-catalog.md](docs/shared-expression-catalog.md) | Mood presets used by the LLM                            |
 | [issue-labels.md](docs/issue-labels.md)                           | Issue priority, difficulty and emoji labels             |
 

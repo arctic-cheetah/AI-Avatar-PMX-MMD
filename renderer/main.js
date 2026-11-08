@@ -12,6 +12,7 @@
 //   5. Sway the upper body on slow sine waves (see body-sway.js).
 //   6. Audition every PMX morph on a manual layer (see morph-audition.js).
 //   7. Play the saved speech sample with lip sync (see speech-player.js).
+//   8. Pop out into an always-on-top window (see pop-out.js).
 //
 // What it does not own yet:
 //   Live LLM speech, hand poses, hair/coat physics.
@@ -44,6 +45,7 @@ import { SWAY, SwayController, swayAnglesAt } from "./body-sway.js";
 import { Spring, TIMING, frameDelta } from "./smoothing.js";
 import { composeBlink, eyeClosure } from "./facial-layers.js";
 import { GreetingGate, bindGreetingToggle } from "./greeting.js";
+import { FrameLoop, PopOut, popupWindow } from "./pop-out.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
 const MODEL_URL = "/yidhari-mmd/伊德海莉.pmx";
@@ -97,6 +99,7 @@ const frameButtons = {
   face: document.querySelector("#frame-face-button"),
   bust: document.querySelector("#frame-bust-button"),
 };
+const panelEl = document.querySelector("#panel");
 
 // One preview button per catalog mood, so new catalog entries appear here.
 const expressionButtons = Object.entries(EXPRESSION_CATALOG).map(([name, definition]) => {
@@ -211,14 +214,33 @@ const swayQuat = new THREE.Quaternion();
 const sway = new SwayController();
 const cameraGaze = new CameraGaze((target) => gaze.setCamera(target, cameraGazeToggle.checked));
 
-window.addEventListener("pointermove", (event) => {
+/**
+ * Only the window that shows the canvas has matching pointer coordinates,
+ * which is the floating window while she is popped out.
+ * @param {PointerEvent} event Pointer event from either window.
+ * @returns {boolean}
+ */
+function overCanvasWindow(event) {
+  return !event.view || event.view === canvas.ownerDocument.defaultView;
+}
+
+/** @param {PointerEvent} event */
+function followCursor(event) {
+  if (!overCanvasWindow(event)) return;
   const rect = canvas.getBoundingClientRect();
   gaze.setCursor(
     normalisePointer(event.clientX - rect.left, event.clientY - rect.top, rect.width, rect.height),
     cursorGazeToggle.checked,
   );
-});
-window.addEventListener("pointerleave", () => gaze.setCursor({ x: 0, y: 0 }, cursorGazeToggle.checked));
+}
+
+/** @param {PointerEvent} event */
+function centreCursor(event) {
+  if (overCanvasWindow(event)) gaze.setCursor({ x: 0, y: 0 }, cursorGazeToggle.checked);
+}
+
+window.addEventListener("pointermove", followCursor);
+window.addEventListener("pointerleave", centreCursor);
 cursorGazeToggle.addEventListener("change", () => gaze.setCursor({ x: 0, y: 0 }, cursorGazeToggle.checked));
 cameraGazeToggle.addEventListener("change", async () => {
   gaze.setCamera({ x: 0, y: 0 }, cameraGazeToggle.checked);
@@ -371,6 +393,8 @@ function setStatus(text) {
  * Match the camera and both renderers to the canvas, which shares the
  * window with the test bench panel.
  * OutlineEffect maintains its own size, separate from WebGLRenderer.
+ * Neither may write an inline CSS size: the stylesheet sizes the canvas,
+ * in the page and in the pop-out window alike.
  * @returns {void}
  */
 function resize() {
@@ -379,7 +403,7 @@ function resize() {
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
   renderer.setSize(width, height, false);
-  outline.setSize(width, height);
+  outline.setSize(width, height, false);
 }
 
 const PANEL_WIDTH_KEY = "yidhari.panelWidth";
@@ -391,15 +415,19 @@ const PANEL_STAGE_MIN = 280;
  * Width is a CSS variable on the wide layout; below 720px the same
  * control sets the panel's row height. The canvas ResizeObserver
  * already follows either change.
- * @returns {void}
+ * The divider may be in the pop-out window, so sizes and layout come from
+ * whichever window holds it now.
+ * @returns {{ refresh(): void }} Re-apply the saved size, e.g. after moving windows.
  */
 function installPanelResizer() {
   const handle = document.querySelector("#panel-resizer");
   const panel = document.querySelector("#panel");
-  if (!(handle instanceof HTMLElement) || !(panel instanceof HTMLElement)) return;
+  if (!(handle instanceof HTMLElement) || !(panel instanceof HTMLElement)) return { refresh() {} };
 
-  const stackedQuery = window.matchMedia("(max-width: 720px)");
-  const stacked = () => stackedQuery.matches;
+  const view = () => handle.ownerDocument.defaultView;
+  const body = () => handle.ownerDocument.body;
+  const STACKED = "(max-width: 720px)";
+  const stacked = () => view().matchMedia(STACKED).matches;
 
   const syncOrientation = () => {
     handle.setAttribute("aria-orientation", stacked() ? "horizontal" : "vertical");
@@ -407,10 +435,10 @@ function installPanelResizer() {
 
   const limits = () => {
     if (stacked()) {
-      const max = Math.max(160, window.innerHeight - PANEL_STAGE_MIN - 6);
+      const max = Math.max(160, view().innerHeight - PANEL_STAGE_MIN - 6);
       return { min: 160, max };
     }
-    const max = Math.max(PANEL_MIN, window.innerWidth - PANEL_STAGE_MIN - 6);
+    const max = Math.max(PANEL_MIN, view().innerWidth - PANEL_STAGE_MIN - 6);
     return { min: PANEL_MIN, max };
   };
 
@@ -418,11 +446,11 @@ function installPanelResizer() {
     const { min, max } = limits();
     const next = Math.round(Math.min(max, Math.max(min, size)));
     if (stacked()) {
-      document.body.style.gridTemplateRows = `minmax(0, 1fr) 6px ${next}px`;
-      document.body.style.removeProperty("--panel-width");
+      body().style.gridTemplateRows = `minmax(0, 1fr) 6px ${next}px`;
+      body().style.removeProperty("--panel-width");
     } else {
-      document.body.style.removeProperty("grid-template-rows");
-      document.body.style.setProperty("--panel-width", `${next}px`);
+      body().style.removeProperty("grid-template-rows");
+      body().style.setProperty("--panel-width", `${next}px`);
     }
     handle.setAttribute("aria-valuenow", String(next));
     handle.setAttribute("aria-valuemin", String(min));
@@ -433,14 +461,23 @@ function installPanelResizer() {
 
   syncOrientation();
 
+  // The size the user chose. A small window (such as the pop-out) clamps
+  // what is shown, but must not overwrite this choice.
+  /** @type {number | null} */
+  let preferred = null;
+
   try {
     const saved = Number(localStorage.getItem(PANEL_WIDTH_KEY));
-    if (Number.isFinite(saved) && saved > 0) apply(saved);
+    if (Number.isFinite(saved) && saved > 0) {
+      preferred = saved;
+      apply(saved);
+    }
   } catch {
     // Storage can be blocked; the CSS default width still applies.
   }
 
   const persist = (size) => {
+    preferred = size;
     try {
       localStorage.setItem(PANEL_WIDTH_KEY, String(size));
     } catch {
@@ -450,14 +487,14 @@ function installPanelResizer() {
 
   /** @param {number} client */
   const sizeFromPointer = (client) => stacked()
-    ? window.innerHeight - client - handle.offsetHeight / 2
-    : window.innerWidth - client - handle.offsetWidth / 2;
+    ? view().innerHeight - client - handle.offsetHeight / 2
+    : view().innerWidth - client - handle.offsetWidth / 2;
 
   handle.addEventListener("pointerdown", (event) => {
     if (event.button !== 0) return;
     event.preventDefault();
     handle.setPointerCapture(event.pointerId);
-    document.body.classList.add("panel-resizing");
+    body().classList.add("panel-resizing");
     const move = (ev) => {
       apply(sizeFromPointer(stacked() ? ev.clientY : ev.clientX));
     };
@@ -465,7 +502,7 @@ function installPanelResizer() {
       handle.removeEventListener("pointermove", move);
       handle.removeEventListener("pointerup", stop);
       handle.removeEventListener("pointercancel", stop);
-      document.body.classList.remove("panel-resizing");
+      body().classList.remove("panel-resizing");
       persist(Number(handle.getAttribute("aria-valuenow")));
     };
     handle.addEventListener("pointermove", move);
@@ -492,15 +529,14 @@ function installPanelResizer() {
     }
   });
 
-  stackedQuery.addEventListener("change", () => {
-    const saved = Number(handle.getAttribute("aria-valuenow"));
-    if (Number.isFinite(saved)) apply(saved);
+  const refresh = () => {
+    if (preferred !== null) apply(preferred);
     else syncOrientation();
-  });
-  window.addEventListener("resize", () => {
-    const saved = Number(handle.getAttribute("aria-valuenow"));
-    if (Number.isFinite(saved)) apply(saved);
-  });
+  };
+  // The main window's own changes; onPopOut() wires the floating window's.
+  window.matchMedia(STACKED).addEventListener("change", refresh);
+  window.addEventListener("resize", refresh);
+  return { refresh };
 }
 
 const CHAT_HEIGHT_KEY = "yidhari.chatHeight";
@@ -522,11 +558,15 @@ function installChatBox() {
       !(resizer instanceof HTMLElement) || !(drag instanceof HTMLElement) ||
       !(floatButton instanceof HTMLButtonElement)) return;
 
+  // The chat box may be in the pop-out window; measure the window it is in.
+  const view = () => box.ownerDocument.defaultView;
+  const body = () => box.ownerDocument.body;
+
   const heightLimits = () => {
     const floating = box.classList.contains("floating");
     const max = floating
-      ? Math.max(CHAT_MIN_HEIGHT, window.innerHeight - 48)
-      : Math.max(CHAT_MIN_HEIGHT, window.innerHeight - 220);
+      ? Math.max(CHAT_MIN_HEIGHT, view().innerHeight - 48)
+      : Math.max(CHAT_MIN_HEIGHT, view().innerHeight - 220);
     return { min: CHAT_MIN_HEIGHT, max };
   };
 
@@ -562,13 +602,13 @@ function installChatBox() {
     resizer.setPointerCapture(event.pointerId);
     const originY = event.clientY;
     const origin = log.getBoundingClientRect().height;
-    document.body.classList.add("chat-resizing");
+    body().classList.add("chat-resizing");
     const move = (ev) => applyHeight(origin + ev.clientY - originY);
     const stop = () => {
       resizer.removeEventListener("pointermove", move);
       resizer.removeEventListener("pointerup", stop);
       resizer.removeEventListener("pointercancel", stop);
-      document.body.classList.remove("chat-resizing");
+      body().classList.remove("chat-resizing");
       remember(CHAT_HEIGHT_KEY, resizer.getAttribute("aria-valuenow") ?? "");
     };
     resizer.addEventListener("pointermove", move);
@@ -591,8 +631,8 @@ function installChatBox() {
   const placeFloating = (x, y) => {
     const width = box.offsetWidth;
     const height = box.offsetHeight;
-    const nextX = Math.round(Math.min(window.innerWidth - width - 8, Math.max(8, x)));
-    const nextY = Math.round(Math.min(window.innerHeight - height - 8, Math.max(8, y)));
+    const nextX = Math.round(Math.min(view().innerWidth - width - 8, Math.max(8, x)));
+    const nextY = Math.round(Math.min(view().innerHeight - height - 8, Math.max(8, y)));
     box.style.left = `${nextX}px`;
     box.style.top = `${nextY}px`;
     return { x: nextX, y: nextY };
@@ -638,13 +678,13 @@ function installChatBox() {
     drag.setPointerCapture(event.pointerId);
     const originX = event.clientX - box.getBoundingClientRect().left;
     const originY = event.clientY - box.getBoundingClientRect().top;
-    document.body.classList.add("chat-dragging");
+    body().classList.add("chat-dragging");
     const move = (ev) => placeFloating(ev.clientX - originX, ev.clientY - originY);
     const stop = (ev) => {
       drag.removeEventListener("pointermove", move);
       drag.removeEventListener("pointerup", stop);
       drag.removeEventListener("pointercancel", stop);
-      document.body.classList.remove("chat-dragging");
+      body().classList.remove("chat-dragging");
       const placed = placeFloating(ev.clientX - originX, ev.clientY - originY);
       remember(CHAT_FLOAT_KEY, JSON.stringify({ floating: true, ...placed }));
     };
@@ -1281,7 +1321,7 @@ function onModelLoaded(loaded, data) {
     onGreeting: ({ mood, weight }) => { expressions.stopLoop(); applyMood(mood, weight); },
     onStart: () => {
       chatResponding = true;
-      for (const section of document.querySelectorAll('#panel > section:not(:first-child)')) section.inert = true;
+      for (const section of panelEl.querySelectorAll(':scope > section:not(:first-child)')) section.inert = true;
       expressions.stopLoop();
       stopSpeech("");
       liveSpeech.reset();
@@ -1293,7 +1333,7 @@ function onModelLoaded(loaded, data) {
     },
     onFinish: () => {
       chatResponding = false;
-      for (const section of document.querySelectorAll('#panel > section:not(:first-child)')) section.inert = false;
+      for (const section of panelEl.querySelectorAll(':scope > section:not(:first-child)')) section.inert = false;
       liveSpeech.responseFinished();
       relaxAfterSpeech();
       syncReplayControls();
@@ -1402,9 +1442,151 @@ function animate() {
   outline.render(scene, camera);
 }
 
+const POP_OUT_PANEL_KEY = "yidhari.popOutPanel";
+const POP_OUT_SIZE = { width: 360, height: 480 };
+const POP_OUT_PANEL_HEIGHT = 640;
+const stageEl = document.querySelector("#stage");
+const panelResizerEl = document.querySelector("#panel-resizer");
+const popOutButton = document.querySelector("#pop-out-button");
+const popOutPanelButton = document.querySelector("#pop-out-panel");
+const popOutNote = document.querySelector("#pop-out-note");
+
+/** @returns {boolean} Whether the pop-out shows the chat and settings panel. */
+function popOutPanelWanted() {
+  try {
+    return localStorage.getItem(POP_OUT_PANEL_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Width the side panel and its divider add to the floating window.
+ * @returns {number}
+ */
+function popOutPanelExtra() {
+  let width = 390; // the CSS default --panel-width
+  try {
+    const saved = Number(localStorage.getItem(PANEL_WIDTH_KEY));
+    if (Number.isFinite(saved) && saved > 0) width = saved;
+  } catch {
+    // Storage can be blocked; the default width applies.
+  }
+  return width + 6;
+}
+
+/**
+ * Show or hide the chat and settings panel in the floating window, and widen
+ * or narrow the window to match when the browser allows it.
+ * @param {boolean} show
+ * @returns {void}
+ */
+function setPopOutPanel(show) {
+  const view = popOut.window;
+  if (!view) return;
+  const body = view.document.body;
+  const shown = body.classList.contains("with-panel");
+  // Measure before hiding: the panel has no width once it is hidden.
+  const extra = shown ? panelEl.getBoundingClientRect().width + panelResizerEl.offsetWidth : popOutPanelExtra();
+  body.classList.toggle("with-panel", show);
+  popOutPanelButton.setAttribute("aria-pressed", String(show));
+  popOutPanelButton.title = show ? "Hide the chat and settings panel" : "Show the chat and settings panel";
+  popOutPanelButton.setAttribute("aria-label", show ? "Hide chat and settings" : "Show chat and settings");
+  try {
+    localStorage.setItem(POP_OUT_PANEL_KEY, show ? "1" : "0");
+  } catch {
+    // Remembering the choice is a convenience.
+  }
+  if (show !== shown) {
+    try {
+      const height = show ? Math.max(view.outerHeight, POP_OUT_PANEL_HEIGHT) : view.outerHeight;
+      view.resizeTo(view.outerWidth + (show ? extra : -extra), height);
+    } catch {
+      // Some browsers refuse to resize; the user can drag the window edge.
+    }
+  }
+  panelResizer.refresh();
+  resize();
+}
+
+/** @returns {void} Label the pop-out button for the window it will open. */
+function labelPopOutButton() {
+  if (!popOut.supported) {
+    popOutButton.disabled = true;
+    popOutButton.title = PopOut.unsupportedReason;
+    return;
+  }
+  const popup = popOut.kind === "popup";
+  popOutButton.textContent = popup ? "🪟 Pop out (window)" : "📌 Pop out";
+  popOutButton.title = popup
+    ? "Open her in a separate window. Keep it above other windows with your window manager's Always on Top."
+    : "Float her in an always-on-top window";
+}
+
+/**
+ * Follow the page between the main window and the pop-out window: frames,
+ * pixel ratio, size and cursor gaze come from whichever window shows her.
+ * @param {Window | null} view The floating window, or null after returning.
+ * @returns {void}
+ */
+function onPopOut(view) {
+  const shown = view ?? window;
+  frameLoop.use(shown);
+  cameraGaze.useFrames(shown);
+  renderer.setPixelRatio(Math.min(shown.devicePixelRatio, 2));
+  if (view) {
+    view.addEventListener("pointermove", followCursor);
+    view.addEventListener("pointerleave", centreCursor);
+    view.addEventListener("resize", resize);
+    view.addEventListener("resize", panelResizer.refresh);
+    // An observer from the floating window's own realm follows the canvas there.
+    new view.ResizeObserver(resize).observe(canvas);
+    const panel = popOutPanelWanted();
+    view.document.body.classList.toggle("with-panel", panel);
+    popOutPanelButton.setAttribute("aria-pressed", String(panel));
+  }
+  gaze.setCursor({ x: 0, y: 0 }, cursorGazeToggle.checked);
+  document.body.classList.toggle("popped-out", Boolean(view));
+  popOutNote.hidden = !view;
+  labelPopOutButton();
+  panelResizer.refresh();
+  resize();
+}
+
+const popOut = new PopOut({
+  api: window.documentPictureInPicture,
+  fallback: popupWindow(window),
+  host: window,
+  nodes: [stageEl, panelResizerEl, panelEl],
+  size: POP_OUT_SIZE,
+  onChange: onPopOut,
+});
+labelPopOutButton();
+popOutButton.addEventListener("click", async () => {
+  if (popOut.window) {
+    popOut.close();
+    return;
+  }
+  const size = popOutPanelWanted()
+    ? { width: POP_OUT_SIZE.width + popOutPanelExtra(), height: POP_OUT_PANEL_HEIGHT }
+    : POP_OUT_SIZE;
+  try {
+    await popOut.open(size);
+  } catch (error) {
+    labelPopOutButton();
+    setStatus(error.message);
+  }
+});
+popOutPanelButton.addEventListener("click", () => {
+  setPopOutPanel(popOutPanelButton.getAttribute("aria-pressed") !== "true");
+});
+document.querySelector("#pop-out-return").addEventListener("click", () => popOut.close());
+document.querySelector("#pop-out-home").addEventListener("click", () => popOut.close());
+
+const frameLoop = new FrameLoop(animate, window);
 resize();
 new ResizeObserver(resize).observe(canvas);
-installPanelResizer();
+const panelResizer = installPanelResizer();
 installChatBox();
-renderer.setAnimationLoop(animate);
+frameLoop.start();
 loadModel();

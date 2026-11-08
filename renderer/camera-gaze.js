@@ -3,6 +3,8 @@
 // are reduced locally to a normalised target, and stop() releases all
 // tracks. Nothing is recorded or sent anywhere.
 
+import { FrameLoop } from "./pop-out.js";
+
 const CDN = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
 const MODEL =
   "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
@@ -16,8 +18,22 @@ export class CameraGaze {
     this.stream = null;
     this.video = null;
     this.landmarker = null;
-    this.frame = 0;
     this.lastVideoTime = -1;
+    /** @type {FrameLoop | null} */
+    this.loop = null;
+    /** Window whose frames drive detection; the floating window while popped out. */
+    this.frames = globalThis;
+  }
+
+  /**
+   * Run detection on another window's frames, so it keeps going while the
+   * main tab is hidden behind the pop-out window.
+   * @param {Window} view Window that now shows the avatar.
+   * @returns {void}
+   */
+  useFrames(view) {
+    this.frames = view;
+    this.loop?.use(view);
   }
 
   /** @returns {boolean} Whether the camera is currently running. */
@@ -66,8 +82,9 @@ export class CameraGaze {
         const landmarks = result?.faceLandmarks?.[0];
         if (landmarks?.length) this.onTarget(faceTarget(landmarks));
       }
-      this.frame = requestAnimationFrame(tick);
     };
+    this.loop = new FrameLoop(tick, this.frames);
+    this.loop.start();
     tick();
   }
 
@@ -76,7 +93,8 @@ export class CameraGaze {
    * @returns {void}
    */
   stop() {
-    cancelAnimationFrame(this.frame);
+    this.loop?.stop();
+    this.loop = null;
     for (const track of this.stream?.getTracks() ?? []) track.stop();
     this.stream = null;
     if (this.video) this.video.srcObject = null;

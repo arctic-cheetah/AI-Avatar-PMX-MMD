@@ -12,6 +12,12 @@
     <div id="thinking-bubble" role="status" aria-label="Yidhari is thinking" hidden>
       <span aria-hidden="true">💭</span><span>Thinking…</span>
     </div>
+    <div id="pop-out-controls" class="pop-out-only" role="group" aria-label="Floating window">
+      <button id="pop-out-panel" type="button" aria-pressed="false" aria-label="Show chat and settings"
+              title="Show the chat and settings panel">💬</button>
+      <button id="pop-out-return" type="button" aria-label="Return to the main page"
+              title="Bring Yidhari back to the main page">↩</button>
+    </div>
     <form id="chat-bar" hidden>
       <label class="sr-only" for="chat-input">Message Yidhari</label>
       <span class="chat-input-wrap">
@@ -25,6 +31,7 @@
     <div id="camera-controls" role="group" aria-label="Camera framing">
       <button id="frame-face-button" type="button" disabled>Face</button>
       <button id="frame-bust-button" type="button" disabled>Bust</button>
+      <button id="pop-out-button" type="button" aria-pressed="false">📌 Pop out</button>
     </div>
     <p id="status" role="status">Starting…</p>
     <p id="hint">Drag to orbit · scroll to zoom</p>
@@ -119,6 +126,10 @@
       <textarea id="candidate-export" rows="5" readonly hidden aria-label="Catalog entries"></textarea>
     </section>
   </aside>
+  <div id="pop-out-note" role="status" hidden>
+    <p>📌 Yidhari is in the floating window.</p>
+    <button id="pop-out-home" type="button">↩ Return</button>
+  </div>
   <script type="importmap">
     {"imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",

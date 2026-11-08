@@ -135,7 +135,7 @@ def main() -> None:
     parser.add_argument('--word-lifts', action=argparse.BooleanOptionalAction, default=True,
                         help='Lift endearments in address and the word before "!".')
     parser.add_argument('--word-lift-bend', type=float, default=4.0)
-    parser.add_argument('--endearment-bend', type=float, default=6.0)
+    parser.add_argument('--endearment-bend', type=float, default=8.0)
     parser.add_argument('--question-rise-bend', type=float, default=9.0)
     parser.add_argument('--quote-voice', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--quote-bend', type=float, default=-2.0)

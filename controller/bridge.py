@@ -1085,7 +1085,7 @@ def build_parser():
     parser.add_argument(
         "--endearment-bend",
         type=float,
-        default=6.0,
+        default=8.0,
         help='Semitones at an endearment\'s lift ("sweetheart!", -12 to 12).',
     )
     parser.add_argument(

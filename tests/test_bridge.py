@@ -286,7 +286,9 @@ class GreetingSpeechTests(unittest.IsolatedAsyncioTestCase):
                     with self.assertRaises(asyncio.TimeoutError):
                         await asyncio.wait_for(ws.recv(), 0.3)
         self.assertEqual([e["type"] for e in events], ["turn", "spoken"])
-        self.assertEqual(spoken, [("Good evening! How was your day?", "soft-smile")])
+        # The segmenter speaks it sentence by sentence, as with a chat reply.
+        self.assertEqual(" ".join(text for text, _ in spoken), greet["text"])
+        self.assertEqual({mood for _, mood in spoken}, {"soft-smile"})
 
 
 if __name__ == "__main__":

@@ -15,7 +15,7 @@ this change:
 | Neutral → mood → neutral, mood → mood | A morph jumped to full speed on the first frame: 15 % of its range in one 60 fps frame | First-order exponential ease (`1 - exp(-rate·dt)`) has its highest speed at the start |
 | Rapid interrupted moods, gaze recentre, thinking pose leave | Direction reversed in a single frame | An exponential ease has no velocity to carry over, so a new target restarts it at full speed |
 | Sway toggled off or on | Torso snapped up to 1.5° in one frame | The toggle switched the sine angles straight to zero |
-| Idle blink during `super-angry` | The mood's half-closed `まばたき` 0.3 vanished | The blink overwrote the shared morph instead of combining with it |
+| Idle blink during `furious` | The mood's half-closed `まばたき` 0.3 vanished | The blink overwrote the shared morph instead of combining with it |
 | Speaking during `yelling`, `shocked`, `gasp`, `scared`, `grin`, `excited` | Visemes stacked on top of an already open mood mouth | `□`, `ワ` and `ワ２` are not speech morphs, so speech never took them over |
 | Head gaze during the thinking gesture | The head could turn away from the hand under the chin | The hand pose is solved once against the resting head |
 

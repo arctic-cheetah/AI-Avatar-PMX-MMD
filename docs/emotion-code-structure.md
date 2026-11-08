@@ -31,7 +31,7 @@ disables the preset. Check blink and future speech compatibility before promotio
 Each frame clears influences, then applies mood, speech, winks, blink and
 additive manual weights. Moods ease on critically damped springs, so an
 interrupted change carries on smoothly from what is showing. Shared morphs have
-explicit rules: the blink combines with `super-angry`'s own `まばたき`, skips
+explicit rules: the blink combines with `furious`'s own `まばたき`, skips
 eyes already closed by `笑い` or a wink, and speech takes over the open-mouth
 shapes `□`, `ワ` and `ワ２` while articulating. See
 [animation-transitions.md](./animation-transitions.md). Preset existence does not

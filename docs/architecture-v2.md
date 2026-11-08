@@ -135,7 +135,7 @@ loop without stopping it. The test bench provides manual sliders, a sweep,
 candidate storage, and JSON export; these are authoring tools, not LLM controls.
 
 Every frame resets morph influences, then applies blink, winks, mood and manual
-audition contributions. Known overlap: `super-angry` uses the blink morph, and
+audition contributions. Known overlap: `furious` uses the blink morph, and
 seven moods (`cry`, `embarrassed`, `lovestruck`, `confused`, `nervous`,
 `flustered`, `pleading`) use `あ` at 0.1–0.25. The speech player now writes after
 the mood and blends each speech-owned morph from the mood value toward its own

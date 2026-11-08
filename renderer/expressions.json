@@ -35,8 +35,9 @@
       "口角下げ": 1
     }
   },
-  "super-angry": {
-    "description": "Express unusually intense anger; use sparingly.",
+  "furious": {
+    "description": "Express peak, glaring anger; use sparingly.",
+    "aliases": ["super-angry"],
     "morphs": {
       "怒り": 1,
       "怒り目": 1,
@@ -50,8 +51,9 @@
       "悲しむ": 1
     }
   },
-  "sad-v2": {
-    "description": "Express more pronounced sadness with brows and mouth.",
+  "sorrowful": {
+    "description": "Express deep, open sorrow with brows and mouth; stronger than sad.",
+    "aliases": ["sad-v2"],
     "morphs": {
       "悲しむ": 1,
       "真面目": 1,
@@ -59,8 +61,9 @@
       "困る": 1
     }
   },
-  "sad-sceptical": {
-    "description": "Express sadness mixed with doubt.",
+  "rueful": {
+    "description": "Express wry, regretful sadness mixed with doubt.",
+    "aliases": ["sad-sceptical"],
     "morphs": {
       "悲しむ": 1,
       "真面目": 1,
@@ -79,8 +82,9 @@
       "じと目": 1
     }
   },
-  "wtf-dude": {
-    "description": "React with informal, exasperated disbelief; use sparingly.",
+  "exasperated": {
+    "description": "React with fed-up, exasperated disbelief; use sparingly.",
+    "aliases": ["wtf-dude"],
     "morphs": {
       "悲しむ": 1,
       "真面目": 1,

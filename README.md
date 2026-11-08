@@ -11,7 +11,7 @@ This is a companion project, kept outside `my_code_pc` so it does not compete fo
 - 🕰️ **Time-of-day greeting:** when you open the page she greets you whenever you open the page, for your local time of day (morning, afternoon, evening or late night) with a matching mood, from a small fixed phrase list — no LLM, nothing leaves the machine. Switch it off with the **Time-of-day greeting** tick box in the Chat panel.
 - ↻ **Replay last speech:** the Chat panel replays the latest spoken turn from the beginning, with each clip's mood and lip sync. Keeps one bounded turn in memory, without regenerating speech or changing the conversation — see [replay policy](docs/agent-voice.md#replay-last-speech).
 - 🎤 **Voice input:** click **🎤 Talk**, speak, click **■ Stop**. Local Whisper on the CPU turns it into a chat prompt; audio never leaves the machine ([docs/voice-input.md](docs/voice-input.md)).
-- 😊 **Moods:** the LLM adds tags such as `[soft-smile:0.6]`, which become facial expressions from a catalog of 46 presets.
+- 😊 **Moods:** the LLM adds tags such as `[soft-smile:0.6]`, which become facial expressions from a catalog of 50 presets.
 - 🤔 **Thinking face:** while the model reasons, she looks thoughtful, with an eyes-up gesture and a thought bubble.
 - 💭 **Optional spoken filler:** `--thinking-filler` prepares one “Hmm…” clip at startup and plays it once before the real answer.
 - 🎙️ **Voice:** each sentence is synthesised locally with Kokoro TTS (`--tts kokoro`), then converted to Yidhari's voice with an Applio RVC model. Edge TTS is still available with `--tts edge`.

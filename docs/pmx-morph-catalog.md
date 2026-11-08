@@ -2,7 +2,7 @@
 
 This inventory comes from the local `yidhari-mmd/伊德海莉.pmx` file, parsed with the project's Three.js MMD parser. It contains **56 vertex morphs**: 15 in the PMX eye panel, 23 in the mouth panel, and 18 in the brow panel. The names and English labels below are copied from the model metadata; the English labels are sometimes duplicated or surprising, so preview a morph on the model before assigning it a new emotion tag.
 
-The restored renderer previews the 46 presets in `renderer/expressions.json`, loaded through `renderer/expression-catalog.js`. Older current-use labels in the inventory below reflect the initial preset set. `[neutral]` clears the active mood; it is **not** a PMX morph. Automatic blinking uses `まばたき` separately. These local previews are not yet driven by `controller/bridge.py` or the LLM.
+The restored renderer previews the 50 presets in `renderer/expressions.json`, loaded through `renderer/expression-catalog.js`. Older current-use labels in the inventory below reflect the initial preset set. `[neutral]` clears the active mood, and the face then settles into the resting face (`calm` by default; see [Calm presets and the resting face](./shared-expression-catalog.md#calm-presets-and-the-resting-face-99-step-3)). It is **not** a PMX morph. Automatic blinking uses `まばたき` separately. These local previews are not yet driven by `controller/bridge.py` or the LLM.
 
 To audition anything below, use the renderer's test bench panel (see [Testing morphs in the renderer](#testing-morphs-in-the-renderer)). It reads the morph list straight from the PMX, so it always matches the model even if this table drifts.
 
@@ -149,7 +149,8 @@ parameter) while `python3 renderer/serve.py` is serving the renderer:
    `clip` is optional: the face by default, or the eye/brow and mouth crops
    listed in `grid.js`.
 3. **`grid.js`** holds each item for 1.3 s with auto-blink off, captures the
-   clip, and saves one labelled PNG at `out`.
+   clip, and saves one labelled PNG at `out`. Holding a combination turns the
+   resting face off, so each cell shows only its own morphs on the bare mesh.
 
 Keep grids in `assets/private/`, which is gitignored. Useful sets are:
 
@@ -159,8 +160,9 @@ Keep grids in `assets/private/`, which is gitignored. Useful sets are:
 - mid-speech captures
 
 Pair the pictures with numeric checks of
-`__yidhariPreview.audition.mesh.morphTargetInfluences`. Nothing should stay
-above 0.01 after neutral, and `まばたき` and the visemes should keep their full
+`__yidhariPreview.audition.mesh.morphTargetInfluences`. After neutral, only the
+resting face's morphs should stay above 0.01 (nothing at all with the resting
+face off), and `まばたき` and the visemes should keep their full
 range.
 
 ## Testing morphs in the renderer

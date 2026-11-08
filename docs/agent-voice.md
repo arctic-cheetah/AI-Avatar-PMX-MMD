@@ -30,7 +30,7 @@ Coding agent ──MCP stdio──► controller/mcp_server.py
              controller/bridge.py ── agent router: validate · rate limit · queue cap
                                   │
                                   ▼
-             speech lane of the newest renderer (shared with chat)
+             speech lane of the renderer that owns agent speech (shared with chat)
                                   │ agent bubble, then speak clips
                                   ▼
              renderer chat log + PMX avatar
@@ -260,7 +260,8 @@ Other results:
 
 | Result               | Meaning                                                           |
 | -------------------- | ----------------------------------------------------------------- |
-| `no renderer`        | No browser is connected to the bridge                             |
+| `no renderer`        | No eligible page is connected: none at all, or only automated (Playwright) pages that have not taken speech |
+| `queued: her page is in the background` | Accepted, but the page that owns speech is hidden (another tab, minimised); bring it forward to hear her |
 | `busy`               | Rate limit (1 `say` per second) or 10 agent items already queued; for `ask`, another question is still open |
 | `skipped`            | A hook report arrived within 2 minutes of the agent's own `report` |
 | `error: …`           | Invalid tool call, for example an unknown mood or text too long   |
@@ -329,7 +330,34 @@ or the project's `.claude/settings.json`:
 ## Chat and agent share one speech lane
 
 Each renderer connection has one speech lane. With several renderers open, the
-agent speaks through the newest one.
+agent speaks through exactly one of them: the **speech owner** (#100).
+
+## Which page owns agent speech
+
+Before #100 the newest connection always won, so an agent's Playwright browser
+or a preview inside another app could take her voice just by opening the page.
+Now ownership is explicit:
+
+- **Connecting does not take speech.** The first page to connect owns it; later
+  pages wait as standbys.
+- **Your page takes it back.** A page claims speech when it connects while
+  focused, when its window gains focus, on your first click or key press in it,
+  and when you press **Take voice**. Speech moves at once; nothing queued is
+  replayed or played twice.
+- **Automated pages never claim by themselves.** A page that reports
+  `navigator.webdriver` (Playwright, Selenium) is never chosen when it
+  connects or as a fallback. It gets speech only from an explicit
+  **Take voice** click.
+- **Closing the owner falls back predictably.** The bridge picks the remaining
+  non-automated page that claimed most recently (else the newest one). With
+  none left, agent calls return `no renderer`.
+- **Every page shows where speech is.** Under the chat status: *Agent voice ·
+  this page*, *Agent voice · another page* with a **Take voice** button, or
+  *Agent voice · disconnected* while the page reconnects.
+
+The bridge pings each page every 10 s and drops one that does not answer
+within 10 s, so a page that vanished without closing its socket stops owning
+speech within about 20 s.
 
 - Agent items speak in the order they arrive.
 - An agent item waits while a chat reply is running, including its speech.
@@ -419,7 +447,12 @@ verify that replay leaves the question waiting for your answer.
   `/run/user/<uid>/yidhari/agent.sock` if that directory exists and is yours,
   and only then `/tmp/yidhari-<uid>/agent.sock`.
 - **`no renderer`:** open [the renderer](http://127.0.0.1:8770/renderer/) and wait
-  for **Connected · ready**.
+  for **Connected · ready**. Open it at `127.0.0.1`, not `localhost`: the
+  bridge only accepts the `http://127.0.0.1:8770` origin, and a `localhost`
+  page stays on *Disconnected · retrying…*.
+- **`queued` but silent:** look at the *Agent voice* line under the chat
+  status of the page you are watching. If it says *another page*, press
+  **Take voice** (or click in the page). No bridge restart is needed.
 - **`Agent socket directory … is not private`:** fix the directory's owner or
   mode (`chmod 700`), or pick another path with `--agent-socket`.
 - **Check the tools without an agent:**

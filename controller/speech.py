@@ -104,7 +104,7 @@ class ApplioSettings:
     interjection_bend: float = 8.0  # semitones at the peak: about one octave with Kokoro's rise (#84)
     word_lifts: bool = True  # Kokoro: lift endearments in address and the word before ! (#84)
     word_lift_bend: float = 4.0  # semitones at the lift's peak
-    dynamic_emphasis: bool = False  # Kokoro: deeper, drawn-out "buuut"; brighter *word* (#83)
+    dynamic_emphasis: bool = True  # Kokoro: deeper, drawn-out "buuut"; brighter *word* (listened 9 Nov 2026, #83)
     drawl_bend: float = -2.0  # semitones at a drawl's dip (slightly deeper; listened 8 Nov 2026)
     drawl_hold: float = 0.0  # off: short vowels break up when held; only used without drawl_stretch
     drawl_stretch: float = 0.125  # seconds per drawn-out sound, said by Kokoro itself (per-token speed, #83)

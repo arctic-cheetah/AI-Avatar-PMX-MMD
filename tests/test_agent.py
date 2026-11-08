@@ -449,22 +449,108 @@ class RouterTests(unittest.IsolatedAsyncioTestCase):
         await settle()
         self.assertEqual(self.speech.spoken, [[("On it.", "neutral", 1.0)]])
 
-    async def test_latest_renderer_wins(self):
-        other = []
+    def other_stage(self):
+        """A second renderer whose events are recorded in its own list."""
+        events = []
 
         async def send(event):
-            other.append(event)
+            events.append(event)
 
-        newer = Stage(send, worker=None, catalog=CATALOG)
-        self.addAsyncCleanup(newer.close)
+        stage = Stage(send, worker=None, catalog=CATALOG)
+        self.addAsyncCleanup(stage.close)
+        return stage, events
+
+    async def say(self, text):
+        self.clock.now += 5
+        return await self.router.handle({"tool": "say", "text": text})
+
+    async def test_new_renderer_does_not_take_speech(self):
+        # #100: a second page (another app's preview, an agent's browser) used to
+        # become the destination just by connecting, leaving the user's page silent.
+        other, events = self.other_stage()
+        self.router.attach(self.stage)
+        self.router.attach(other)
+        self.assertEqual(await self.say("Hi."), "queued")
+        self.assertEqual(self.sent[0]["text"], "Hi.")
+        self.assertEqual(events, [])
+
+    async def test_automated_renderer_never_owns_speech(self):
+        # A Playwright page reports navigator.webdriver; it is not an eligible
+        # destination, so the agent hears "no renderer" rather than "queued".
+        other, events = self.other_stage()
+        self.router.attach(other)
+        self.router.presence(other, automated=True, visible=True)
+        self.assertEqual(await self.say("Hi."), "no renderer")
+        self.assertEqual([e for e in events if e["type"] == "agent"], [])
+
+    async def test_automated_renderer_cannot_inherit_speech(self):
+        robot, events = self.other_stage()
+        self.router.attach(self.stage)
+        self.router.attach(robot)
+        self.router.presence(robot, automated=True, visible=True)
+        self.router.detach(self.stage)
+        self.assertEqual(await self.say("Hi."), "no renderer")
+        self.assertEqual([e for e in events if e["type"] == "agent"], [])
+
+    async def test_claim_takes_speech(self):
+        other, events = self.other_stage()
+        self.router.attach(self.stage)
+        self.router.attach(other)
+        self.router.claim(other)
+        await self.say("Over here.")
+        self.assertEqual(events[0]["text"], "Over here.")
+        self.router.claim(self.stage)
+        await self.say("Back.")
+        self.assertEqual(self.sent[0]["text"], "Back.")
+
+    async def test_owner_close_falls_back_to_last_claimed_page(self):
+        older, older_events = self.other_stage()
+        newer, newer_events = self.other_stage()
+        self.router.attach(older)
         self.router.attach(self.stage)
         self.router.attach(newer)
-        await self.router.handle({"tool": "say", "text": "Hi."})
-        self.assertEqual(other[0]["kind"], "say")
-        self.router.detach(newer)
-        self.clock.now += 5
-        await self.router.handle({"tool": "say", "text": "Back."})
-        self.assertEqual(self.sent[0]["text"], "Back.")
+        self.router.claim(older)
+        self.router.claim(self.stage)
+        self.router.detach(self.stage)
+        await self.say("Still here.")
+        self.assertEqual(older_events[0]["text"], "Still here.")
+        self.assertEqual(newer_events, [])
+
+    async def test_user_page_reconnects_while_another_app_owns_speech(self):
+        # The 9 Nov incident: a page in another app owns speech and the user's
+        # page reconnects. Its claim (focus or a click) brings speech back
+        # without restarting the bridge, and nothing is played twice.
+        vscode, vscode_events = self.other_stage()
+        self.router.attach(vscode)
+        self.router.claim(vscode)
+        self.router.attach(self.stage)
+        self.assertEqual(await self.say("Lost."), "queued")
+        self.router.claim(self.stage)
+        await self.say("Found.")
+        self.assertEqual([e["text"] for e in self.sent if e["type"] == "agent"], ["Found."])
+        self.assertEqual([e["text"] for e in vscode_events if e["type"] == "agent"], ["Lost."])
+
+    async def test_hidden_owner_is_reported(self):
+        self.router.attach(self.stage)
+        self.router.presence(self.stage, automated=False, visible=False)
+        self.assertEqual(await self.say("Hi."), "queued: her page is in the background")
+        self.router.presence(self.stage, automated=False, visible=True)
+        self.assertEqual(await self.say("Hi."), "queued")
+
+    async def test_pages_that_said_hello_are_told_who_owns_speech(self):
+        other, events = self.other_stage()
+        self.router.attach(self.stage)
+        self.router.presence(self.stage, automated=False, visible=True)
+        await settle()
+        self.assertEqual(self.sent, [{"type": "voice", "owner": True}])
+        self.router.attach(other)
+        self.router.presence(other, automated=False, visible=True)
+        await settle()
+        self.assertEqual(events, [{"type": "voice", "owner": False}])
+        self.router.claim(other)
+        await settle()
+        self.assertEqual(self.sent[-1], {"type": "voice", "owner": False})
+        self.assertEqual(events[-1], {"type": "voice", "owner": True})
 
     async def test_rate_limit(self):
         self.router.attach(self.stage)
@@ -722,6 +808,51 @@ class BridgeIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 await ws.send(json.dumps({"type": "answer", "id": event["id"], "text": 7}))
                 await ws.send(json.dumps({"type": "answer", "id": event["id"], "text": "Yes please"}))
                 self.assertEqual(await asyncio.wait_for(task, 3), "Yes please")
+
+
+    async def test_second_page_claims_speech_over_the_socket(self):
+        from websockets.asyncio.client import connect
+        from websockets.asyncio.server import serve as ws_serve
+
+        router = AgentRouter(CATALOG)
+        args = Namespace(mode="demo", agent_router=router)
+
+        async def handler(ws):
+            await handle_connection(ws, args, CATALOG)
+
+        async def until(condition):
+            for _ in range(100):
+                if condition():
+                    return
+                await asyncio.sleep(0.01)
+            self.fail("condition not reached")
+
+        async def agent_events(ws):
+            while True:
+                event = json.loads(await asyncio.wait_for(ws.recv(), 3))
+                if event["type"] == "agent":
+                    return event
+
+        async with ws_serve(handler, "127.0.0.1", 0, origins=[ORIGIN]) as server:
+            url = f"ws://127.0.0.1:{server.sockets[0].getsockname()[1]}"
+            async with connect(url, origin=ORIGIN) as user, connect(url, origin=ORIGIN) as robot:
+                await until(lambda: len(router.stages) == 2)
+                hello = {"type": "presence", "automated": True, "visible": True}
+                await robot.send(json.dumps(hello))
+                await robot.send(json.dumps({"type": "presence", "automated": "yes"}))
+                await until(lambda: router.stages[1].announced)
+                self.assertEqual(await router.handle({"tool": "say", "text": "One."}), "queued")
+                self.assertEqual((await agent_events(user))["text"], "One.")
+                await robot.send(json.dumps({"type": "claim"}))
+                await until(lambda: router.owner is router.stages[1])
+                router.last.clear()
+                self.assertEqual(await router.handle({"tool": "say", "text": "Two."}), "queued")
+                self.assertEqual((await agent_events(robot))["text"], "Two.")
+                await robot.close()
+                await until(lambda: len(router.stages) == 1)
+                router.last.clear()
+                self.assertEqual(await router.handle({"tool": "say", "text": "Three."}), "queued")
+                self.assertEqual((await agent_events(user))["text"], "Three.")
 
 
 class McpServerTests(unittest.IsolatedAsyncioTestCase):

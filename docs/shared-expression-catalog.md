@@ -47,8 +47,8 @@ How they differ from similar moods:
 - **`angry` → `furious`**: use `furious` rarely, for real outrage.
 
 Aliases work wherever a mood name comes in: inline tags in LLM or agent text
-(`[sad-v2]` becomes `sorrowful`), the agent socket's `say` mood and
-`set_mood` name, and agent-host hooks. The bridge maps each alias to its new
+(`[sad-v2]` becomes `sorrowful`), the bridge's own `set_expression` LLM
+tool, the agent socket's `say` mood and `set_mood` name, and agent-host hooks. The bridge maps each alias to its new
 name as the name arrives, so the renderer, prosody and speech only ever see new
 names. Prompts and MCP tool schemas list only the new names, so models learn
 them. An MCP client that sends an old name gets refused by the enum and should

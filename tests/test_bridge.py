@@ -231,5 +231,63 @@ class ChatPromptTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(seen, ["hello yidhari", "default prompt"])
 
 
+class GreetingSpeechTests(unittest.IsolatedAsyncioTestCase):
+    """#129: the page-open greeting is spoken by the bridge, without the LLM."""
+
+    async def test_greet_is_spoken_once_without_the_llm(self):
+        from websockets.asyncio.server import serve
+        from websockets.asyncio.client import connect
+
+        spoken = []
+
+        async def fake_speak(queue, send, worker, run=None):
+            while (segment := await queue.get()) is not None:
+                spoken.append((segment.text.strip(), segment.expression))
+            await send({"type": "spoken"})
+            return len(spoken)
+
+        async def no_llm(*args, **kwargs):
+            raise AssertionError("a greeting must not reach the LLM")
+            yield ""
+
+        args = Namespace(
+            mode="llm",
+            llama_url="http://localhost:8080",
+            model=None,
+            prompt=None,
+            context_tokens=65536,
+            speech_worker=object(),
+        )
+
+        async def handler(ws):
+            await handle_connection(ws, args, load_catalog())
+
+        greet = {
+            "type": "greet",
+            "text": "Good evening! How was your day?",
+            "mood": "soft-smile",
+            "weight": 0.9,
+        }
+        with patch("controller.bridge.llama_chunks", no_llm), patch(
+            "controller.bridge.speak_segments", fake_speak
+        ):
+            async with serve(handler, "127.0.0.1", 0, origins=[ORIGIN]) as server:
+                url = f"ws://127.0.0.1:{server.sockets[0].getsockname()[1]}"
+                async with connect(url, origin=ORIGIN) as ws:
+                    # Invalid greetings are dropped.
+                    await ws.send(json.dumps({**greet, "mood": "evil"}))
+                    await ws.send(json.dumps({**greet, "text": "x" * 501}))
+                    await ws.send(json.dumps({**greet, "weight": "loud"}))
+                    await ws.send(json.dumps(greet))
+                    await ws.send(json.dumps(greet))  # once per connection
+                    events = []
+                    while not events or events[-1]["type"] != "spoken":
+                        events.append(json.loads(await asyncio.wait_for(ws.recv(), 3)))
+                    with self.assertRaises(asyncio.TimeoutError):
+                        await asyncio.wait_for(ws.recv(), 0.3)
+        self.assertEqual([e["type"] for e in events], ["turn", "spoken"])
+        self.assertEqual(spoken, [("Good evening! How was your day?", "soft-smile")])
+
+
 if __name__ == "__main__":
     unittest.main()

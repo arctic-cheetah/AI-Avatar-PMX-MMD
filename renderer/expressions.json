@@ -18,7 +18,11 @@
   "thinking": {
     "description": "Pause to consider an idea or work through a question.",
     "morphs": {
-      "じと目": 1
+      "じと目": 0.25,
+      "眼角下": 0.4,
+      "上左": 0.6,
+      "口左": 1,
+      "口角下げ": 0.3
     }
   },
   "troubled": {
@@ -56,43 +60,38 @@
     "aliases": ["sad-v2"],
     "morphs": {
       "悲しむ": 1,
-      "真面目": 1,
-      "口角下げ": 1,
-      "困る": 1
+      "困る": 0.6,
+      "口角下げ": 0.7
     }
   },
   "rueful": {
     "description": "Express wry, regretful sadness mixed with doubt.",
     "aliases": ["sad-sceptical"],
     "morphs": {
-      "悲しむ": 1,
-      "真面目": 1,
-      "口角下げ": 1,
-      "困る": 1,
-      "にやり２": 1
+      "悲しむ": 0.6,
+      "困る": 0.5,
+      "にやり２": 0.8,
+      "じと目": 0.25
     }
   },
   "disappointed": {
     "description": "React to an unmet expectation or letdown.",
     "morphs": {
-      "悲しむ": 1,
-      "真面目": 1,
-      "口角下げ": 1,
-      "困る": 1,
-      "じと目": 1
+      "じと目": 0.55,
+      "悲しむ": 0.45,
+      "真面目": 0.5,
+      "口角下げ": 0.75
     }
   },
   "exasperated": {
     "description": "React with fed-up, exasperated disbelief; use sparingly.",
     "aliases": ["wtf-dude"],
     "morphs": {
-      "悲しむ": 1,
-      "真面目": 1,
-      "口角下げ": 1,
-      "困る": 1,
-      "じと目": 1,
-      "口横狭め": 1,
-      "怒り": 0.2
+      "じと目": 0.75,
+      "上左": 0.65,
+      "口横狭め": 0.6,
+      "口角下げ": 0.5,
+      "怒り": 0.15
     }
   },
   "cry": {

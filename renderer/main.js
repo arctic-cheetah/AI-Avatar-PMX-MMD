@@ -45,6 +45,7 @@ import { SWAY, SwayController, swayAnglesAt } from "./body-sway.js";
 import { Spring, TIMING, frameDelta } from "./smoothing.js";
 import { composeBlink, eyeClosure } from "./facial-layers.js";
 import { GreetingGate, bindGreetingToggle } from "./greeting.js";
+import { bindRestingFaceToggle } from "./resting-face.js";
 import { FrameLoop, PopOut, popupWindow } from "./pop-out.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
@@ -94,6 +95,7 @@ const swayToggle = document.querySelector("#sway-toggle");
 const swayButton = document.querySelector("#sway-button");
 const cursorGazeToggle = document.querySelector("#cursor-gaze-toggle");
 const cameraGazeToggle = document.querySelector("#camera-gaze-toggle");
+const restingFaceToggle = document.querySelector("#resting-face-toggle");
 const gazeStatus = document.querySelector("#gaze-status");
 const frameButtons = {
   face: document.querySelector("#frame-face-button"),
@@ -996,8 +998,20 @@ function editPresetInSliders() {
   }
   audition.clear();
   audition.setWeights(morphs);
-  expressions.setExpression("neutral");
+  clearToBareMesh();
   syncThinkingState();
+}
+
+/**
+ * Clear the mood and rest on the bare mesh, so slider weights show on their own
+ * instead of on top of the resting face (#99). Not saved: a reload restores it.
+ * @returns {void}
+ */
+function clearToBareMesh() {
+  expressions.setExpression("neutral");
+  if (expressions.restingFace !== null && expressions.setRestingFace(null)) {
+    restingFaceToggle.checked = false;
+  }
 }
 
 editPresetButton.addEventListener("click", editPresetInSliders);
@@ -1244,6 +1258,8 @@ function onModelLoaded(loaded, data) {
   }
   blinkToggle.disabled = blinkIndex < 0;
   expressions = new ExpressionController(mesh, EXPRESSION_CATALOG);
+  bindRestingFaceToggle(expressions, restingFaceToggle);
+  restingFaceToggle.disabled = !expressions.isAvailable("calm");
   expressions.startLoop(3, Number(intensityInput.value));
   audition = new MorphAudition(mesh, buildMorphInventory(data, mesh));
   speech = new SpeechPlayer(mesh, SPEECH_SHAPES, voiceVolume);
@@ -1281,7 +1297,7 @@ function onModelLoaded(loaded, data) {
      */
     hold(morphs) {
       expressions.stopLoop();
-      expressions.setExpression("neutral");
+      clearToBareMesh();
       audition.clear();
       audition.setWeights(morphs);
       blinkToggle.checked = false;
@@ -1292,7 +1308,7 @@ function onModelLoaded(loaded, data) {
   auditionPanel = new AuditionPanel(audition, {
     usage: buildMorphUsage(),
     onManualEdit: () => expressions.stopLoop(),
-    onTakeover: () => expressions.setExpression("neutral"),
+    onTakeover: clearToBareMesh,
   });
   restArms(mesh);
   setupGaze(mesh);

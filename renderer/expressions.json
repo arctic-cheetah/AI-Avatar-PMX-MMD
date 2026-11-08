@@ -400,5 +400,33 @@
       "口角上げ": 0.4,
       "びっくり": 0.2
     }
+  },
+  "serene": {
+    "description": "Rest gently at ease, with a softened smile.",
+    "morphs": {
+      "口角下げ": 0.3
+    }
+  },
+  "composed": {
+    "description": "Stay calm and collected, in quiet control.",
+    "morphs": {
+      "口角下げ": 0.35,
+      "じと目": 0.15
+    }
+  },
+  "attentive": {
+    "description": "Listen closely with quiet focus.",
+    "morphs": {
+      "口角下げ": 0.3,
+      "下眼上": 0.2,
+      "真面目": 0.2
+    }
+  },
+  "calm": {
+    "description": "Rest in plain, soft calm; the default resting face.",
+    "morphs": {
+      "口角下げ": 0.45,
+      "眼角下": 0.25
+    }
   }
 }

@@ -16,6 +16,9 @@ export class ExpressionController {
     this.mesh = mesh;
     this.catalog = catalog;
     this.activeExpression = "neutral";
+    /** Preset neutral settles into instead of the bare mesh (#99), or null. */
+    this.restingFace = null;
+    this.restWeight = 1;
     this.missingMorphs = new Map();
     /** @type {Map<number, number>} Displayed weight per owned morph index. */
     this.weights = new Map();
@@ -71,7 +74,8 @@ export class ExpressionController {
 
   /**
    * Select one mood, fading all other catalogued mood morphs to zero.
-   * Neutral clears the mood channel without touching blink or speech.
+   * Neutral clears the mood channel without touching blink or speech, then
+   * settles into the resting face when one is set.
    * Manual selection stops any running loop.
    * @param {string} name Semantic expression name, or neutral.
    * @param {number} [weight=1] Mood intensity from 0 to 1.
@@ -83,6 +87,24 @@ export class ExpressionController {
     }
     this.stopLoop();
     this.applyExpression(name, weight);
+    return true;
+  }
+
+  /**
+   * Choose the preset that neutral settles into, or null for the bare mesh.
+   * Neutral itself is still the one reset: a mood replaces the resting face
+   * rather than stacking on it. An active mood is left alone.
+   * @param {string | null} name Available non-neutral preset, or null.
+   * @returns {boolean} Whether the resting face was accepted.
+   */
+  setRestingFace(name) {
+    if (name !== null && (typeof name !== "string" || name === "neutral" || !this.isAvailable(name))) {
+      return false;
+    }
+    this.restingFace = name;
+    if (this.activeExpression === "neutral") {
+      this.applyExpression("neutral", this.restWeight);
+    }
     return true;
   }
 
@@ -138,9 +160,11 @@ export class ExpressionController {
     for (const index of this.targets.keys()) {
       this.targets.set(index, 0);
     }
-    if (name !== "neutral") {
+    const shown = name === "neutral" ? this.restingFace : name;
+    if (name === "neutral") this.restWeight = weight;
+    if (shown) {
       const intensity = Math.max(0, Math.min(weight, 1));
-      for (const [morph, morphWeight] of Object.entries(this.catalog[name].morphs)) {
+      for (const [morph, morphWeight] of Object.entries(this.catalog[shown].morphs)) {
         const index = this.mesh.morphTargetDictionary[morph];
         this.targets.set(index, intensity * morphWeight);
       }

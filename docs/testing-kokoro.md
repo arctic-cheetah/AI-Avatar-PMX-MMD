@@ -361,7 +361,7 @@ Each `Delivery` gives:
 | `words` | the words (lower case, without punctuation) | `DRAWL_OPENERS`, `ATTITUDE_WORDS` |
 | `moods` | moods it applies in (`None`: any) | any; `SKEPTICAL_MOODS` |
 | `opener_only` | only as the sentence's first word | yes; no |
-| `standalone` | only when said on its own: the first word, followed by `?`, `!`, `,`, `…`, `;` or `:`, or an elongated spelling | no |
+| `standalone` | only when said on its own: followed by `?`, `!`, `,`, `…`, `;` or `:`, or an elongated spelling (a sentence-opening "What do you…" is a question word, not surprise) | no |
 | `bend` | the `ApplioSettings` field with its semitones | `drawl_bend` |
 | `peak` | where the bend peaks (`None`: the default rise-fall) | `None` |
 | `stretch` | Kokoro draws its stressed sound out (`--drawl-stretch`) | yes |

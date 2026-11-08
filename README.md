@@ -214,6 +214,7 @@ for limits and listening checks.
 | `--pth`            | model under `--applio-dir`          | Applio voice model                                                             |
 | `--index`          | index under `--applio-dir`          | Applio voice index                                                             |
 | `--rvc-threads`    | `0` (PyTorch default)               | CPU RVC threads; mainly for the CPU Applio path                                |
+| `--rvc-device`     | `auto`                              | RVC on `gpu` (stop if none is visible), `cpu` (hide the GPU) or `auto`; the ready line names the backend |
 | `--llama-url`      | `http://127.0.0.1:8080`             | Any OpenAI-compatible base URL (or full `…/chat/completions` endpoint); cloud/proxy URLs send chat text off-machine |
 | `--model`          | none                                  | Model name/id; required for non-loopback URLs                                  |
 | `--api-key-env`    | `OPENAI_API_KEY`                    | Env var holding the upstream API key (bridge only, sent as Bearer)             |
@@ -240,6 +241,7 @@ for limits and listening checks.
 | `--mood-prosody`      | Mood tags also shape the voice per sentence: Kokoro speed and clause pause, RVC pitch (±2 semitones); see docs/testing-kokoro.md §2b.                                         |
 | `--kokoro-threads`    | CPU ONNX thread count for the Kokoro worker.                                                                                                                                           |
 | `--rvc-threads`       | PyTorch CPU thread count for RVC when using the CPU Applio path.                                                                                                                       |
+| `--rvc-device`        | `auto` (default), `gpu` or `cpu`. `gpu` fails at startup without a visible GPU; `cpu` hides it. Compare devices with `python -m controller.rvc_check` (docs/setup.md A6).          |
 | `--applio-dir`        | Applio installation to launch. Defaults to `../Applio`; use `../Applio-rocm` for ROCm GPU RVC.                                                                                     |
 | `--pth`               | Explicit Applio voice model path. If omitted, the default Yidhari model under `--applio-dir` is used.                                                                                |
 | `--index`             | Explicit Applio voice index path. If omitted, the default Yidhari index under `--applio-dir` is used.                                                                                |

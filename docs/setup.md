@@ -6,6 +6,7 @@ for both **AMD ROCm** and **NVIDIA CUDA** machines. 🌸
 
 > **Which path should I pick?**
 > - 🟢 **AMD Radeon** (e.g. Ryzen AI MAX+ 395 / Radeon 8060S, `gfx1151`) → **Path A: ROCm**
+> - 🟡 **AMD Ryzen AI 9 HX (PRO) 370 / Radeon 890M** (`gfx1150`, same RDNA 3.5 family) → **Path A**, then confirm with [A6](#a6-check-the-gpu-path-with-the-rvc-check-) before switching (#111)
 > - 🟢 **NVIDIA GeForce/RTX** → **Path B: CUDA** (upstream Applio already targets this)
 > - ⚪ **No supported GPU** → Applio still works on CPU; just slower. Use either path and let PyTorch fall back, or skip to [Connect it to the avatar](#-connect-it-to-the-avatar).
 
@@ -154,6 +155,44 @@ speech took **1.58 s (GPU)** vs **3.34 s (CPU)**; per-sentence live conversions
 land around `rvcSeconds 0.6–2.0`. Also listen to the output — same quality is
 required, not just speed. 🎧
 
+### A6. Check the GPU path with the RVC check 🔬
+
+`controller.rvc_check` starts the bridge's own Applio worker exactly as the
+bridge would, so it measures what you will feel: the **spool-up** (worker start
+to ready, including model load and warm-up), the backend it really used, and a
+few conversions of one real speech clip. Run it from the avatar repo once per
+device and compare:
+
+```bash
+cd ~/Code/avatar-yidhari
+.venv/bin/python -m controller.rvc_check --applio-dir ../Applio-rocm --rvc-device gpu
+.venv/bin/python -m controller.rvc_check --applio-dir ../Applio-rocm --rvc-device cpu
+```
+
+- `--source` picks the clip (default `assets/private/speech/sample-01.wav`);
+  `--runs` sets the number of timed conversions (default 3);
+  `--output` keeps the last converted WAV so you can listen to it.
+- It prints one JSON summary: `device` (`gpu`/`cpu`, backend, GPU name, arch),
+  `spoolSeconds`, `loadSeconds`, `warmSeconds`, `rvcMedian`/`rvcMin`/`rvcMax`
+  and `rtf` (median conversion time ÷ clip length).
+- `--rvc-device gpu` fails straight away if PyTorch sees no GPU, instead of
+  quietly measuring the CPU.
+
+**Ryzen AI 9 HX PRO 370 (Radeon 890M, `gfx1150`).** Same steps as the 395:
+build `~/Code/Applio-rocm` with A1–A3, then check:
+
+1. `rocminfo | grep -A2 gfx1150` and `check_gpu.py` (A4) report `gfx1150` and `PASS`.
+   If `available` is `False` on this wheel, record it on #111 rather than
+   forcing `HSA_OVERRIDE_GFX_VERSION`.
+2. Run both `rvc_check` commands above, ideally once with `llama-server` idle and
+   once while it is decoding, and keep the JSON.
+3. Listen to both `--output` files. Switch the bridge to `--applio-dir
+   ../Applio-rocm` only if the GPU is faster **and** sounds the same; the CPU
+   Applio install stays untouched either way.
+
+On a work laptop, check that installing the ROCm PyTorch wheel (several GB) and
+`render`-group access are allowed first, and expect the iGPU to use more battery.
+
 ---
 
 ## Path B — NVIDIA CUDA (GeForce/RTX) 💚
@@ -232,6 +271,10 @@ cd ~/Code/avatar-yidhari
 
 # CPU fallback: omit --applio-dir and optionally cap CPU threads:
 #   ... --rvc-threads 4
+
+# Pin the device instead of letting PyTorch choose (default: auto):
+#   ... --rvc-device gpu   # fail at startup if no GPU is visible
+#   ... --rvc-device cpu   # hide the GPU, e.g. to leave it to the LLM
 ```
 
 Notes:
@@ -240,8 +283,11 @@ Notes:
   (`logs/Yidhari-zzz/Yidhari-zzz_75e_21450s.pth` + `Yidhari-zzz.index`);
   `--pth` / `--index` override individually.
 - `--rvc-threads` is a CPU-torch setting; the GPU paths ignore it.
-- Watch for `Applio worker ready: load …s, warm-up …s` at bridge startup and
-  per-sentence `rvcSeconds` in the log — that's your end-to-end proof. 📈
+- `--rvc-device auto` (default) uses the GPU when Applio's PyTorch sees one,
+  otherwise the CPU. `gpu` refuses to start without a GPU; `cpu` hides it.
+- Watch for `Applio worker ready on GPU (rocm 7.2…, Radeon 8060S Graphics, gfx1151): load …s, warm-up …s`
+  (or `on CPU`) at bridge startup and per-sentence `rvcSeconds` in the log —
+  that's your end-to-end proof, and it catches a silent CPU fallback. 📈
 
 ---
 
@@ -254,6 +300,7 @@ Notes:
 | `torch …+cu128` inside Applio-rocm | ROCm | A plain-PyPI install overwrote ROCm. Reinstall with `--index-url https://download.pytorch.org/whl/rocm7.2`. |
 | `torch.cuda.is_available()` is `False` | CUDA | Update the NVIDIA driver (`nvidia-smi` must work outside Python first). |
 | Bridge stops at startup with "Applio file not found" | both | The chosen `--applio-dir` lacks `.venv/bin/python`, the `.pth`, or the `.index` — check the path in the error and copy the model in (§0). |
+| Bridge stops with `failed to start: RuntimeError: --rvc-device gpu: no GPU visible…` | both | That Applio venv's PyTorch has no usable GPU (the message names its build, e.g. `cuda 12.8`). Point `--applio-dir` at the ROCm/CUDA install, fix the driver checks above, or use `--rvc-device auto`. |
 | First conversion is very slow, later ones fast | both | Normal: model load + kernel warm-up. The bridge warms the worker once at startup; don't judge by clip #1. |
 | RVC runs but the LLM slows down | ROCm | On UMA APUs the iGPU is shared with `llama-server` (Vulkan). Measure tokens/s with/without speech (#15) before tuning. |
 

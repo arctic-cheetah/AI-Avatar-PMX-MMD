@@ -110,6 +110,12 @@ conversion on the Radeon 8060S, point it at the separate ROCm workspace:
 ```
 
 ROCm RVC ignores `--rvc-threads` (a CPU-only torch setting), so omit it there.
+`--rvc-device auto|gpu|cpu` (default `auto`) pins the device: `gpu` stops at
+startup if Applio's PyTorch sees no GPU, and `cpu` hides the GPU from the
+worker. The ready line names what was used, e.g. `Applio worker ready on GPU
+(rocm 7.2.26015, Radeon 8060S Graphics, gfx1151): load …`. To compare devices
+on a new machine, run `python -m controller.rvc_check` (see
+[setup A6](./setup.md#a6-check-the-gpu-path-with-the-rvc-check-)).
 On 23 October 2026 this passed an isolated demo-mode check on port 8766:
 worker ready in 2.17 s (load) + 4.89 s (warm-up); the two demo sentences
 spoke in 1.64 s / 3.59 s with `rvcSeconds` 0.84 / 0.62. `--rvc-threads` was

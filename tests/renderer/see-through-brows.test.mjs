@@ -82,6 +82,20 @@ test("the overlay redraws the brow triangles over the hair with its own material
   assert.deepEqual(mesh.geometry.groups.at(-1), { start: before.length, count: 6, materialIndex: 2 });
 });
 
+test("the overlay shares the original's textures instead of copies that may never upload", () => {
+  // ShaderMaterial.clone() copies texture uniforms. A copy made before the image
+  // loads stays blank, so the brows drew pale and untextured (seen in the renderer).
+  const mesh = rig();
+  const map = { isTexture: true, clone() { return { ...this }; } };
+  const brow = mesh.material[1];
+  brow.uniforms = { map: { value: map }, opacity: { value: 1 } };
+  brow.clone = function clone() {
+    return { ...this, userData: {}, uniforms: Object.fromEntries(Object.entries(this.uniforms).map(([k, u]) => [k, { value: u.value?.isTexture ? u.value.clone() : u.value }])) };
+  };
+  const layer = addSeeThroughBrows(mesh, BROWS);
+  assert.equal(layer.material.uniforms.map.value, map);
+});
+
 test("the overlay can be switched off and on without rebuilding", () => {
   const mesh = rig();
   const brows = addSeeThroughBrows(mesh, BROWS);

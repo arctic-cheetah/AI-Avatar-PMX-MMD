@@ -351,6 +351,22 @@ listening on 9 Nov 2026; `--no-dynamic-emphasis` or `--plain-voice` turns it off
 - **Bright emphasis:** a `*word*` mark in any other mood also gets the word
   lift (`--word-lift-bend`), on top of its pause.
 
+**Word-delivery list:** the families of words are rows of `DELIVERIES` in
+`controller/speech.py`, so a new family is a row plus a test, not new code.
+Each `Delivery` gives:
+
+| Field | Meaning | Drawl rows |
+| --- | --- | --- |
+| `family` | name reported in metrics | `drawl` |
+| `words` | the words (lower case, without punctuation) | `DRAWL_OPENERS`, `ATTITUDE_WORDS` |
+| `moods` | moods it applies in (`None`: any) | any; `SKEPTICAL_MOODS` |
+| `opener_only` | only as the sentence's first word | yes; no |
+| `bend` | the `ApplioSettings` field with its semitones | `drawl_bend` |
+| `peak` | where the bend peaks (`None`: the default rise-fall) | `None` |
+| `stretch` | Kokoro draws its stressed sound out (`--drawl-stretch`) | yes |
+
+The first row that matches a word wins.
+
 **Stress-mark check (#83 scope 3):** on ordinary words, Kokoro's marks change
 length, not loudness:
 

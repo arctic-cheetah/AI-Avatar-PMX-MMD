@@ -1,7 +1,6 @@
 /** Time-of-day greeting (#72): a fixed phrase for the local hour, no LLM, nothing leaves the machine. */
 
 export const GREETING_ENABLED_KEY = 'yidhari.greeting-enabled';
-export const GREETING_SHOWN_KEY = 'yidhari.greeting-shown';
 
 /** Small fixed phrase list; the mood fits the phrase and must exist in expressions.json. */
 export const GREETINGS = {
@@ -41,18 +40,18 @@ export function greetingForDate(date) {
 }
 
 /**
- * Once-per-session gate. The shown flag lives in sessionStorage (a reload in
- * the same tab stays silent; a new session greets again), the on/off switch in
- * localStorage. Blocked storage falls back to memory, so the rule still holds.
+ * Once-per-page-load gate. The shown flag lives only in memory: sessionStorage
+ * is copied into new windows and restored tabs, so persisting it there would
+ * swallow the greeting in exactly those windows. Every page load greets once;
+ * the bridge's own guard stops a reconnect repeating it within that load.
+ * The on/off switch persists in localStorage.
  */
 export class GreetingGate {
-  constructor({ session, local } = {}) {
-    this.session = session;
+  constructor({ local } = {}) {
     this.local = local;
     this.memoryShown = false;
     this.memoryEnabled = null;
     try {
-      this.session ??= globalThis.sessionStorage;
       this.local ??= globalThis.localStorage;
     } catch { /* Storage access itself can throw; memory fallback applies. */ }
   }
@@ -67,18 +66,14 @@ export class GreetingGate {
     try { this.local?.setItem(GREETING_ENABLED_KEY, value ? '1' : '0'); } catch { /* Session-only switch. */ }
   }
 
-  get shown() {
-    if (this.memoryShown) return true;
-    try { return this.session?.getItem(GREETING_SHOWN_KEY) === '1'; } catch { return false; }
-  }
+  get shown() { return this.memoryShown; }
 
-  /** Return the greeting once per session when enabled, otherwise null. */
+  /** Return the greeting once per page load when enabled, otherwise null. */
   claim(date = new Date()) {
     if (!this.enabled || this.shown) return null;
     const greeting = greetingForDate(date);
     if (!greeting) return null;
     this.memoryShown = true;
-    try { this.session?.setItem(GREETING_SHOWN_KEY, '1'); } catch { /* Memory flag above still applies. */ }
     return greeting;
   }
 }

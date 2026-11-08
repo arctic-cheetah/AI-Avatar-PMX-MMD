@@ -199,7 +199,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
       setChatEnabled(true);
       chatInput.focus();
       // Page-open greeting (#72): once here, and the gate in main.js keeps it
-      // to once per session, so reconnects below never greet again.
+      // to once per page load, so reconnects below never greet again.
       if (greeting && !greeted) {
         greeted = true;
         addLine('yidhari').textContent = greeting.text;

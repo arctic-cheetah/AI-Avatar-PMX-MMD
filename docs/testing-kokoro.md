@@ -68,9 +68,9 @@ runs. Listen for word endings, pronunciation, breath artifacts and voice identit
 
 ## Expressive voice defaults
 
-Everything below that was approved by listening (#29, #84) is **on by default**:
+Everything below that was approved by listening (#29, #83, #84) is **on by default**:
 mood prosody (§2b), punctuation cadence (§2c), emphasis (§2d), interjection
-contours and word lifts (§2e), and quote voice (§2f). Turn a part off with its `--no-…` flag (for
+contours and word lifts (§2e), quote voice (§2f) and dynamic emphasis (§2g). Turn a part off with its `--no-…` flag (for
 example `--no-word-lifts`), or all of them with `--plain-voice`, e.g. to A/B
 against the plain Kokoro → RVC voice. Emphasis, contours and lifts only act
 with `--tts kokoro`.
@@ -333,7 +333,8 @@ model takes one speed per sentence, but a patched copy can take one per token
 
 Some words carry meaning in their delivery: a contrastive "**buuut**" said
 deeper and drawn out, or a sarcastic "suuure". With `--dynamic-emphasis`
-(Kokoro only, off until auditioned; `--plain-voice` turns it off):
+(Kokoro only; on by default since the drawn-out drawls were approved by
+listening on 9 Nov 2026; `--no-dynamic-emphasis` or `--plain-voice` turns it off):
 
 - **Drawl (deeper and longer):** a sentence-opening *But / Well / So / Now /
   Okay*; the attitude words *sure, really, right, totally, obviously* when

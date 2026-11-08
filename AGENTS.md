@@ -124,3 +124,38 @@ checks instead, and record the actual validation performed.
 Commit updates to this instructions file on the active task branch and include
 them in the relevant PR. Preserve unrelated local edits. This workflow was
 requested by the user on 7 November 2026.
+
+## Investigating model and voice behaviour
+
+When a model (ONNX, RVC or other) cannot do something, or a voice change
+sounds wrong, investigate before redesigning. This method found per-token
+speed in Kokoro with a one-field patch (#83, `docs/testing-kokoro.md` §2h):
+
+1. **Read the signature.** List the session's inputs, outputs, shapes and
+   dtypes with onnxruntime before assuming anything.
+2. **Probe, then read the exact error.** Try the input you want (for example,
+   a vector where a scalar is declared) and keep the runtime's message as
+   evidence.
+3. **Trace the graph.** Use the `onnx` package to follow the consumers of that
+   input and the producers of the outputs, to find the smallest change. Install
+   analysis-only packages into the scratchpad, not the project venvs.
+4. **Patch a copy, never the original.** Write patched models to the
+   scratchpad first. Prove that old inputs give the same results. Check for
+   random ops (`RandomNormalLike`) first, and compare deterministic outputs
+   (durations), not waveforms.
+5. **Measure, then listen.** Record numbers such as frames per token, lengths
+   and timings, then write clips into the gitignored
+   `assets/private/speech/<ticket>/`. Write them for the source alone and after
+   RVC, and link them for the user's ears. A clip that sounds broken sets a
+   limit (8 frames on one vowel broke up, so the cap is 5).
+6. **When listening hears the wrong word, check the phonemes.** espeak
+   misreads spellings ("whaaat" → `wˈæææt`, heard as "whyat"), and stretching
+   the wrong sounds adds syllables ("really" → "reality"). Print the phonemes,
+   name the cause, then fix it.
+7. **Productise in small steps.** Setup derives the patch from the
+   hash-checked download and refuses an unexpected graph. Runtime falls back
+   when the patch is missing and reports why. Tests use a tiny synthetic graph
+   plus a real-model test that is skipped when the model is absent. Record
+   every listening verdict in the docs and on the PR.
+
+Requested by the user on 9 November 2026.

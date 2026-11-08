@@ -520,14 +520,31 @@ espeak reads them letter by letter, so listening heard "whaaat" as "whyat"
 | suuure | `sˈuːjʊɹ` | "soo-yur" |
 | wellll | `wˈɛləl` | "wel-ul" |
 
-With `--tts kokoro`, `unstretch_spellings()` turns a run of three or more of one
-letter back into the real word, before phonemes and lip sync. It keeps a double
-letter where the word has one (wellll → well, coooool → cool, hmmmm → hmm). Two
-letters are only shortened when the result is a word that gets drawn out (soo →
-so, whaat → what), so "too", "see" and "good" stay as they are. Interjections
-("Awww", "Ooh", "ohhh") keep their own handling (§2e). With dynamic emphasis
-on, the word is then drawn out by Kokoro like a drawl (`--drawl-stretch`), but
-without the drawl's dip. Edge reads the spellings itself, so they are left alone.
+With `--tts kokoro`, `unstretch_spellings()` turns an elongated spelling back
+into the real word, before phonemes and lip sync. Each repeated-letter run is
+tried as 1, 2 or 3 letters (at most four runs), and the longest candidate found
+in a lexicon wins:
+
+- **The lexicon** is the system word list (`/usr/share/dict/words`, from
+  Debian/Ubuntu's `wamerican`) plus a few spoken words it lacks (`hmm`, `mmm`,
+  `shh`, `umm`, `yay`…). Without that file, a small built-in list is used.
+- **Results:** sorrrry → sorry, reallly → really, whaaatt → what, coooool →
+  cool (not "col"), tooo → too, hmmmm → hmm, mmmm → mmm, SOooo → So.
+- **Two-letter runs** are only shortened when the word as written is not a word
+  (soo → so, whaat → what), so "too", "see" and "good" stay as they are.
+- **Left alone:** a candidate needs a vowel unless it is one of those spoken
+  words, so "brrr", "grrr" and "pssst" keep their spelling. Tokens with `.`, `/`
+  or `@` (addresses, handles) and interjections ("Awww", "Ooh", "ohhh", §2e) are
+  left alone too.
+
+Case, punctuation and the word count are kept. With dynamic emphasis on, the
+word is then drawn out by Kokoro like a drawl, but without the drawl's dip.
+Three or more letters get the full `--drawl-stretch`, and two letters get 60 %
+of it (whaat 75 ms, whaaat 125 ms). The stretch cannot grow past that, because
+125 ms is the most one sound may take (§2h). With `--no-dynamic-emphasis` the
+real word is spoken at its normal length. When a line has more than four
+drawn-out words, drawls come first. Edge reads the spellings itself, so they
+are left alone.
 
 Next, in small batches: a word-delivery list (surprise "whaaat?", affection
 "sooo", hesitation "hmmm") and a quotation pace (§2f).

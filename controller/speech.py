@@ -366,6 +366,9 @@ class Delivery:
     bend: str = "drawl_bend"  # ApplioSettings field with the bend's semitones
     peak: float | None = None  # where the bend peaks; None keeps the default rise-fall
     stretch: bool = True  # Kokoro draws its stressed sound out (drawl_stretch)
+    # Only when said on its own: before ?!,…;: or an elongated spelling ("whaaat"); not "What do…".
+    # Keeps intensifier "really" ("I'm really happy!") and relative "what" out (#123 review).
+    standalone: bool = False
 
 
 # The first row that matches a word wins. Docs: docs/testing-kokoro.md §2g.
@@ -373,32 +376,40 @@ DELIVERIES: tuple[Delivery, ...] = (
     Delivery("drawl", DRAWL_OPENERS, opener_only=True),  # "Buuut…", "Wellll…"
     Delivery("drawl", ATTITUDE_WORDS, moods=SKEPTICAL_MOODS),  # sarcastic "suuure"
     Delivery("surprise", SURPRISE_WORDS, moods=SURPRISED_MOODS, bend="surprise_bend",
-             peak=QUESTION_PEAK),  # "whaaat", "reeeally" rising
+             peak=QUESTION_PEAK, standalone=True),  # "Whaaat?", "Reeeally?" rising
 )
 
 
 def delivered_words(
-    text: str, expression: str, rows: tuple[Delivery, ...] = DELIVERIES
+    text: str, expression: str, rows: tuple[Delivery, ...] = DELIVERIES,
+    elongated: tuple[int, ...] = (),
 ) -> dict[int, Delivery]:
-    """Spoken-word index → the first delivery row that matches the word, mood and position."""
+    """Spoken-word index → the first delivery row that matches the word, mood and position.
+
+    ``elongated`` are word indices written drawn out ("whaaat"); they count as said on their own.
+    """
     found = {}
     for index, word in enumerate(spoken_words(text)):
         core = word.strip(WORD_EDGES).lower()
+        alone = word.rstrip(CLOSING)[-1:] in "?!,…;:" or index in elongated
         for row in rows:
             if (core in row.words and (row.moods is None or expression in row.moods)
-                    and (index == 0 or not row.opener_only)):
+                    and (index == 0 or not row.opener_only) and (alone or not row.standalone)):
                 found[index] = row
                 break
     return found
 
 
-def drawl_words(text: str, expression: str, emphasis: tuple[int, ...] = ()) -> tuple[int, ...]:
+def drawl_words(
+    text: str, expression: str, emphasis: tuple[int, ...] = (), found: dict[int, Delivery] | None = None
+) -> tuple[int, ...]:
     """Spoken-word indices to say deeper and drawn out.
 
     The drawl rows of DELIVERIES (a sentence-opening But/Well/So/Now/Okay; in
     skeptical moods the attitude words), plus ``*word*`` marks in skeptical moods.
     """
-    drawls = {i for i, row in delivered_words(text, expression).items() if row.family == "drawl"}
+    found = delivered_words(text, expression) if found is None else found
+    drawls = {i for i, row in found.items() if row.family == "drawl"}
     if expression in SKEPTICAL_MOODS:
         drawls |= {i for i in emphasis if i < len(spoken_words(text))}
     return tuple(sorted(drawls))
@@ -773,7 +784,11 @@ class ApplioWorker:
         if drawls:
             message["drawls"] = sum(word in drawls and word not in contours for word in bent)
         if delivered:
-            message["delivered"] = sum(word in row_bends and word not in contours for word in bent)
+            # Row words that were bent, or drawn out (a question's own rise may have won).
+            drawn_rows = {index for index, _, _, stretched in delivered
+                          if stretched and any(item[0] == index for item in stretch)}
+            message["delivered"] = len({word for word in bent if word in row_bends and word not in contours}
+                                       | drawn_rows)
         if quotes:
             message["quotes"] = dipped
         if rises:
@@ -887,7 +902,8 @@ async def synthesise(
         if settings.dynamic_emphasis and settings.tts_provider == "kokoro":
             same_words = len(spoken_words(text)) == len(spoken_words(segment.text))
             marked = segment.emphasis if same_words else ()
-            drawls = drawl_words(text, segment.expression, marked)
+            found = delivered_words(text, segment.expression, elongated=tuple(i for i, _ in elongated))
+            drawls = drawl_words(text, segment.expression, marked, found)
             if drawls:
                 options["drawls"] = drawls
                 for key in ("rises", "lifts"):
@@ -896,8 +912,7 @@ async def synthesise(
                         options[key] = kept
                     else:
                         options.pop(key, None)
-            rows = {i: row for i, row in delivered_words(text, segment.expression).items()
-                    if row.family != "drawl" and i not in drawls}
+            rows = {i: row for i, row in found.items() if row.family != "drawl" and i not in drawls}
             if rows:  # a question's own rise wins; the word is then only drawn out
                 rising = options.get("rises", ())
                 options["delivered"] = tuple(
@@ -910,7 +925,7 @@ async def synthesise(
                     options["lifts"] = kept
                 else:
                     options.pop("lifts", None)
-            bright = tuple(i for i in marked if i not in drawls)
+            bright = tuple(i for i in marked if i not in drawls and i not in rows)
             if bright:  # a *word* in a non-skeptical mood is lifted as well as paused
                 options["lifts"] = tuple(dict.fromkeys([*options.get("lifts", ()), *bright]))
         if elongated and settings.dynamic_emphasis:

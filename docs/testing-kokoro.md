@@ -507,6 +507,28 @@ needs both halves slowed.
   --output-dir assets/private/speech/kokoro-audition/issue-83-stretch
 ```
 
+### Elongated spellings
+
+An LLM writes drawn-out words as spellings ("whaaat", "sooo", "suuure"), and
+espeak reads them letter by letter, so listening heard "whaaat" as "whyat"
+(9 Nov 2026):
+
+| Written | espeak | Heard |
+| --- | --- | --- |
+| whaaat | `wˈæææt` | "whyat" |
+| sooo | `sˈuːoʊ` | "soo-oh" |
+| suuure | `sˈuːjʊɹ` | "soo-yur" |
+| wellll | `wˈɛləl` | "wel-ul" |
+
+With `--tts kokoro`, `unstretch_spellings()` turns a run of three or more of one
+letter back into the real word, before phonemes and lip sync. It keeps a double
+letter where the word has one (wellll → well, coooool → cool, hmmmm → hmm). Two
+letters are only shortened when the result is a word that gets drawn out (soo →
+so, whaat → what), so "too", "see" and "good" stay as they are. Interjections
+("Awww", "Ooh", "ohhh") keep their own handling (§2e). With dynamic emphasis
+on, the word is then drawn out by Kokoro like a drawl (`--drawl-stretch`), but
+without the drawl's dip. Edge reads the spellings itself, so they are left alone.
+
 Next, in small batches: a word-delivery list (surprise "whaaat?", affection
 "sooo", hesitation "hmmm") and a quotation pace (§2f).
 

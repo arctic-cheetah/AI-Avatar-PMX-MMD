@@ -1083,6 +1083,12 @@ def build_parser():
         help="Semitones at a word lift's peak (-12 to 12).",
     )
     parser.add_argument(
+        "--surprise-bend",
+        type=float,
+        default=5.0,
+        help='Semitones a surprised "what"/"really" rises (-12 to 12).',
+    )
+    parser.add_argument(
         "--endearment-bend",
         type=float,
         default=8.0,
@@ -1203,6 +1209,7 @@ def speech_settings(args):
         word_lifts=args.word_lifts and not plain,
         word_lift_bend=args.word_lift_bend,
         endearment_bend=args.endearment_bend,
+        surprise_bend=args.surprise_bend,
         question_rise_bend=args.question_rise_bend,
         quote_voice=args.quote_voice and not plain,
         dynamic_emphasis=args.dynamic_emphasis and not plain,

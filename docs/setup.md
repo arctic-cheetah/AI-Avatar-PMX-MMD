@@ -178,6 +178,18 @@ cd ~/Code/avatar-yidhari
 - `--rvc-device gpu` fails straight away if PyTorch sees no GPU, instead of
   quietly measuring the CPU.
 
+Measured on the Ryzen AI MAX+ 395 (8 Nov 2026, `../Applio-rocm`, the 10.66 s
+`sample-01.wav`, 3 runs, `llama-server` idle):
+
+| `--rvc-device` | Backend | Spool-up (load + warm-up) | Conversion median (min–max) | RTF |
+|---|---|---:|---:|---:|
+| `gpu` | rocm 7.2.26015, Radeon 8060S, `gfx1151` | 6.82 s (2.07 + 4.73) | **1.28 s** (1.22–1.64) | 0.12 |
+| `cpu` | cpu | 4.80 s (1.77 + 3.00) | 2.76 s (2.72–3.13) | 0.26 |
+
+The GPU converts about **2.2× faster**, but it starts about 2 s **slower**
+because the first GPU run compiles its kernels. A GPU does not shorten
+spool-up; it shortens every sentence after it.
+
 **Ryzen AI 9 HX PRO 370 (Radeon 890M, `gfx1150`).** Same steps as the 395:
 build `~/Code/Applio-rocm` with A1–A3, then check:
 

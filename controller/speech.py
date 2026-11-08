@@ -104,6 +104,7 @@ class ApplioSettings:
     interjection_bend: float = 8.0  # semitones at the peak: about one octave with Kokoro's rise (#84)
     word_lifts: bool = True  # Kokoro: lift endearments in address and the word before ! (#84)
     word_lift_bend: float = 4.0  # semitones at the lift's peak
+    endearment_bend: float = 6.0  # an endearment's own lift: 4 st sounded a bit down (9 Nov 2026, #83)
     dynamic_emphasis: bool = True  # Kokoro: deeper, drawn-out "buuut"; brighter *word* (listened 9 Nov 2026, #83)
     drawl_bend: float = -2.0  # semitones at a drawl's dip (slightly deeper; listened 8 Nov 2026)
     drawl_hold: float = 0.0  # off: short vowels break up when held; only used without drawl_stretch
@@ -153,6 +154,8 @@ class ApplioSettings:
             raise ValueError("interjection_bend must be between -12 and 12 semitones.")
         if not math.isfinite(self.word_lift_bend) or abs(self.word_lift_bend) > 12.0:
             raise ValueError("word_lift_bend must be between -12 and 12 semitones.")
+        if not math.isfinite(self.endearment_bend) or abs(self.endearment_bend) > 12.0:
+            raise ValueError("endearment_bend must be between -12 and 12 semitones.")
         if not math.isfinite(self.drawl_bend) or abs(self.drawl_bend) > 12.0:
             raise ValueError("drawl_bend must be between -12 and 12 semitones.")
         if not math.isfinite(self.drawl_hold) or not 0.0 <= self.drawl_hold <= 0.45:
@@ -219,6 +222,16 @@ def interjection_words(text: str) -> tuple[int, ...]:
     )
 
 
+def _addressed(word: str) -> bool:
+    """An endearment used to address someone: followed by punctuation ("sweetheart!")."""
+    return word.strip(WORD_EDGES).lower() in ENDEARMENTS and word.rstrip(CLOSING)[-1:] in ",.!?…;:"
+
+
+def endearment_words(text: str) -> tuple[int, ...]:
+    """Spoken-word indices of endearments used in address; they get the higher endearment lift."""
+    return tuple(index for index, word in enumerate(spoken_words(text)) if _addressed(word))
+
+
 def lift_words(text: str) -> tuple[int, ...]:
     """Spoken-word indices that get a pitch lift: endearments in address, and the word before "!".
 
@@ -230,7 +243,7 @@ def lift_words(text: str) -> tuple[int, ...]:
         core = word.strip(WORD_EDGES)
         if INTERJECTION.fullmatch(core):
             continue
-        addressed = core.lower() in ENDEARMENTS and word.rstrip(CLOSING)[-1:] in ",.!?…;:"
+        addressed = _addressed(word)
         exclaimed = index == len(words) - 1 and ending(text) == "exclaim"
         if addressed or exclaimed:
             lifts.append(index)
@@ -503,6 +516,7 @@ class ApplioWorker:
         rises: tuple[int, ...] = (),
         quotes: tuple[tuple[int, int], ...] = (),
         drawls: tuple[int, ...] = (),
+        endearments: tuple[int, ...] = (),
     ) -> dict:
         """Synthesise ``text`` into ``source`` and convert into ``output``.
 
@@ -553,7 +567,8 @@ class ApplioWorker:
                 elif word in rises:  # a question rises against Kokoro's fall
                     bends.append([start, end, self.settings.question_rise_bend, QUESTION_PEAK])
                 elif word in lifts:
-                    bends.append([start, end, self.settings.word_lift_bend])
+                    lift = self.settings.endearment_bend if word in endearments else self.settings.word_lift_bend
+                    bends.append([start, end, lift])
                 else:
                     continue
                 bent.append(word)
@@ -725,6 +740,10 @@ async def synthesise(
             bright = tuple(i for i in marked if i not in drawls)
             if bright:  # a *word* in a non-skeptical mood is lifted as well as paused
                 options["lifts"] = tuple(dict.fromkeys([*options.get("lifts", ()), *bright]))
+        if "lifts" in options:
+            endearments = tuple(i for i in endearment_words(text) if i in options["lifts"])
+            if endearments:
+                options["endearments"] = endearments
         reply = await worker.request(text, source, wav, run, prosody=prosody, **options)
         # Trim before aligning so the lip-sync timings match the audio that plays.
         trim = await asyncio.to_thread(trim_clip, source, wav, text, **tails)

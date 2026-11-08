@@ -1083,6 +1083,12 @@ def build_parser():
         help="Semitones at a word lift's peak (-12 to 12).",
     )
     parser.add_argument(
+        "--endearment-bend",
+        type=float,
+        default=6.0,
+        help='Semitones at an endearment\'s lift ("sweetheart!", -12 to 12).',
+    )
+    parser.add_argument(
         "--dynamic-emphasis",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -1196,6 +1202,7 @@ def speech_settings(args):
         interjection_hold=args.interjection_hold,
         word_lifts=args.word_lifts and not plain,
         word_lift_bend=args.word_lift_bend,
+        endearment_bend=args.endearment_bend,
         question_rise_bend=args.question_rise_bend,
         quote_voice=args.quote_voice and not plain,
         dynamic_emphasis=args.dynamic_emphasis and not plain,

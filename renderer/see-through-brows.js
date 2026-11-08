@@ -79,7 +79,13 @@ export function addSeeThroughBrows(mesh, { brows = BROW_MORPHS, eyes = EYE_MORPH
   const picked = browOnlyTriangles(index, group, movedVertices(mesh, brows), movedVertices(mesh, eyes));
   if (picked.length === 0) return null;
 
-  const material = materials[browIndex].clone();
+  const source = materials[browIndex];
+  const material = source.clone();
+  // ShaderMaterial.clone() copies texture uniforms; a copy made before the
+  // image loads never uploads, so share the original textures instead.
+  for (const [key, uniform] of Object.entries(source.uniforms ?? {})) {
+    if (uniform?.value?.isTexture && material.uniforms?.[key]) material.uniforms[key].value = uniform.value;
+  }
   Object.assign(material, {
     name: `${BROW_MATERIAL} see-through`, transparent: true, depthTest: false, depthWrite: false, opacity,
   });

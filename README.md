@@ -205,7 +205,7 @@ for limits and listening checks.
 | `--plain-voice`    | off                                 | Turn every expressive part off (each also has `--no-…`, e.g. `--no-word-lifts`) |
 | `--mood-prosody`   | on                                  | Let each sentence's mood tag nudge Kokoro speed/pauses and RVC pitch (clamped) |
 | `--interjection-contours` | on                           | Kokoro: "Aww"/"Ooh" rise then fall via an RVC pitch bend (`--interjection-bend` 8 st; optional `--interjection-hold`) |
-| `--word-lifts`     | on                                  | Kokoro: endearments in address ("sweetheart!") and the word before `!` get a rise-fall lift, the word before `?` a rise (`--endearment-bend` 6 st, `--word-lift-bend` 4 st, `--question-rise-bend` 9 st) |
+| `--word-lifts`     | on                                  | Kokoro: endearments in address ("sweetheart!") and the word before `!` get a rise-fall lift, the word before `?` a rise (`--endearment-bend` 8 st, `--word-lift-bend` 4 st, `--question-rise-bend` 9 st) |
 | `--dynamic-emphasis` | on                                | Kokoro: a deeper, drawn-out "buuut…" / skeptical "suuure" (`--drawl-bend` −2 st, `--drawl-stretch` 0.125 s per sound via per-token speed); brighter `*word*` |
 | `--quote-voice`    | on                                  | Kokoro: a pause before a `"quote"` and a slight pitch dip across it (`--quote-bend` −2 st) |
 | `--emphasis`       | on                                  | Kokoro: `*word*` from the LLM adds a short pause before the word (`--emphasis-pause` 0.12 s) |

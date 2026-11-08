@@ -279,7 +279,10 @@ of word get a smaller rise-fall bump of `--word-lift-bend` semitones (default
 
 - terms of endearment used to address someone, i.e. followed by punctuation:
   "Thank you, *sweetheart*!", "Hi *honey*, …", "Oh, my *love*." ("I love it"
-  and "honey cake" are left alone);
+  and "honey cake" are left alone). These get their own, higher lift of
+  `--endearment-bend` semitones (default 8, ±12): at 4 st "sweetheart!" still
+  sounded a bit down, and of 4, 6 and 8 st, 8 sounded best (listened 9 Nov
+  2026, #83);
 - the word right before `!`: "We did *it*!".
 
 - the word right before `?` gets a **rise** instead of a rise-fall: Kokoro

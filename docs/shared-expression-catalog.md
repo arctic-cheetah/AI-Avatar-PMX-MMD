@@ -119,5 +119,8 @@ other calm faces are ordinary moods it can pick on purpose.
 - **Renderer only.** The bridge, prompts and prosody still see `neutral`; the
   calm presets use neutral prosody. An agent's `set_mood` rest mood (#27) still
   takes priority after speech.
-- **Test holds:** `__yidhariPreview.hold()` turns the resting face off so
-  comparison grids show only the morphs being held.
+- **Authoring on the bare mesh:** *Edit in sliders*, a sweep, loading a
+  candidate and `__yidhariPreview.hold()` turn the resting face off (and untick
+  the box) without saving, so the sliders and comparison grids show only their
+  own morphs. A reload restores the saved setting. Moving a slider by hand
+  leaves it alone, because sliders add on top of every channel.

@@ -361,6 +361,7 @@ Each `Delivery` gives:
 | `words` | the words (lower case, without punctuation) | `DRAWL_OPENERS`, `ATTITUDE_WORDS` |
 | `moods` | moods it applies in (`None`: any) | any; `SKEPTICAL_MOODS` |
 | `opener_only` | only as the sentence's first word | yes; no |
+| `standalone` | only when said on its own: the first word, followed by `?`, `!`, `,`, `…`, `;` or `:`, or an elongated spelling | no |
 | `bend` | the `ApplioSettings` field with its semitones | `drawl_bend` |
 | `peak` | where the bend peaks (`None`: the default rise-fall) | `None` |
 | `stretch` | Kokoro draws its stressed sound out (`--drawl-stretch`) | yes |
@@ -369,13 +370,18 @@ The first row that matches a word wins.
 
 | Family | Words | Moods | Delivery |
 | --- | --- | --- | --- |
-| drawl | but, well, so, now, okay (first word) | any | −2 st dip, drawn out |
-| drawl | sure, really, right, totally, obviously | skeptical moods | −2 st dip, drawn out |
-| surprise | what, really, seriously, wow, whoa | surprised, shocked, gasp, excited, wtf-dude | rise peaking at 70 % (`--surprise-bend`, default 5 st, ±12), drawn out |
+| drawl | but, well, so, now, okay (first word) | any | `--drawl-bend` dip (default −2 st), drawn out |
+| drawl | sure, really, right, totally, obviously | skeptical moods | `--drawl-bend` dip (default −2 st), drawn out |
+| surprise | what, really, seriously, wow, whoa, said on their own | surprised, shocked, gasp, excited, wtf-dude | rise peaking at 70 % (`--surprise-bend`, default 5 st, ±12), drawn out |
 
 A surprised word that ends a question keeps the question's own rise
 (`--question-rise-bend`) and is only drawn out, so "Really?" is not given two
-bends. Rows other than drawls are reported as `delivered` in clip metrics.
+bends. The surprise row is `standalone`, so intensifier "really" ("I'm really
+happy!") and relative "what" ("I don't know what to say") are left alone (#123
+review). A word gets one bend: a surprise word is taken out of the lifts, even
+when it is marked `*Really*` or ends with `!`. Rows other than drawls are
+reported as `delivered` in clip metrics, counting each row word that was bent
+or drawn out.
 Listening (9 Nov 2026): "whaaat" and "wooow" sounded great; "really" sounded
 like "reality" until only its stressed vowel was stretched (§2h).
 

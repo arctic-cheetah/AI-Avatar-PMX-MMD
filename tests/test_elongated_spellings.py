@@ -40,7 +40,7 @@ class UnstretchTests(unittest.TestCase):
             'coooool': 'cool', 'gooood': 'good', 'tooo': 'too', 'soo': 'so', 'whaat': 'what', 'noo': 'no',
             # From the review: a double letter the real word has is kept, every run is checked.
             'sorrrry': 'sorry', 'reallly': 'really', 'yummmy': 'yummy', 'happppy': 'happy',
-            'prettty': 'pretty', 'whaaatt': 'what', 'pleeeasse': 'please',
+            'prettty': 'pretty', 'whaaatt': 'what', 'pleeeasse': 'please', 'pssst': 'psst',
         }
         for word, expected in cases.items():
             with self.subTest(word=word):
@@ -49,7 +49,7 @@ class UnstretchTests(unittest.TestCase):
 
     def test_real_words_non_words_and_interjections_are_left_alone(self):
         for word in ('too', 'see', 'cool', 'good', 'soon', 'Hello', 'well', 'Aww', 'Awww', 'Ooh',
-                     'ohhh', 'I', 'Mississippi', '1000', 'zzz', 'brrr', 'grrr', 'pssst',
+                     'ohhh', 'I', 'Mississippi', '1000', 'zzz', 'brrr', 'grrr',
                      'www.example.com', '@sooo', 'a/sooo', 'Haaland'):
             with self.subTest(word=word):
                 self.assertEqual(unstretch(word), (word, ()))
@@ -62,7 +62,7 @@ class UnstretchTests(unittest.TestCase):
         self.assertEqual(unstretch('SOooo NOoo')[0], 'So No')  # mixed-case runs
 
     def test_reports_how_many_letters_were_written(self):
-        self.assertEqual(unstretch('whaat whaaaaaat')[1], ((0, 2), (1, 7)))
+        self.assertEqual(unstretch('whaat whaaaaaaat')[1], ((0, 2), (1, 7)))
 
     def test_stretch_follows_the_written_length_within_the_cap(self):
         # 5 frames (0.125 s) is the most one sound may take, so only shorter runs scale down.

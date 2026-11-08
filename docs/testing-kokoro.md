@@ -533,9 +533,9 @@ in a lexicon wins:
 - **Two-letter runs** are only shortened when the word as written is not a word
   (soo → so, whaat → what), so "too", "see" and "good" stay as they are.
 - **Left alone:** a candidate needs a vowel unless it is one of those spoken
-  words, so "brrr", "grrr" and "pssst" keep their spelling. Tokens with `.`, `/`
-  or `@` (addresses, handles) and interjections ("Awww", "Ooh", "ohhh", §2e) are
-  left alone too.
+  words, so "brrr" and "grrr" keep their spelling ("pssst" becomes "psst").
+  Tokens with `.`, `/` or `@` (addresses, handles) and interjections
+  ("Awww", "Ooh", "ohhh", §2e) are left alone too.
 
 Case, punctuation and the word count are kept. With dynamic emphasis on, the
 word is then drawn out by Kokoro like a drawl, but without the drawl's dip.

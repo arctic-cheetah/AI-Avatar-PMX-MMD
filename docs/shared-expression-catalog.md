@@ -57,3 +57,36 @@ or refused (agent tools) as before.
 
 To rename a preset, move its entry to the new key and add the old key to
 `aliases`. Never delete an alias that has been public.
+
+## Retuned presets (#99 step 2)
+
+Changes are based on before/after captures. Private-model images stay local in
+`assets/private/issue-99/`. Only the morph weights changed: names, descriptions
+and the number of presets did not.
+
+| Preset | Before | After | Why |
+| --- | --- | --- | --- |
+| `thinking` | `じと目` 1 | `じと目` 0.25, `眼角下` 0.4, `上左` 0.6, `口左` 1, `口角下げ` 0.3 | The full half-lid looked the same as `unimpressed`. Softer lids, one raised brow and a mouth pulled to the side read as thoughtful. |
+| `sorrowful` | `悲しむ`, `真面目`, `困る`, `口角下げ` all 1 | `悲しむ` 1, `困る` 0.6, `口角下げ` 0.7 | Both sad brows at full weight pushed the brows through the bangs. One brow at a moderate weight keeps the sorrow without the clipping. |
+| `rueful` | Same stack as above + `にやり２` 1 | `悲しむ` 0.6, `困る` 0.5, `にやり２` 0.8, `じと目` 0.25 | The smirk was lost under the sad stack. Now the crooked smile shows clearly. |
+| `disappointed` | Same stack + `じと目` 1 | `じと目` 0.55, `悲しむ` 0.45, `真面目` 0.5, `口角下げ` 0.75 | A flat, deflated look with no brow clipping. |
+| `exasperated` | Same stack + `じと目` 1, `口横狭め` 1, `怒り` 0.2 | `じと目` 0.75, `上左` 0.65, `口横狭め` 0.6, `口角下げ` 0.5, `怒り` 0.15 | Heavy lids and a tight mouth; it no longer looks the same as `disappointed`. |
+| `furious` | Unchanged | Unchanged | Its `まばたき` 0.3 deliberately sharpens the glare. Eyelid morphs are kept unless a better eyelid shape replaces them. |
+
+`cry` still stacks both sad brows. It's meant to be the extreme end, so it was
+left for a later review.
+
+Checks (renderer, mocked bridge, sway and cursor gaze off, auto-blink on):
+
+- **Intensity:** at 0.25, 0.5 and 1 each preset scales smoothly with no new
+  clipping.
+- **Transitions:** neutral → mood → another mood → neutral, including rapid
+  400 ms switches, leaves no morph above 0.01 after neutral. The largest
+  change in a single frame is about 0.07.
+- **`furious` + auto-blink:** `まばたき` stays at 0.3 or above between blinks
+  and reaches 1 at each blink.
+- **Speaking:** the Play-sample lip-sync keeps its full viseme range
+  (`あ` ≈ 0.9, `う` ≈ 0.75) in `thinking`, `sorrowful` and `rueful`, while the
+  mood's own mouth shape holds. In `thinking` the mouth talks slightly to one
+  side, which is intended.
+

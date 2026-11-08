@@ -10,7 +10,7 @@ To audition anything below, use the renderer's test bench panel (see [Testing mo
 | --------------- | ------------------------------- | ---------------------- | ------------------------------ |
 | `[happy]`     | `笑い`                        | warai                  | Local preview                  |
 | `[surprised]` | `びっくり`                    | bikkuri                | Local preview                  |
-| `[thinking]`  | `じと目`                      | jito me                | Local preview                  |
+| `[thinking]`  | `じと目` 0.25 + `眼角下` 0.4 + `上左` 0.6 + `口左` 1 + `口角下げ` 0.3 | jito me + gankaku shita + ue hidari + kuchi hidari + koukaku sage | Retuned in #99 |
 | `[troubled]`  | `困る`                        | komaru                 | Local preview                  |
 | `[angry]`     | `怒り` + `怒り目` + `口角下げ` | ikari + ikari me + koukaku sage | Local preview          |
 | `[sad]`       | `悲しむ`                    | kanashimu              | Eye-only local preview        |
@@ -99,6 +99,24 @@ To audition anything below, use the renderer's test bench panel (see [Testing mo
 | Soft smile        | `にこり`, possibly `口角上げ`                       | nikori, koukaku age             | Brow and mouth shapes need to be judged together.          |
 | Wink              | `ウィンク` / `ウィンク右` and their `２` variants | uinku / uinku migi and variants | The variants may look different; test each eye separately. |
 | Stronger surprise | `びっくり` with `ワ` or `□`                      | bikkuri with wa or shikaku      | Mouth shape may compete with future speech animation.      |
+
+## Observed appearance notes (#99)
+
+These come from face-framed captures in the renderer at weight 1.
+
+- **Brows sit under the bangs.** Neutral and `上` keep them hidden. `真面目`,
+  `困る`, `前`, `下` and `にこり` move the brow down or forward until a
+  skin-toned stroke shows on top of the hair. Stacking `真面目` and `困る` at
+  full weight makes this obvious, so keep brow weights moderate and use only
+  one sad brow at a time.
+- **One-sided brows (`上左`, `上右`) barely show** at portrait size, because
+  the bangs cover them. They add a little asymmetry but can't carry an
+  expression alone.
+- **The eyes carry most of the emotion at portrait size.** `じと目`, `悲しむ`,
+  `眼角下` and `下眼上` read clearly. Mouth-only morphs (`口左`, `口右`,
+  `口上`, `口下`, `齿上`, `齿下`) are subtle.
+- **`まばたき` in a preset narrows the glare.** `furious` keeps its 0.3 on
+  purpose, and the idle blink combines with it instead of overwriting it.
 
 The PMX panel and names establish what controls exist, **not** whether a combination looks natural or whether it can safely share a morph with blinking or lip sync. Add new expressions to the semantic catalog only after a visual preview and a transition test back to neutral.
 

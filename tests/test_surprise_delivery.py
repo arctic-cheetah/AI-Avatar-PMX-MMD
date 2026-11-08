@@ -25,7 +25,8 @@ class SurpriseRowTests(unittest.TestCase):
     def test_only_when_said_on_its_own(self):
         # #123 review: intensifier "really" and relative "what" are not surprise.
         for text, mood in (('This is really good!', 'excited'), ("I'm really happy!", 'excited'),
-                           ("I don't know what to say.", 'shocked'), ('Wow is a word I like.', 'gasp')):
+                           ("I don't know what to say.", 'shocked'), ('Wow is a word I like.', 'gasp'),
+                           ('What do you want?', 'surprised')):  # a question word is not surprise either
             with self.subTest(text=text):
                 self.assertEqual(delivered_words(text, mood), {})
         for text, index in (('What, you did that?', 0), ('Oh, really?', 1), ('You did what?!', 2),

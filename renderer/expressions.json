@@ -3,6 +3,14 @@
     "description": "Return to a calm resting expression.",
     "morphs": {}
   },
+    "tender": {
+    "description": "Offer affection, care, or gentle comfort.",
+    "morphs": {
+      "にこり": 1,
+      "口角上げ": 0.35,
+      "下眼上": 0.35
+    }
+  },
   "happy": {
     "description": "Express everyday happiness or friendly appreciation.",
     "morphs": {
@@ -220,14 +228,6 @@
     "morphs": {
       "じと目": 1,
       "下": 0.4
-    }
-  },
-  "tender": {
-    "description": "Offer affection, care, or gentle comfort.",
-    "morphs": {
-      "にこり": 1,
-      "口角上げ": 0.35,
-      "下眼上": 0.35
     }
   },
   "relieved": {

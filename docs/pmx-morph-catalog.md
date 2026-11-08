@@ -120,6 +120,49 @@ These come from face-framed captures in the renderer at weight 1.
 
 The PMX panel and names establish what controls exist, **not** whether a combination looks natural or whether it can safely share a morph with blinking or lip sync. Add new expressions to the semantic catalog only after a visual preview and a transition test back to neutral.
 
+## Comparison grids
+
+For before/after reviews, `tools/morph-grid/` captures labelled grids of the
+face. Each cell holds one preset or morph combination. The scripts run through
+the Playwright MCP server's `browser_run_code_unsafe` tool (`filename`
+parameter) while `python3 renderer/serve.py` is serving the renderer:
+
+1. **`setup.js`** opens the renderer at 1280×800 and mocks the bridge socket.
+   This matters: the bridge sends agent speech to the most recently connected
+   page, so an unmocked page would take over the live avatar's voice. It also
+   turns off sway and cursor gaze so every cell is framed the same.
+2. **Set the spec with `browser_evaluate`:**
+
+   ```js
+   () => { globalThis.__morphGrid = {
+     out: '/home/parrot/Code/avatar-yidhari/assets/private/morph-grids/sad-family.png',
+     cols: 4,
+     items: [
+       ['sorrowful (old)', { '悲しむ': 1, '真面目': 1, '困る': 1, '口角下げ': 1 }],
+       ['sorrowful', 'sorrowful'],
+       ['sorrowful 0.5', 'sorrowful', 0.5],
+     ],
+   }; }
+   ```
+
+   Each item is `[label, preset name or { morph: weight }, optional scale]`.
+   `clip` is optional: the face by default, or the eye/brow and mouth crops
+   listed in `grid.js`.
+3. **`grid.js`** holds each item for 1.3 s with auto-blink off, captures the
+   clip, and saves one labelled PNG at `out`.
+
+Keep grids in `assets/private/`, which is gitignored. Useful sets are:
+
+- baseline vs candidates
+- each morph on its own at 1.0
+- one preset at 0.25, 0.5 and 1
+- mid-speech captures
+
+Pair the pictures with numeric checks of
+`__yidhariPreview.audition.mesh.morphTargetInfluences`. Nothing should stay
+above 0.01 after neutral, and `まばたき` and the visemes should keep their full
+range.
+
 ## Testing morphs in the renderer
 
 Run `python3 renderer/serve.py` and open `http://127.0.0.1:8770/renderer/`. The right-hand panel has four sections:

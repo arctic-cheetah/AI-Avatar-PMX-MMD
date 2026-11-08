@@ -82,6 +82,27 @@ needed distinction just to use fewer words.
 - If the result is `busy`, `no renderer`, or `bridge not running`, say so once
   and continue in text. Do not invent another speech path.
 
+## Remembered morph comparison grids
+
+When creating, tuning or reviewing PMX morphs or expression presets, show the
+result as labelled comparison grids instead of describing faces in words alone:
+baseline vs candidates, each morph on its own, intensities (0.25 / 0.5 / 1),
+and while speaking. Use the scripts in `tools/morph-grid/`. The workflow is in
+[Comparison grids](docs/pmx-morph-catalog.md#comparison-grids).
+
+- Run `setup.js`, then `grid.js`, with the Playwright MCP
+  `browser_run_code_unsafe` tool. Setup mocks the bridge socket, because a new
+  renderer page would otherwise take over the live avatar and her voice.
+- Save grids under `assets/private/` (gitignored), since the model is private.
+  Show them to the user, and describe them in PRs and docs without attaching
+  them.
+- Pair the grids with numeric checks (no leftover influences after neutral,
+  blink and lip-sync ranges) before promoting a preset.
+- Keep eyelid morphs such as `まばたき` that a preset uses for emotion. Replace
+  one only when a better eyelid shape does the same job.
+
+Requested by the user on 9 November 2026.
+
 ## Creating tickets
 
 When opening a github issue ticket. Use emoji's to denote visualise the issue.

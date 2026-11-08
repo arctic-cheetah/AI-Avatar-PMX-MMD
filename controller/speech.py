@@ -350,17 +350,50 @@ def lift_words(text: str) -> tuple[int, ...]:
     return tuple(lifts)
 
 
+@dataclass(frozen=True)
+class Delivery:
+    """How a family of words is said (#83): which words, in which moods, its bend and length."""
+
+    family: str
+    words: frozenset[str]
+    moods: frozenset[str] | None = None  # None: any mood
+    opener_only: bool = False  # only as the sentence's first word
+    bend: str = "drawl_bend"  # ApplioSettings field with the bend's semitones
+    peak: float | None = None  # where the bend peaks; None keeps the default rise-fall
+    stretch: bool = True  # Kokoro draws its stressed sound out (drawl_stretch)
+
+
+# The first row that matches a word wins. Docs: docs/testing-kokoro.md §2g.
+DELIVERIES: tuple[Delivery, ...] = (
+    Delivery("drawl", DRAWL_OPENERS, opener_only=True),  # "Buuut…", "Wellll…"
+    Delivery("drawl", ATTITUDE_WORDS, moods=SKEPTICAL_MOODS),  # sarcastic "suuure"
+)
+
+
+def delivered_words(
+    text: str, expression: str, rows: tuple[Delivery, ...] = DELIVERIES
+) -> dict[int, Delivery]:
+    """Spoken-word index → the first delivery row that matches the word, mood and position."""
+    found = {}
+    for index, word in enumerate(spoken_words(text)):
+        core = word.strip(WORD_EDGES).lower()
+        for row in rows:
+            if (core in row.words and (row.moods is None or expression in row.moods)
+                    and (index == 0 or not row.opener_only)):
+                found[index] = row
+                break
+    return found
+
+
 def drawl_words(text: str, expression: str, emphasis: tuple[int, ...] = ()) -> tuple[int, ...]:
     """Spoken-word indices to say deeper and drawn out.
 
-    A sentence-opening But/Well/So/Now/Okay always; in skeptical moods also the
-    attitude words (sure, really, …) and any ``*word*`` emphasis marks.
+    The drawl rows of DELIVERIES (a sentence-opening But/Well/So/Now/Okay; in
+    skeptical moods the attitude words), plus ``*word*`` marks in skeptical moods.
     """
-    words = [word.strip(WORD_EDGES).lower() for word in spoken_words(text)]
-    drawls = {0} if words and words[0] in DRAWL_OPENERS else set()
+    drawls = {i for i, row in delivered_words(text, expression).items() if row.family == "drawl"}
     if expression in SKEPTICAL_MOODS:
-        drawls |= {i for i, word in enumerate(words) if word in ATTITUDE_WORDS}
-        drawls |= {i for i in emphasis if i < len(words)}
+        drawls |= {i for i in emphasis if i < len(spoken_words(text))}
     return tuple(sorted(drawls))
 
 

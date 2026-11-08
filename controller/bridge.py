@@ -1085,7 +1085,7 @@ def build_parser():
     parser.add_argument(
         "--dynamic-emphasis",
         action=argparse.BooleanOptionalAction,
-        default=False,
+        default=True,
         help='Kokoro: say "But…", skeptical "sure" and such deeper and drawn out; brighten *word*.',
     )
     parser.add_argument(

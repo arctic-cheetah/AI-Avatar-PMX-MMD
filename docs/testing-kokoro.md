@@ -367,6 +367,17 @@ Each `Delivery` gives:
 
 The first row that matches a word wins.
 
+| Family | Words | Moods | Delivery |
+| --- | --- | --- | --- |
+| drawl | but, well, so, now, okay (first word) | any | −2 st dip, drawn out |
+| drawl | sure, really, right, totally, obviously | skeptical moods | −2 st dip, drawn out |
+| surprise | what, really, seriously, wow, whoa | surprised, shocked, gasp, excited, wtf-dude | rise peaking at 70 % (`--surprise-bend`, default 5 st, ±12), drawn out |
+
+A surprised word that ends a question keeps the question's own rise
+(`--question-rise-bend`) and is only drawn out, so "Really?" is not given two
+bends. Rows other than drawls are reported as `delivered` in clip metrics.
+The surprise row is not yet listened to (9 Nov 2026).
+
 **Stress-mark check (#83 scope 3):** on ordinary words, Kokoro's marks change
 length, not loudness:
 

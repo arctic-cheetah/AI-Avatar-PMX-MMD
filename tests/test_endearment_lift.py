@@ -7,7 +7,8 @@ import unittest
 
 from controller.bridge import build_parser, speech_settings
 from controller.speech import ApplioSettings, ApplioWorker, Segment, endearment_words
-from test_contours import SPANS_WORKER, SynthesiseContourTests
+import test_contours  # the module, not its TestCase class, so its tests do not run twice here
+from test_contours import SPANS_WORKER
 
 
 class EndearmentWordTests(unittest.TestCase):
@@ -52,7 +53,7 @@ class EndearmentBendTests(unittest.IsolatedAsyncioTestCase):
 
 class SynthesiseEndearmentTests(unittest.IsolatedAsyncioTestCase):
     async def run_segment(self, settings, text):
-        return await SynthesiseContourTests.run_segment(self, settings, Segment(text, 'tender', 1.0))
+        return await test_contours.SynthesiseContourTests.run_segment(self, settings, Segment(text, 'tender', 1.0))
 
     async def test_endearments_are_sent_with_their_lifts(self):
         sent, _ = await self.run_segment(ApplioSettings(tts_provider='kokoro'), 'Thank you, sweetheart!')

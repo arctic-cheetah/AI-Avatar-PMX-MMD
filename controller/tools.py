@@ -9,6 +9,8 @@ from datetime import datetime
 from html.parser import HTMLParser
 from urllib.parse import parse_qs, urlsplit
 
+from controller.bridge import resolve_mood
+
 MAX_TOOL_ROUNDS = 4
 MAX_TOOL_CALLS = 8
 MAX_ARGUMENTS = 4096
@@ -207,6 +209,10 @@ class ToolSession:
                 raise ValueError
             args = json.loads(arguments)
             spec = definitions[name]
+            if name == "set_expression" and isinstance(args, dict) and "name" in args:
+                # Old names of renamed moods resolve before the enum check, which
+                # still advertises only canonical names (#99).
+                args["name"] = resolve_mood(self.catalog, args.get("name")) or args.get("name")
             if (not isinstance(args, dict) or set(args) - spec["properties"].keys()
                     or set(spec["required"]) - args.keys()):
                 raise ValueError

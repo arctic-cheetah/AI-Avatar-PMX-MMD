@@ -856,8 +856,23 @@ async def handle_connection(socket, args, catalog):
                     "reset",
                     "answer",
                     "greet",
+                    "presence",
+                    "claim",
                 ):
                     raise ValueError("Unknown request")
+                if request["type"] in ("presence", "claim"):
+                    # Agent speech ownership (#100); never starts a chat reply.
+                    if stage is None:
+                        continue
+                    if request["type"] == "claim":
+                        router.claim(stage)
+                        continue
+                    automated = request.get("automated")
+                    visible = request.get("visible")
+                    if not isinstance(automated, bool) or not isinstance(visible, bool):
+                        raise ValueError("Invalid presence")
+                    router.presence(stage, automated, visible)
+                    continue
                 if request["type"] == "greet":
                     # Page-open greeting (#129): a fixed phrase, spoken without the LLM.
                     segments = greeting_segments(request, catalog)
@@ -987,6 +1002,9 @@ async def run(args):
             origins=[ORIGIN],
             max_size=MAX_FRAME,
             max_queue=4,
+            # A page that vanished without closing stops owning speech (#100).
+            ping_interval=10,
+            ping_timeout=10,
         ):
             speech = "speech on" if args.speech_worker is not None else "text only"
             upstream = ""

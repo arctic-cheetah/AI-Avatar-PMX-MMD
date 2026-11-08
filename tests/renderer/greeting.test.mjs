@@ -61,7 +61,7 @@ test('greeting can be switched off persistently, and off does not consume the se
   assert.ok(gate.claim(at(9)), 're-enabling in the same session should still greet once');
 });
 
-test('page open posts the greeting once in the chat log, even across a reconnect', (t) => {
+test('page open posts the greeting once in the chat log and asks the bridge to speak it, even across a reconnect', (t) => {
   const prevDoc = globalThis.document; const prevSock = globalThis.WebSocket;
   t.after(() => {
     if (prevDoc === undefined) delete globalThis.document; else globalThis.document = prevDoc;
@@ -78,7 +78,8 @@ test('page open posts the greeting once in the chat log, even across a reconnect
     createElement: element,
   };
   let socket;
-  globalThis.WebSocket = class { static OPEN = 1; constructor() { socket = this; this.readyState = 1; } };
+  const sent = [];
+  globalThis.WebSocket = class { static OPEN = 1; constructor() { socket = this; this.readyState = 1; } send(frame) { sent.push(JSON.parse(frame)); } };
   const moods = [];
   const greeting = { bucket: 'morning', text: 'Good morning! Ready for today?', mood: 'soft-smile', weight: 0.9 };
   connectBridge({
@@ -91,6 +92,8 @@ test('page open posts the greeting once in the chat log, even across a reconnect
   assert.equal(lines.length, 1);
   assert.equal(lines[0].children[1].textContent, 'Good morning! Ready for today?');
   assert.deepEqual(moods, [greeting]);
+  // #129: the bridge speaks it, so it goes over the socket exactly once.
+  assert.deepEqual(sent, [{ type: 'greet', text: 'Good morning! Ready for today?', mood: 'soft-smile', weight: 0.9 }]);
 });
 
 test('blocked storage still keeps the once-per-session rule in memory', () => {

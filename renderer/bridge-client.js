@@ -25,6 +25,11 @@ export function resetFrame() {
   return JSON.stringify({ type: 'reset' });
 }
 
+/** Page-open greeting (#129): the bridge speaks this fixed phrase without the LLM. */
+export function greetFrame({ text, mood, weight }) {
+  return JSON.stringify({ type: 'greet', text, mood, weight });
+}
+
 /**
  * Validate a coding agent's event (#27): a say line or a full report for the chat log, or a rest mood.
  * @returns {{ kind: 'say', source: string, text: string } |
@@ -204,6 +209,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
         greeted = true;
         addLine('yidhari').textContent = greeting.text;
         onGreeting?.(greeting);
+        socket.send(greetFrame(greeting));
       }
     };
     socket.onclose = () => {

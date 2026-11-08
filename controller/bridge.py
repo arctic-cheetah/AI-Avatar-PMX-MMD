@@ -31,6 +31,7 @@ THINKING, THINKING_WEIGHT = "thinking", 0.6
 MAX_IN_FLIGHT = 3  # sentences being synthesised or aligned at once
 MAX_FRAME = 65536 * 2  # TODO: largest accepted browser message (bytes)
 MAX_PROMPT = 4000  # TODO: longest accepted chat prompt (characters)
+MAX_GREETING = 500  # longest accepted page-open greeting (characters)
 MAX_TOKENS = 1024 * 2
 MIN_CONTEXT = 65536  # smallest context window assumed or accepted (tokens)
 CONTEXT_MARGIN = 512  # tokens kept spare beyond the estimate
@@ -627,6 +628,30 @@ async def speak_segments(queue, send, worker, run=None):
         await asyncio.gather(*leftovers, return_exceptions=True)
 
 
+def greeting_segments(request, catalog):
+    """Validate a page-open greeting (#129) and turn it into speech segments."""
+    from controller.speech import Segmenter
+
+    text, mood, weight = request.get("text"), request.get("mood"), request.get("weight")
+    if (
+        not isinstance(text, str)
+        or not text.strip()
+        or len(text) > MAX_GREETING
+        or not isinstance(mood, str)
+        or mood not in catalog
+        or isinstance(weight, bool)
+        or not isinstance(weight, (int, float))
+        or not math.isfinite(weight)
+    ):
+        raise ValueError("Invalid greeting")
+    segmenter = Segmenter()
+    segments = segmenter.feed(
+        {"type": "expression", "name": mood, "weight": max(0.0, min(1.0, weight))}
+    )
+    segments += segmenter.feed({"type": "say", "text": text})
+    return segments + segmenter.finish()
+
+
 async def handle_connection(socket, args, catalog):
     from websockets.exceptions import ConnectionClosed
 
@@ -801,7 +826,25 @@ async def handle_connection(socket, args, catalog):
             if stage is not None:
                 stage.chat_finished()
 
+    async def speak_greeting(segments):
+        from controller.speech import clear_live_clips
+
+        try:
+            clear_live_clips()
+            queue = asyncio.Queue()
+            for segment in segments:
+                queue.put_nowait(segment)
+            queue.put_nowait(None)
+            await send({"type": "turn"})
+            await speak_segments(queue, send, worker, secrets.token_hex(8))
+        except (ConnectionClosed, asyncio.CancelledError):
+            raise
+        except Exception:
+            LOG.exception("Greeting speech failed")
+
     task = None
+    greeting = None
+    greeted = False
     try:
         async for raw in socket:
             try:
@@ -812,8 +855,17 @@ async def handle_connection(socket, args, catalog):
                     "start",
                     "reset",
                     "answer",
+                    "greet",
                 ):
                     raise ValueError("Unknown request")
+                if request["type"] == "greet":
+                    # Page-open greeting (#129): a fixed phrase, spoken without the LLM.
+                    segments = greeting_segments(request, catalog)
+                    if greeted or worker is None:
+                        continue
+                    greeted = True
+                    greeting = asyncio.create_task(speak_greeting(segments))
+                    continue
                 if request["type"] == "answer":
                     # The user's reply to an agent's ask (#27); never starts a chat reply.
                     text = request.get("text")
@@ -845,6 +897,10 @@ async def handle_connection(socket, args, catalog):
             except (ValueError, TypeError):
                 LOG.warning("Dropped invalid browser request")
                 continue
+            if greeting is not None and not greeting.done():
+                # A chat reply or new chat takes the voice from the greeting.
+                greeting.cancel()
+                await asyncio.gather(greeting, return_exceptions=True)
             if request["type"] == "reset":
                 # New chat: stop any reply and forget every turn.
                 if task is not None:
@@ -866,9 +922,10 @@ async def handle_connection(socket, args, catalog):
     except ConnectionClosed:
         pass
     finally:
-        if task is not None:
-            task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
+        for pending in (task, greeting):
+            if pending is not None:
+                pending.cancel()
+                await asyncio.gather(pending, return_exceptions=True)
         if stage is not None:
             router.detach(stage)
             await stage.close()

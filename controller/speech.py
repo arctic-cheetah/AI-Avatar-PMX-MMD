@@ -67,6 +67,18 @@ WORKER_LOG = LIVE_DIR.parent / "applio-worker.log"
 LOG = logging.getLogger(__name__)
 
 
+def ready_summary(ready: dict) -> str:
+    """The worker's ready message as one line: device first, then start-up times."""
+    times = f"load {ready['loadSeconds']}s, warm-up {ready['warmSeconds']}s"
+    device = ready.get("device")
+    if not isinstance(device, dict):
+        return times
+    if device.get("device") != "gpu":
+        return f"on CPU: {times}"
+    details = ", ".join(str(device[key]) for key in ("backend", "gpu", "arch") if device.get(key))
+    return f"on GPU ({details}): {times}"
+
+
 @dataclass
 class ApplioSettings:
     """Values from the user's Applio TTS tab; CLI defaults differ for some."""
@@ -85,6 +97,7 @@ class ApplioSettings:
     sid: int = 0
     recognizer: str = "phonetic"
     rvc_threads: int = 0  # PyTorch CPU threads for RVC; 0 keeps PyTorch's default
+    rvc_device: str = "auto"  # auto, gpu (refuse to start without one) or cpu (hide GPUs), #111
     tts_provider: str = "edge"
     # Kokoro cadence and voice defaults chosen by listening on 7 Nov 2026 (#29).
     kokoro_voice: str = "af_heart:0.7,af_bella:0.3"
@@ -136,6 +149,7 @@ class ApplioSettings:
             "embedder": self.embedder,
             "sid": self.sid,
             "rvc_threads": self.rvc_threads,
+            "rvc_device": self.rvc_device,
             "tts_provider": self.tts_provider,
         }
 
@@ -143,6 +157,8 @@ class ApplioSettings:
         """Fail early, before the first sentence, if Applio is not where expected."""
         if self.tts_provider not in ("edge", "kokoro"):
             raise ValueError("TTS provider must be edge or kokoro.")
+        if self.rvc_device not in ("auto", "gpu", "cpu"):
+            raise ValueError("RVC device must be auto, gpu or cpu.")
         if self.rvc_threads < 0:
             raise ValueError("RVC threads must be nonnegative.")
         for name in ("sentence_tail", "fragment_tail", "ellipsis_tail", "exclaim_tail", "question_tail"):
@@ -399,17 +415,22 @@ class ApplioWorker:
                 log_path=WORKER_LOG.with_name("kokoro-worker.log"),
                 cwd=ROOT,
             )
-        self.command = command or [
-            str(settings.applio_dir / ".venv" / "bin" / "python"),
-            str(WORKER_SCRIPT),
-            json.dumps(settings.worker_config()),
-        ]
+        self.command = command or self.applio_command(settings)
         self.log_path = log_path
         self.process: asyncio.subprocess.Process | None = None
         self.reader: asyncio.Task | None = None
         self.pending: dict[str, asyncio.Future] = {}
         self.starting = asyncio.Lock()
         self.ready: dict = {}
+
+    @staticmethod
+    def applio_command(settings: ApplioSettings) -> list[str]:
+        """The Applio worker's command line under the selected installation."""
+        return [
+            str(settings.applio_dir / ".venv" / "bin" / "python"),
+            str(WORKER_SCRIPT),
+            json.dumps(settings.worker_config()),
+        ]
 
     def alive(self) -> bool:
         return (
@@ -443,8 +464,10 @@ class ApplioWorker:
                 message = {}
             if not isinstance(message, dict) or not message.get("ready"):
                 await self.close()
+                reason = message.get("error") if isinstance(message, dict) else None
                 raise RuntimeError(
-                    f"Applio worker failed to start; see {self.log_path}"
+                    f"Applio worker failed to start: {reason}; see {self.log_path}"
+                    if reason else f"Applio worker failed to start; see {self.log_path}"
                 )
             self.ready, self.pending = message, {}
             self.reader = asyncio.create_task(self._read(self.process, self.pending))

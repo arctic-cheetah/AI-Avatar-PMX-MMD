@@ -8,7 +8,8 @@ Runs under Applio's own Python environment, never the avatar's:
 Only the standard library and Applio's own packages may be imported here.
 
 Protocol: one JSON object per line. After loading and a warm-up conversion it
-writes {"ready": true, ...}. Each request {"id", "run", "text", "source",
+writes {"ready": true, "device": {...}, ...}, or {"ready": false, "error"} when
+it cannot start (for example --rvc-device gpu without a GPU). Each request {"id", "run", "text", "source",
 "output"} gets one reply {"id", "ok", ...}. {"cancel": "<run>"} drops that run's
 requests that have not started RVC yet (reply: ok false, cancelled true).
 Applio's own prints go to stderr so stdout carries only protocol lines.
@@ -39,6 +40,41 @@ MAX_PITCH_SHIFT = 12  # semitones; mood prosody itself stays within ±2
 MAX_BENDS = 4         # pitch bends per sentence
 MAX_BEND = 12.0       # semitones at a bend's peak; beyond ~+15 st total RVC turns rough
 BEND_PEAK = 0.4       # a bend rises to its peak 40 % of the way through its span
+
+
+RVC_DEVICES = ('auto', 'gpu', 'cpu')
+
+
+def hide_gpus(environ, requested: str) -> None:
+    """For ``cpu``, hide every GPU from ROCm and CUDA PyTorch; call before importing torch."""
+    if requested == 'cpu':
+        environ['HIP_VISIBLE_DEVICES'] = ''
+        environ['CUDA_VISIBLE_DEVICES'] = ''
+
+
+def describe_device(torch) -> dict:
+    """What RVC runs on: Applio uses ``cuda:0`` whenever PyTorch sees a GPU (ROCm too)."""
+    hip, cuda = torch.version.hip, torch.version.cuda
+    build = f'rocm {hip}' if hip else f'cuda {cuda}' if cuda else 'cpu'
+    if not torch.cuda.is_available():
+        info = {'device': 'cpu', 'backend': 'cpu', 'torch': torch.__version__}
+        return {**info, 'build': build} if build != 'cpu' else info
+    props = torch.cuda.get_device_properties(0)
+    arch = getattr(props, 'gcnArchName', None)
+    if not arch:
+        major, minor = torch.cuda.get_device_capability(0)
+        arch = f'sm_{major}{minor}'
+    return {'device': 'gpu', 'backend': build, 'gpu': props.name, 'arch': arch,
+            'torch': torch.__version__}
+
+
+def require_device(requested: str, info: dict) -> None:
+    """Refuse to start when ``gpu`` was asked for but PyTorch sees none."""
+    if requested == 'gpu' and info['device'] != 'gpu':
+        raise RuntimeError(
+            f"--rvc-device gpu: no GPU visible to this Applio's PyTorch "
+            f"(torch {info.get('torch')}, {info.get('build', 'cpu')} build). Use an Applio install "
+            f"with GPU PyTorch, e.g. --applio-dir ../Applio-rocm, or --rvc-device auto")
 
 
 def validate_bends(bends) -> None:
@@ -241,8 +277,14 @@ def write_tone(path: str, seconds: float = 1.0, rate: int = 16000) -> None:
 class Worker:
     def __init__(self, settings: dict):
         sys.path.insert(0, os.getcwd())
+        requested = settings.get('rvc_device', 'auto')
+        if requested not in RVC_DEVICES:
+            raise ValueError(f'rvc_device must be one of {RVC_DEVICES}')
+        hide_gpus(os.environ, requested)
+        import torch
+        self.device = describe_device(torch)
+        require_device(requested, self.device)
         if settings.get('rvc_threads'):
-            import torch
             torch.set_num_threads(int(settings['rvc_threads']))
         from rvc.infer.infer import VoiceConverter
         if settings.get('tts_provider', 'edge') == 'edge':
@@ -311,10 +353,14 @@ def main() -> None:
     def reply(message: dict) -> None:
         replies.write(json.dumps(message) + '\n')
     started = time.perf_counter()
-    worker = Worker(json.loads(sys.argv[1]))
+    try:
+        worker = Worker(json.loads(sys.argv[1]))
+    except Exception as error:
+        reply({'ready': False, 'error': f'{type(error).__name__}: {error}'[:800]})
+        raise SystemExit(1)
     load_seconds = time.perf_counter() - started
     reply({'ready': True, 'loadSeconds': round(load_seconds, 2),
-           'warmSeconds': round(worker.warm_up(), 2)})
+           'warmSeconds': round(worker.warm_up(), 2), 'device': worker.device})
     async def run() -> None:
         lines: asyncio.Queue = asyncio.Queue()
         threading.Thread(target=read_stdin, args=(asyncio.get_running_loop(), lines), daemon=True).start()

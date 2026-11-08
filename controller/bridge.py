@@ -855,7 +855,7 @@ async def run(args):
     args.speech_worker = None
     args.filler_id = None
     if args.speech_settings is not None:
-        from controller.speech import ApplioWorker
+        from controller.speech import ApplioWorker, ready_summary
 
         args.speech_settings.check()
         print("Starting Applio worker (loads the voice model once)…", flush=True)
@@ -865,8 +865,9 @@ async def run(args):
         except BaseException:
             await args.speech_worker.close()
             raise
+        summary = ready_summary(ready)
         print(
-            f"Applio worker ready: load {ready['loadSeconds']}s, warm-up {ready['warmSeconds']}s",
+            "Applio worker ready" + (" " if summary.startswith("on ") else ": ") + summary,
             flush=True,
         )
         if args.thinking_filler:
@@ -1156,6 +1157,12 @@ def build_parser():
     )
     parser.add_argument("--rvc-threads", type=int, default=0)
     parser.add_argument(
+        "--rvc-device",
+        choices=("auto", "gpu", "cpu"),
+        default="auto",
+        help="RVC device: auto (GPU if Applio's PyTorch sees one), gpu (stop if none) or cpu (hide the GPU).",
+    )
+    parser.add_argument(
         "--agent",
         action="store_true",
         help="Let a coding agent speak through Yidhari via controller/mcp_server.py (owner-only Unix socket).",
@@ -1205,6 +1212,7 @@ def speech_settings(args):
         quote_bend=args.quote_bend,
         emphasis_pause=args.emphasis_pause,
         rvc_threads=args.rvc_threads,
+        rvc_device=args.rvc_device,
         **({"pth": args.pth.expanduser().resolve()} if args.pth else {}),
         **({"index": args.index.expanduser().resolve()} if args.index else {}),
     )

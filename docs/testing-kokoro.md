@@ -133,7 +133,7 @@ the tag's weight (0–1) and clamped so back-to-back clips do not sound stitched
 | --- | --- | ---: | ---: | ---: |
 | Energetic | excited, joyful, happy, grin, cocky, smug, mischievous, hopeful | ×1.05 | ×0.7 | +1 |
 | Reflective | thinking, skeptical, confused, suspicious, serious, worried, nervous, troubled | ×0.95 | ×1.4 | 0 |
-| Low | sad, sad-v2, sad-sceptical, sleepy, disappointed, cry, sulky | ×0.92 | ×1.4 | −1 |
+| Low | sad, sorrowful, rueful, sleepy, disappointed, cry, sulky | ×0.92 | ×1.4 | −1 |
 | Unchanged | every other mood (neutral, soft-smile, tender, angry, surprised, …) | ×1 | ×1 | 0 |
 
 - Speed and clause pause multiply `--kokoro-speed` and `--kokoro-clause-pause`;
@@ -337,7 +337,7 @@ deeper and drawn out, or a sarcastic "suuure". With `--dynamic-emphasis`
 
 - **Drawl (deeper and longer):** a sentence-opening *But / Well / So / Now /
   Okay*; the attitude words *sure, really, right, totally, obviously* when
-  the mood is skeptical, suspicious, unimpressed, sad-sceptical, annoyed,
+  the mood is skeptical, suspicious, unimpressed, rueful, annoyed,
   sulky, pout or smug; and `*word*` marks in those moods. The word keeps
   Kokoro's own phonemes and gets a slightly deeper tone, a `--drawl-bend` dip
   (default −2 st, ±12). Kokoro draws its stressed vowel out itself with

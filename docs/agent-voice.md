@@ -207,7 +207,10 @@ mood is refused before it reaches the bridge.
 `say` text goes through the same tag parser as LLM replies, so inline tags such
 as `[relieved]` work and unknown brackets are dropped. `mood` is the mood for
 the start of the text. Mood names are checked against
-[expressions.json](../renderer/expressions.json).
+[expressions.json](../renderer/expressions.json). Old names of renamed moods,
+such as `sad-v2`, still work in inline tags and on the agent socket. The MCP
+enum lists only the new names; see
+[Renamed moods and aliases](./shared-expression-catalog.md#renamed-moods-and-aliases).
 
 ## Report summaries
 

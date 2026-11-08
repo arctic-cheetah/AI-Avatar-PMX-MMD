@@ -1,6 +1,6 @@
 # Shared expression catalog
 
-[expressions.json](../renderer/expressions.json) is the source of truth for 46
+[expressions.json](../renderer/expressions.json) is the source of truth for 50
 presets. Each entry contains `description` and `morphs`, plus optional `aliases`;
 neutral has an empty map. Original weights were preserved from the recovered
 catalog. Descriptions were restored from the conversation and describe intended
@@ -90,3 +90,37 @@ Checks (renderer, mocked bridge, sway and cursor gaze off, auto-blink on):
   mood's own mouth shape holds. In `thinking` the mouth talks slightly to one
   side, which is intended.
 
+## Calm presets and the resting face (#99 step 3)
+
+The bare mesh already smiles a little, so a plain `[neutral]` looked slightly
+gleeful. Four calm presets tone that down. None of them borrows from another
+mood such as `worried` or `unimpressed`:
+
+| Preset | Morphs | Looks | Use it for |
+| --- | --- | --- | --- |
+| `serene` | `口角下げ` 0.3 | The built-in smile, just softened | Gently at ease and content |
+| `composed` | `口角下げ` 0.35, `じと目` 0.15 | Calm, lids slightly relaxed | Calm and collected, in control |
+| `attentive` | `口角下げ` 0.3, `下眼上` 0.2, `真面目` 0.2 | Quietly focused eyes | Listening closely to the user |
+| `calm` | `口角下げ` 0.45, `眼角下` 0.25 | The calmest, softest face | Plain calm; also the default resting face |
+
+**One neutral, one resting face.** `[neutral]` is still the only reset tag:
+it clears every mood and its catalog entry stays empty. What changed is what
+the face settles into afterwards. Once a mood clears (`[neutral]`, the end of a
+reply, a bridge reset), the face eases into the **resting face**,
+`calm` by default, instead of the bare mesh. There are deliberately not two
+"neutral" tags, since a model would choose between them inconsistently; the
+other calm faces are ordinary moods it can pick on purpose.
+
+- **A mood replaces the resting face** rather than stacking on it, so `happy`
+  does not keep `calm`'s lowered mouth corners. It returns when the mood clears.
+- **The setting:** the renderer's *Calm resting face* checkbox, under
+  Independent channels, is on by default and remembered in `localStorage`
+  (`yidhari.resting-face`). Untick it to rest on the bare mesh again.
+- **Renderer only.** The bridge, prompts and prosody still see `neutral`; the
+  calm presets use neutral prosody. An agent's `set_mood` rest mood (#27) still
+  takes priority after speech.
+- **Authoring on the bare mesh:** *Edit in sliders*, a sweep, loading a
+  candidate and `__yidhariPreview.hold()` turn the resting face off (and untick
+  the box) without saving, so the sliders and comparison grids show only their
+  own morphs. A reload restores the saved setting. Moving a slider by hand
+  leaves it alone, because sliders add on top of every channel.

@@ -123,7 +123,7 @@ Do not load `武器.pmx`. The pack contains no dance motion, and none is needed.
 
 The [PMX catalog](./pmx-morph-catalog.md) inventories 56 vertex morphs. Blink uses
 `まばたき`; winks use `ウィンク` and `ウィンク右`. The
-[shared JSON catalog](../renderer/expressions.json) holds 46 semantic presets,
+[shared JSON catalog](../renderer/expressions.json) holds 50 semantic presets,
 including `neutral` with an empty morph map. Presets are interpreted visually,
 not inferred reliably from duplicated English metadata labels.
 

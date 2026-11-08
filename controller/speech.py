@@ -13,6 +13,7 @@ generated ID crosses the WebSocket; the renderer builds the URL itself.
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import logging
 import math
@@ -59,6 +60,20 @@ SKEPTICAL_MOODS = frozenset({
     "skeptical", "suspicious", "unimpressed", "sad-sceptical", "annoyed", "sulky", "pout", "smug",
 })
 QUOTE_PEAK = 0.5  # a quotation's pitch dip is deepest in its middle
+# Elongated spellings (#83): espeak reads "whaaat" letter by letter (wˈæææt, heard as "whyat").
+# Each run of one letter is tried as 1-3 letters and checked against a lexicon (#121 review).
+LETTER_RUN = re.compile(r"([^\W\d_])\1+")
+MAX_RUNS = 4  # at most 3**4 candidates per word
+SYSTEM_WORDS = "/usr/share/dict/words"  # Debian/Ubuntu wamerican
+SPOKEN_WORDS = frozenset({  # said aloud, missing from word lists, and need no vowel
+    "hmm", "mmm", "shh", "umm", "yay", "yep", "nope", "oops", "psst",
+})
+FALLBACK_WORDS = frozenset({  # used only when there is no system word list
+    "so", "no", "but", "what", "sure", "okay", "yes", "why", "hey", "please", "cute", "now",
+    "wow", "yeah", "right", "really", "well", "all", "still", "will", "tell", "hello", "kiss",
+    "miss", "less", "cool", "good", "too", "see", "soon", "food", "sweet", "need", "feel",
+    "free", "sleep", "keep", "sorry", "happy", "pretty", "yummy", "silly", "little", "funny",
+})
 OPENING_QUOTES, CLOSING_QUOTES = '"“', '"”'
 CLOSING = "\"'”’)]*"
 DASH = re.compile(r"\s*[—–]\s*|\s+-(?:\s+|$)")
@@ -230,6 +245,91 @@ def _addressed(word: str) -> bool:
 def endearment_words(text: str) -> tuple[int, ...]:
     """Spoken-word indices of endearments used in address; they get the higher endearment lift."""
     return tuple(index for index, word in enumerate(spoken_words(text)) if _addressed(word))
+
+
+@functools.cache
+def lexicon() -> frozenset[str]:
+    """Lower-case words for checking elongations: the system word list, else a small built-in one."""
+    try:
+        with open(SYSTEM_WORDS, encoding="utf-8") as source:
+            words = {line.strip().lower() for line in source if line.strip().isalpha()}
+    except OSError:
+        words = set(FALLBACK_WORDS)
+    return frozenset(words | SPOKEN_WORDS)
+
+
+def _with_case(word: str, like: str) -> str:
+    if len(like) > 1 and like.isupper():
+        return word.upper()
+    return word[:1].upper() + word[1:] if like[:1].isupper() else word
+
+
+def _unstretch(core: str, words: frozenset[str]) -> tuple[str, int] | None:
+    """(real word, longest run written) for an elongated spelling, or None if it is not one.
+
+    Each run of one letter is tried as 1, 2 or 3 letters, and the longest candidate
+    in ``words`` wins (coooool → cool, not "col"). A candidate needs a vowel unless
+    it is a spoken word such as "hmm", so "brrr" is left alone. Two-letter runs only
+    change a word that is not itself in ``words`` ("soo" → so, "too" stays).
+    """
+    lower = core.lower()
+    if INTERJECTION.fullmatch(core) or any(mark in core for mark in "./@"):
+        return None
+    runs = [match.span() for match in LETTER_RUN.finditer(lower)]
+    longest = max((end - start for start, end in runs), default=0)
+    if not runs or len(runs) > MAX_RUNS or (longest < 3 and lower in words):
+        return None
+    candidates = [""]
+    cut = 0
+    for start, end in runs:
+        letter, choices = lower[start], range(1, min(3, end - start) + 1)
+        candidates = [head + lower[cut:start] + letter * n for head in candidates for n in choices]
+        cut = end
+    candidates = [candidate + lower[cut:] for candidate in candidates]
+    valid = [candidate for candidate in candidates
+             if candidate != lower and (candidate in words or candidate in SPOKEN_WORDS)
+             and (candidate in SPOKEN_WORDS or any(vowel in candidate for vowel in "aeiouy"))]
+    if not valid:
+        return None
+    return _with_case(max(valid, key=len), core), longest
+
+
+def elongation_stretch(letters: int, seconds: float) -> float:
+    """Seconds per drawn-out sound for a run of ``letters``: two letters get 60 %.
+
+    It cannot grow past ``seconds``: 5 frames (0.125 s) is the most one sound may take.
+    """
+    return round(seconds * (0.6 if letters < 3 else 1.0), 4)
+
+
+def unstretch_spellings(
+    text: str, words: frozenset[str] | None = None
+) -> tuple[str, tuple[tuple[int, int], ...]]:
+    """Speak elongated spellings as the real word.
+
+    Returns the text and (spoken-word index, longest run written) for each one.
+    Punctuation, case and the word count are kept, so word indices still line up.
+    """
+    if not LETTER_RUN.search(text):  # most lines: nothing repeated
+        return text, ()
+    words = lexicon() if words is None else words
+    found, index = [], 0
+
+    def replace(match: re.Match) -> str:
+        nonlocal index
+        token = match.group(0)
+        if not any(char.isalnum() for char in token):
+            return token
+        start = len(token) - len(token.lstrip(WORD_EDGES))
+        end = len(token.rstrip(WORD_EDGES))
+        result = _unstretch(token[start:end], words) if start < end else None
+        if result is not None:
+            found.append((index, result[1]))
+            token = token[:start] + result[0] + token[end:]
+        index += 1
+        return token
+
+    return re.sub(r"\S+", replace, text), tuple(found)
 
 
 def lift_words(text: str) -> tuple[int, ...]:
@@ -517,6 +617,7 @@ class ApplioWorker:
         quotes: tuple[tuple[int, int], ...] = (),
         drawls: tuple[int, ...] = (),
         endearments: tuple[int, ...] = (),
+        elongated: tuple[tuple[int, float], ...] = (),
     ) -> dict:
         """Synthesise ``text`` into ``source`` and convert into ``output``.
 
@@ -532,7 +633,11 @@ class ApplioWorker:
         # A drawl keeps Kokoro's own vowel ("bˈʌːːt" was heard as "boot"); Kokoro says it
         # longer with per-token speed, or, with that off, the vowel is held.
         stretching = self.settings.drawl_stretch > 0
-        stretch = [[index, self.settings.drawl_stretch] for index in drawls][:MAX_SPANS] if stretching else []
+        # Drawls first (with their own stretch), then elongated spellings with theirs.
+        seconds = {index: self.settings.drawl_stretch for index in drawls}
+        for index, stretched in elongated:
+            seconds.setdefault(index, stretched)
+        stretch = [[index, value] for index, value in seconds.items()][:MAX_SPANS] if stretching else []
         held = [list(hold) for hold in holds]
         if not stretching and self.settings.drawl_hold > 0:
             held += [[index, self.settings.drawl_hold] for index in drawls
@@ -667,6 +772,9 @@ async def synthesise(
     wav = directory / f"{clip_id}.wav"
     settings = worker.settings
     text = shape_punctuation(segment.text) if settings.punctuation_cadence else segment.text
+    elongated = ()
+    if settings.tts_provider == "kokoro":
+        text, elongated = unstretch_spellings(text)
     text_path.write_text(text + "\n", encoding="utf-8")
     tails = {"sentence_tail": settings.sentence_tail, "fragment_tail": settings.fragment_tail}
     if settings.punctuation_cadence:
@@ -740,6 +848,10 @@ async def synthesise(
             bright = tuple(i for i in marked if i not in drawls)
             if bright:  # a *word* in a non-skeptical mood is lifted as well as paused
                 options["lifts"] = tuple(dict.fromkeys([*options.get("lifts", ()), *bright]))
+        if elongated and settings.dynamic_emphasis:
+            options["elongated"] = tuple(
+                (index, elongation_stretch(letters, settings.drawl_stretch)) for index, letters in elongated
+            )
         if "lifts" in options:
             endearments = tuple(i for i in endearment_words(text) if i in options["lifts"])
             if endearments:

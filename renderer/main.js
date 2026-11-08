@@ -46,6 +46,7 @@ import { Spring, TIMING, frameDelta } from "./smoothing.js";
 import { composeBlink, eyeClosure } from "./facial-layers.js";
 import { GreetingGate, bindGreetingToggle } from "./greeting.js";
 import { bindRestingFaceToggle } from "./resting-face.js";
+import { addSeeThroughBrows, bindSeeThroughBrowsToggle } from "./see-through-brows.js";
 import { FrameLoop, PopOut, popupWindow } from "./pop-out.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
@@ -96,6 +97,7 @@ const swayButton = document.querySelector("#sway-button");
 const cursorGazeToggle = document.querySelector("#cursor-gaze-toggle");
 const cameraGazeToggle = document.querySelector("#camera-gaze-toggle");
 const restingFaceToggle = document.querySelector("#resting-face-toggle");
+const seeThroughBrowsToggle = document.querySelector("#see-through-brows-toggle");
 const gazeStatus = document.querySelector("#gaze-status");
 const frameButtons = {
   face: document.querySelector("#frame-face-button"),
@@ -1260,6 +1262,8 @@ function onModelLoaded(loaded, data) {
   expressions = new ExpressionController(mesh, EXPRESSION_CATALOG);
   bindRestingFaceToggle(expressions, restingFaceToggle);
   restingFaceToggle.disabled = !expressions.isAvailable("calm");
+  seeThroughBrowsToggle.disabled = false;
+  bindSeeThroughBrowsToggle(addSeeThroughBrows(mesh), seeThroughBrowsToggle);
   expressions.startLoop(3, Number(intensityInput.value));
   audition = new MorphAudition(mesh, buildMorphInventory(data, mesh));
   speech = new SpeechPlayer(mesh, SPEECH_SHAPES, voiceVolume);

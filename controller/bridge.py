@@ -64,9 +64,34 @@ def load_catalog(path=CATALOG):
             for key, value in morphs.items()
         ):
             raise ValueError(f"Invalid morphs: {name}")
+    seen = set(catalog)
+    for name, entry in catalog.items():
+        aliases = entry.get("aliases", [])
+        if not isinstance(aliases, list):
+            raise ValueError(f"Invalid aliases: {name}")
+        for alias in aliases:
+            if (
+                not isinstance(alias, str)
+                or not re.fullmatch(r"[a-z][a-z0-9-]*", alias)
+                or alias in seen
+            ):
+                raise ValueError(f"Invalid or duplicate alias: {name}")
+            seen.add(alias)
     if catalog["neutral"]["morphs"]:
         raise ValueError("Neutral must have no morphs")
     return catalog
+
+
+def resolve_mood(catalog, name):
+    """Return the catalog name for a mood or one of its aliases (#99), else None."""
+    if not isinstance(name, str):
+        return None
+    if name in catalog:
+        return name
+    for canonical, entry in catalog.items():
+        if name in entry.get("aliases", ()):
+            return canonical
+    return None
 
 
 class TagParser:
@@ -98,13 +123,14 @@ class TagParser:
                     text.append(char)
             elif char == "]":
                 match = None if self.overflow else TAG.fullmatch(self.pending)
-                if match and match[1] in self.catalog:
+                name = match and resolve_mood(self.catalog, match[1])
+                if name:
                     weight = float(match[2]) if match[2] is not None else 1.0
                     if math.isfinite(weight):
                         events.append(
                             {
                                 "type": "expression",
-                                "name": match[1],
+                                "name": name,
                                 "weight": max(0.0, min(1.0, weight)),
                             }
                         )

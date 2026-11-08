@@ -56,7 +56,7 @@ QUESTION_PEAK = 0.7  # a question's rise peaks 70 % into its last word (measured
 DRAWL_OPENERS = frozenset({"but", "well", "so", "now", "okay"})
 ATTITUDE_WORDS = frozenset({"sure", "really", "right", "totally", "obviously"})
 SKEPTICAL_MOODS = frozenset({
-    "skeptical", "suspicious", "unimpressed", "sad-sceptical", "annoyed", "sulky", "pout", "smug",
+    "skeptical", "suspicious", "unimpressed", "rueful", "annoyed", "sulky", "pout", "smug",
 })
 QUOTE_PEAK = 0.5  # a quotation's pitch dip is deepest in its middle
 OPENING_QUOTES, CLOSING_QUOTES = '"“', '"”'

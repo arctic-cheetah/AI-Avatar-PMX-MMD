@@ -37,7 +37,7 @@ MOOD_GROUPS = {
                      'mischievous', 'hopeful'), ENERGETIC),
     **dict.fromkeys(('thinking', 'skeptical', 'confused', 'suspicious', 'serious',
                      'worried', 'nervous', 'troubled'), REFLECTIVE),
-    **dict.fromkeys(('sad', 'sad-v2', 'sad-sceptical', 'sleepy', 'disappointed',
+    **dict.fromkeys(('sad', 'sorrowful', 'rueful', 'sleepy', 'disappointed',
                      'cry', 'sulky'), LOW),
 }
 

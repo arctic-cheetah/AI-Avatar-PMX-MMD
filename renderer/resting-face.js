@@ -1,3 +1,5 @@
+import { bindStoredToggle } from './stored-toggle.js';
+
 /**
  * Resting face setting (#99): which calm preset neutral settles into.
  * The checkbox is on by default; turning it off rests on the bare mesh,
@@ -14,17 +16,5 @@ export const DEFAULT_RESTING_FACE = 'calm';
  * @returns {void}
  */
 export function bindRestingFaceToggle(expressions, toggle, { local, name = DEFAULT_RESTING_FACE } = {}) {
-  try {
-    local ??= globalThis.localStorage;
-  } catch { /* Storage access itself can throw; the setting is then session-only. */ }
-  let enabled = true;
-  try { enabled = local?.getItem(RESTING_FACE_KEY) !== '0'; } catch { /* Default on. */ }
-  const apply = (on) => expressions.setRestingFace(on ? name : null);
-  apply(enabled);
-  if (!toggle) return;
-  toggle.checked = enabled;
-  toggle.addEventListener('change', () => {
-    apply(toggle.checked);
-    try { local?.setItem(RESTING_FACE_KEY, toggle.checked ? '1' : '0'); } catch { /* Session-only. */ }
-  });
+  bindStoredToggle(toggle, RESTING_FACE_KEY, (on) => expressions.setRestingFace(on ? name : null), { local });
 }

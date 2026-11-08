@@ -1,4 +1,5 @@
 """Renamed moods keep working through catalog aliases (#99)."""
+import asyncio
 import json
 import tempfile
 import unittest
@@ -8,6 +9,7 @@ from controller.agent import AgentError, validate
 from controller.bridge import TagParser, load_catalog, resolve_mood, system_prompt
 from controller.prosody import MOOD_GROUPS
 from controller.speech import SKEPTICAL_MOODS
+from controller.tools import ToolSession
 
 CATALOG = load_catalog()
 RENAMES = {
@@ -61,6 +63,18 @@ class RenamedMoodTests(unittest.TestCase):
             "rueful")
         with self.assertRaises(AgentError):
             validate({"tool": "set_mood", "name": "evil"}, CATALOG)
+
+    def test_set_expression_tool_accepts_old_names(self):
+        # PR #112 review: the bridge's own LLM tool refused old names.
+        tools = ToolSession(CATALOG)
+        enum = next(t for t in tools.definitions() if t["function"]["name"] == "set_expression")[
+            "function"]["parameters"]["properties"]["name"]["enum"]
+        for old, new in RENAMES.items():
+            with self.subTest(old=old):
+                self.assertNotIn(old, enum)
+                result = asyncio.run(tools.execute("set_expression", json.dumps({"name": old, "weight": 0.5})))
+                self.assertEqual(result, {"expression": {"type": "expression", "name": new, "weight": 0.5}})
+        self.assertEqual(asyncio.run(tools.execute("set_expression", '{"name": "nope"}'))["code"], "invalid_arguments")
 
     def test_prompts_teach_only_new_names(self):
         prompt = system_prompt(CATALOG)

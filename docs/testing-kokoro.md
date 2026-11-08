@@ -376,7 +376,8 @@ The first row that matches a word wins.
 A surprised word that ends a question keeps the question's own rise
 (`--question-rise-bend`) and is only drawn out, so "Really?" is not given two
 bends. Rows other than drawls are reported as `delivered` in clip metrics.
-The surprise row is not yet listened to (9 Nov 2026).
+Listening (9 Nov 2026): "whaaat" and "wooow" sounded great; "really" sounded
+like "reality" until only its stressed vowel was stretched (§2h).
 
 **Stress-mark check (#83 scope 3):** on ordinary words, Kokoro's marks change
 length, not loudness:
@@ -510,8 +511,11 @@ needs both halves slowed.
    durations as the stock model.
 2. **Request field** `stretch: [[word index, seconds], …]` (at most 4 words,
    seconds 0–0.125 per sound). `stretch_sounds()` picks the stressed vowel (both
-   halves of a diphthong, any `ː`) and a consonant you can hold right after it
-   (l, m, n, r, s, sh…).
+   halves of a real diphthong such as `oʊ`, `aɪ`, `eɪ`, `aʊ`, `ɔɪ`, and any `ː`)
+   and a consonant you can hold (l, m, n, r, s, sh…) only when it ends the word
+   ("wellll", "suuure"). Listening heard "really" drawn out over `i`, `ə` and
+   `l` as "reality" (9 Nov 2026): the `l` starts the next syllable, so only the
+   `i` is stretched now.
 3. **Two passes:** the sentence is synthesised once as usual. Kokoro's frames
    for those sounds give each one a speed of frames ÷ target, so it reaches
    the target and no more than 5 frames, and is never sped up. The target is
@@ -572,6 +576,7 @@ of it (whaat 75 ms, whaaat 125 ms). The stretch cannot grow past that, because
 real word is spoken at its normal length. When a line has more than four
 drawn-out words, drawls come first. Edge reads the spellings itself, so they
 are left alone.
+Listening (9 Nov 2026): the elongated words sounded very good.
 
 Next, in small batches: a word-delivery list (surprise "whaaat?", affection
 "sooo", hesitation "hmmm") and a quotation pace (§2f).

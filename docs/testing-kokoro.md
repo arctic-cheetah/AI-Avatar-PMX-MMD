@@ -195,7 +195,7 @@ turns on all of the following:
 ## 2d. Emphasis (#84 tier 4)
 
 Yidhari's actor leaves a slight pause **before** a stressed word. With
-`--emphasis` (Kokoro only, off by default), the LLM is told it may wrap one
+`--emphasis` (Kokoro only, on by default), the LLM is told it may wrap one
 word per sentence in single asterisks, like `*really*`, and the voice adds a
 short pause before it (`--emphasis-pause`, default 0.12 s, 0–0.3).
 
@@ -208,12 +208,14 @@ short pause before it (`--emphasis-pause`, default 0.12 s, 0–0.3).
   `--tts kokoro`, since Edge never pauses for emphasis.
 - The Kokoro worker phonemizes the sentence itself and checks that its words
   line up one-to-one with the text's. Kokoro reports when each phoneme is
-  spoken, so the pause is spliced into the space before the word, with 5 ms
-  fades so it does not click.
+  spoken. The worker searches the space before the word for at least 10 ms of
+  actual quiet (40 dB below peak amplitude), allowing 5 ms fades on both sides
+  of the cut. Space tokens can contain connected speech: if no safe gap exists,
+  the worker preserves that speech instead of forcing silence into its onset.
 - If the words do not line up (numbers such as `1999` expand to several
   words), the sentence is spoken without the pause; the clip metrics show
   `emphasisPauses`, and `emphasisSkipped` says why none was made (`misaligned`,
-  `no-timings`, `first-word` or `not-found`). With `--punctuation-cadence`, a sentence whose dashes
+  `no-timings`, `first-word`, `not-found` or `no-safe-gap`). With `--punctuation-cadence`, a sentence whose dashes
   change the word count (`1–5` → "1 to 5") also skips the pause.
 - The chat log shows the marked word in italics, as Markdown
   ([chat-markdown.md](chat-markdown.md)).

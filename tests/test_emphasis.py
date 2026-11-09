@@ -104,7 +104,9 @@ class KokoroEmphasisTests(unittest.IsolatedAsyncioTestCase):
         synthesizer.model = Mock()
         synthesizer.model.tokenizer.phonemize.return_value = 'aɪ ɹˈiəli lˈaɪk ɪt.'
         synthesizer.model.create.return_value = ([0.5] * 24000, 24000)
-        synthesizer.model.create_timed.return_value = ([0.5] * 24000, 24000, REALLY)
+        samples = [0.5] * 24000
+        samples[13800:15000] = [0.0] * 1200  # actual silence at the first inter-word space
+        synthesizer.model.create_timed.return_value = (samples, 24000, REALLY)
         synthesizer.soundfile = Mock()
         synthesizer.voice, synthesizer.style, synthesizer.speed = 'af_heart', object(), 1.0
         synthesizer.clause_pause = 0.25

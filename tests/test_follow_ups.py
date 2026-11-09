@@ -44,7 +44,9 @@ class EmphasisSkipReasonTests(unittest.TestCase):
         synthesizer.model = Mock()
         synthesizer.model.tokenizer.phonemize.return_value = phonemes
         synthesizer.model.create.return_value = ([0.5] * 24000, 24000)
-        synthesizer.model.create_timed.return_value = ([0.5] * 24000, 24000, timings)
+        samples = [0.5] * 24000
+        samples[13800:15000] = [0.0] * 1200
+        synthesizer.model.create_timed.return_value = (samples, 24000, timings)
         synthesizer.soundfile = Mock()
         synthesizer.voice, synthesizer.style, synthesizer.speed = 'af_heart', object(), 1.0
         synthesizer.clause_pause = 0.25

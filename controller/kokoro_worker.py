@@ -36,6 +36,7 @@ SPAN_PUNCTUATION = frozenset(',.!?…;:—"\'()')
 MAX_EMPHASIS = 3          # emphasised words per sentence
 MAX_EMPHASIS_PAUSE = 0.3  # seconds
 SPLICE_FADE = 0.005       # seconds faded out and in around a spliced pause
+PAUSE_QUIET_DB = -40.0    # spaces can contain coarticulated speech; only splice into actual quiet
 FRAME = 0.025             # seconds per Kokoro duration frame (600 samples at 24 kHz)
 MAX_STRETCH = 0.125       # seconds one sound may be drawn out to: 5 frames sounded natural, 8 broke up
 STRESS_MARKS = ('ˈ', 'ˌ')  # primary first
@@ -372,11 +373,12 @@ def shift_spans(spans: dict, points: list[float], seconds: float) -> dict:
             for index, (start, end) in spans.items()}
 
 
-def pause_points(timings, words) -> list[float]:
-    """Seconds, in the middle of the space before each spoken word index in ``words``.
+def pause_points(timings, words, *, samples=None, rate=None) -> list[float]:
+    """Pause locations inside the space before each requested word.
 
-    ``timings`` are Kokoro's per-phoneme timings (``phoneme``, ``start``, ``end``),
-    spaces included. The first word and indices past the end get no pause.
+    Timing-only callers receive candidate midpoints. With audio, require a quiet
+    window wide enough for both splice fades, inside that space's timing span.
+    A text space can be fully voiced: skip it rather than break coarticulation.
     """
     spaces, current, gap, index = {}, '', None, 0
     for timing in [*timings, None]:
@@ -386,11 +388,41 @@ def pause_points(timings, words) -> list[float]:
                     spaces[index] = gap
                 index += 1
             if timing is not None:
-                gap = (timing.start + timing.end) / 2
+                gap = (timing.start, timing.end)
             current = ''
         else:
             current += timing.phoneme
-    return [round(spaces[word], 6) for word in sorted(set(words)) if word in spaces]
+    gaps = [spaces[word] for word in sorted(set(words)) if word in spaces]
+    if samples is None:
+        return [round((start + end) / 2, 6) for start, end in gaps]
+    if not gaps:
+        return []
+    if rate is None or rate <= 0:
+        raise ValueError('Audio pause selection needs a positive sample rate.')
+    peak = max((abs(float(sample)) for sample in samples), default=0.0)
+    if peak == 0:
+        return []
+    fade = max(1, int(SPLICE_FADE * rate))
+    width = 2 * fade
+    limit = width * (peak * 10 ** (PAUSE_QUIET_DB / 20)) ** 2
+    points = []
+    for start, end in gaps:
+        first, last = max(0, math.ceil(start * rate)), min(len(samples), math.floor(end * rate))
+        if last - first < width:
+            continue
+        middle = (start + end) * rate / 2
+        energy = sum(float(sample) ** 2 for sample in samples[first:first + width])
+        best = None
+        for at in range(first, last - width + 1):
+            if at > first:
+                energy += float(samples[at + width - 1]) ** 2 - float(samples[at - 1]) ** 2
+            if energy <= limit:
+                center = at + fade
+                if best is None or abs(center - middle) < abs(best - middle):
+                    best = center
+        if best is not None:
+            points.append(round(best / rate, 6))
+    return points
 
 
 def splice_silence(samples: list[float], rate: int, points: list[float], seconds: float) -> list[float]:
@@ -511,7 +543,8 @@ class Synthesizer:
                 stretched, stretch_skipped, redone = self._stretch(spoken, timings, stretch, speed, create_timed)
                 if redone is not None:
                     samples, rate, timings = redone
-            points = pause_points(timings, emphasis or [])
+            candidates = pause_points(timings, emphasis or [])
+            points = pause_points(timings, emphasis or [], samples=samples, rate=rate)
             wanted = [*(spans or []), *(index for index, _ in holds or [])]
             heard = {index: audible_span(samples, rate, start, end)
                      for index, (start, end) in word_spans(timings, wanted).items()}
@@ -531,7 +564,8 @@ class Synthesizer:
                 pauses = len(points)
                 if not points:
                     skipped = ('no-timings' if not timings else
-                               'first-word' if all(i == 0 for i in emphasis) else 'not-found')
+                               'first-word' if all(i == 0 for i in emphasis) else
+                               'no-safe-gap' if candidates else 'not-found')
         elif spoken and spoken != phonemes:  # pronunciation fix only
             samples, rate = self.model.create(
                 spoken, voice=self.style, speed=speed, lang=lang, trim=False,

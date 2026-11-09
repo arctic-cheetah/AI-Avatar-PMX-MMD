@@ -2,8 +2,9 @@
 
 The restored renderer separates semantic presets, animation, and authoring:
 
-- [expressions.json](../renderer/expressions.json): 46 mood names, intended-use
-  descriptions and PMX weights. Neutral clears the mood.
+- [expressions.json](../renderer/expressions.json): 50 mood names, intended-use
+  descriptions and PMX weights. Neutral clears the mood, and the face then
+  settles into the resting face (`calm` by default).
 - [expression-catalog.js](../renderer/expression-catalog.js): asynchronous loader
   and validation; no duplicated preset data.
 - [expression-controller.js](../renderer/expression-controller.js): resolves
@@ -31,7 +32,7 @@ disables the preset. Check blink and future speech compatibility before promotio
 Each frame clears influences, then applies mood, speech, winks, blink and
 additive manual weights. Moods ease on critically damped springs, so an
 interrupted change carries on smoothly from what is showing. Shared morphs have
-explicit rules: the blink combines with `super-angry`'s own `まばたき`, skips
+explicit rules: the blink combines with `furious`'s own `まばたき`, skips
 eyes already closed by `笑い` or a wink, and speech takes over the open-mouth
 shapes `□`, `ワ` and `ワ２` while articulating. See
 [animation-transitions.md](./animation-transitions.md). Preset existence does not

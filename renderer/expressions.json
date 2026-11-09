@@ -3,6 +3,14 @@
     "description": "Return to a calm resting expression.",
     "morphs": {}
   },
+    "tender": {
+    "description": "Offer affection, care, or gentle comfort.",
+    "morphs": {
+      "にこり": 1,
+      "口角上げ": 0.35,
+      "下眼上": 0.35
+    }
+  },
   "happy": {
     "description": "Express everyday happiness or friendly appreciation.",
     "morphs": {
@@ -18,7 +26,11 @@
   "thinking": {
     "description": "Pause to consider an idea or work through a question.",
     "morphs": {
-      "じと目": 1
+      "じと目": 0.25,
+      "眼角下": 0.4,
+      "上左": 0.6,
+      "口左": 0.25,
+      "口角下げ": 0.3
     }
   },
   "troubled": {
@@ -35,8 +47,9 @@
       "口角下げ": 1
     }
   },
-  "super-angry": {
-    "description": "Express unusually intense anger; use sparingly.",
+  "furious": {
+    "description": "Express peak, glaring anger; use sparingly.",
+    "aliases": ["super-angry"],
     "morphs": {
       "怒り": 1,
       "怒り目": 1,
@@ -50,45 +63,43 @@
       "悲しむ": 1
     }
   },
-  "sad-v2": {
-    "description": "Express more pronounced sadness with brows and mouth.",
+  "sorrowful": {
+    "description": "Express deep, open sorrow with brows and mouth; stronger than sad.",
+    "aliases": ["sad-v2"],
     "morphs": {
       "悲しむ": 1,
-      "真面目": 1,
-      "口角下げ": 1,
-      "困る": 1
+      "困る": 0.6,
+      "口角下げ": 0.7
     }
   },
-  "sad-sceptical": {
-    "description": "Express sadness mixed with doubt.",
+  "rueful": {
+    "description": "Express wry, regretful sadness mixed with doubt.",
+    "aliases": ["sad-sceptical"],
     "morphs": {
-      "悲しむ": 1,
-      "真面目": 1,
-      "口角下げ": 1,
-      "困る": 1,
-      "にやり２": 1
+      "悲しむ": 0.6,
+      "困る": 0.5,
+      "にやり２": 0.8,
+      "じと目": 0.25
     }
   },
   "disappointed": {
     "description": "React to an unmet expectation or letdown.",
     "morphs": {
-      "悲しむ": 1,
-      "真面目": 1,
-      "口角下げ": 1,
-      "困る": 1,
-      "じと目": 1
+      "じと目": 0.55,
+      "悲しむ": 0.45,
+      "真面目": 0.5,
+      "口角下げ": 0.75
     }
   },
-  "wtf-dude": {
-    "description": "React with informal, exasperated disbelief; use sparingly.",
+  "exasperated": {
+    "description": "React with fed-up, exasperated disbelief; use sparingly.",
+    "aliases": ["wtf-dude"],
     "morphs": {
-      "悲しむ": 1,
-      "真面目": 1,
-      "口角下げ": 1,
-      "困る": 1,
-      "じと目": 1,
-      "口横狭め": 1,
-      "怒り": 0.2
+      "じと目": 0.75,
+      "上左": 0.65,
+      "口横狭め": 0.6,
+      "口角下げ": 0.5,
+      "怒り": 0.15
     }
   },
   "cry": {
@@ -217,14 +228,6 @@
     "morphs": {
       "じと目": 1,
       "下": 0.4
-    }
-  },
-  "tender": {
-    "description": "Offer affection, care, or gentle comfort.",
-    "morphs": {
-      "にこり": 1,
-      "口角上げ": 0.35,
-      "下眼上": 0.35
     }
   },
   "relieved": {
@@ -396,6 +399,34 @@
       "にこり": 0.5,
       "口角上げ": 0.4,
       "びっくり": 0.2
+    }
+  },
+  "serene": {
+    "description": "Rest gently at ease, with a softened smile.",
+    "morphs": {
+      "口角下げ": 0.3
+    }
+  },
+  "composed": {
+    "description": "Stay calm and collected, in quiet control.",
+    "morphs": {
+      "口角下げ": 0.35,
+      "じと目": 0.15
+    }
+  },
+  "attentive": {
+    "description": "Listen closely with quiet focus.",
+    "morphs": {
+      "口角下げ": 0.3,
+      "下眼上": 0.2,
+      "真面目": 0.2
+    }
+  },
+  "calm": {
+    "description": "Rest in plain, soft calm; the default resting face.",
+    "morphs": {
+      "口角下げ": 0.45,
+      "眼角下": 0.25
     }
   }
 }

@@ -6,7 +6,7 @@ import { EYE_CLOSURE, composeBlink, eyeClosure } from "../../renderer/facial-lay
 const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-12, `${actual} ≠ ${expected}`);
 
 test("idle blink keeps a mood's own blink weight between blinks", () => {
-  // super-angry holds まばたき at 0.3; the blink used to overwrite it with 0.
+  // furious holds まばたき at 0.3; the blink used to overwrite it with 0.
   close(composeBlink(0.3, 0), 0.3);
   close(composeBlink(0, 0.5), 0.5);
 });

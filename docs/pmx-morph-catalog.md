@@ -2,7 +2,7 @@
 
 This inventory comes from the local `yidhari-mmd/伊德海莉.pmx` file, parsed with the project's Three.js MMD parser. It contains **56 vertex morphs**: 15 in the PMX eye panel, 23 in the mouth panel, and 18 in the brow panel. The names and English labels below are copied from the model metadata; the English labels are sometimes duplicated or surprising, so preview a morph on the model before assigning it a new emotion tag.
 
-The restored renderer previews the 46 presets in `renderer/expressions.json`, loaded through `renderer/expression-catalog.js`. Older current-use labels in the inventory below reflect the initial preset set. `[neutral]` clears the active mood; it is **not** a PMX morph. Automatic blinking uses `まばたき` separately. These local previews are not yet driven by `controller/bridge.py` or the LLM.
+The restored renderer previews the 50 presets in `renderer/expressions.json`, loaded through `renderer/expression-catalog.js`. Older current-use labels in the inventory below reflect the initial preset set. `[neutral]` clears the active mood, and the face then settles into the resting face (`calm` by default; see [Calm presets and the resting face](./shared-expression-catalog.md#calm-presets-and-the-resting-face-99-step-3)). It is **not** a PMX morph. Automatic blinking uses `まばたき` separately. These local previews are not yet driven by `controller/bridge.py` or the LLM.
 
 To audition anything below, use the renderer's test bench panel (see [Testing morphs in the renderer](#testing-morphs-in-the-renderer)). It reads the morph list straight from the PMX, so it always matches the model even if this table drifts.
 
@@ -10,7 +10,7 @@ To audition anything below, use the renderer's test bench panel (see [Testing mo
 | --------------- | ------------------------------- | ---------------------- | ------------------------------ |
 | `[happy]`     | `笑い`                        | warai                  | Local preview                  |
 | `[surprised]` | `びっくり`                    | bikkuri                | Local preview                  |
-| `[thinking]`  | `じと目`                      | jito me                | Local preview                  |
+| `[thinking]`  | `じと目` 0.25 + `眼角下` 0.4 + `上左` 0.6 + `口左` 1 + `口角下げ` 0.3 | jito me + gankaku shita + ue hidari + kuchi hidari + koukaku sage | Retuned in #99 |
 | `[troubled]`  | `困る`                        | komaru                 | Local preview                  |
 | `[angry]`     | `怒り` + `怒り目` + `口角下げ` | ikari + ikari me + koukaku sage | Local preview          |
 | `[sad]`       | `悲しむ`                    | kanashimu              | Eye-only local preview        |
@@ -100,7 +100,102 @@ To audition anything below, use the renderer's test bench panel (see [Testing mo
 | Wink              | `ウィンク` / `ウィンク右` and their `２` variants | uinku / uinku migi and variants | The variants may look different; test each eye separately. |
 | Stronger surprise | `びっくり` with `ワ` or `□`                      | bikkuri with wa or shikaku      | Mouth shape may compete with future speech animation.      |
 
+## Observed appearance notes (#99)
+
+These come from face-framed captures in the renderer at weight 1.
+
+- **Brows sit under the bangs.** Neutral and `上` keep them hidden. `真面目`,
+  `困る`, `前`, `下` and `にこり` move the brow down or forward until a
+  skin-toned stroke shows on top of the hair. Stacking `真面目` and `困る` at
+  full weight makes this obvious, so keep brow weights moderate and use only
+  one sad brow at a time.
+- **One-sided brows (`上左`, `上右`) barely show** at portrait size, because
+  the bangs cover them. They add a little asymmetry but can't carry an
+  expression alone.
+- **See-through brows (renderer).** Since #99 step 4, the renderer draws the
+  brows a second time over the hair, so the two notes above apply only when
+  that layer is off. See [See-through brows](#see-through-brows) below.
+- **The eyes carry most of the emotion at portrait size.** `じと目`, `悲しむ`,
+  `眼角下` and `下眼上` read clearly. Mouth-only morphs (`口左`, `口右`,
+  `口上`, `口下`, `齿上`, `齿下`) are subtle.
+- **`まばたき` in a preset narrows the glare.** `furious` keeps its 0.3 on
+  purpose, and the idle blink combines with it instead of overwriting it.
+
 The PMX panel and names establish what controls exist, **not** whether a combination looks natural or whether it can safely share a morph with blinking or lip sync. Add new expressions to the semantic catalog only after a visual preview and a transition test back to neutral.
+
+## See-through brows
+
+The brows sit under the bangs, so brow morphs barely read and some poke
+through the hair as a skin-toned stroke. Many anime models draw brows over
+the hair instead. The renderer does the same at runtime, in
+[see-through-brows.js](../renderer/see-through-brows.js). The PMX file is not
+changed.
+
+- **Which triangles.** `睫眉` holds the lashes, the brows and the skin-coloured
+  eyelid covers. Drawing that whole material over the hair would paint over the
+  eyes. Instead, the renderer picks the triangles whose corners move only with
+  brow morphs and never with eye morphs: 102 of `睫眉`'s 994 on this model.
+  Those triangles are added again at the end of the index, as a new geometry
+  group.
+- **How they are drawn.** The new group uses a clone of the `睫眉` material at
+  60% opacity, with depth testing and depth writes off, and no outline. It is
+  part of the same mesh, so every brow morph, blink and bone moves it with the
+  original.
+- **Morph data.** three r170's `MMDLoader` stores morph targets as absolute
+  positions (`morphTargetsRelative` is false), so "moved" means "differs
+  from the base position".
+- **Setting.** The *See-through brows · 透け眉* checkbox under Independent
+  channels is on by default. It is remembered in `localStorage`
+  (`yidhari.see-through-brows`). Comparison grids show the layer whenever it is
+  on, because it is part of what the face looks like.
+- **Limits.** The layer stays visible when the head turns away, and the pale
+  brows read only faintly over the pale hair. Fading with head yaw, or a
+  slightly darker tint, are possible follow-ups.
+
+## Comparison grids
+
+For before/after reviews, `tools/morph-grid/` captures labelled grids of the
+face. Each cell holds one preset or morph combination. The scripts run through
+the Playwright MCP server's `browser_run_code_unsafe` tool (`filename`
+parameter) while `python3 renderer/serve.py` is serving the renderer:
+
+1. **`setup.js`** opens the renderer at 1280×800 and mocks the bridge socket.
+   This matters: the bridge sends agent speech to the most recently connected
+   page, so an unmocked page would take over the live avatar's voice. It also
+   turns off sway and cursor gaze so every cell is framed the same.
+2. **Set the spec with `browser_evaluate`:**
+
+   ```js
+   () => { globalThis.__morphGrid = {
+     out: '/home/parrot/Code/avatar-yidhari/assets/private/morph-grids/sad-family.png',
+     cols: 4,
+     items: [
+       ['sorrowful (old)', { '悲しむ': 1, '真面目': 1, '困る': 1, '口角下げ': 1 }],
+       ['sorrowful', 'sorrowful'],
+       ['sorrowful 0.5', 'sorrowful', 0.5],
+     ],
+   }; }
+   ```
+
+   Each item is `[label, preset name or { morph: weight }, optional scale]`.
+   `clip` is optional: the face by default, or the eye/brow and mouth crops
+   listed in `grid.js`.
+3. **`grid.js`** holds each item for 1.3 s with auto-blink off, captures the
+   clip, and saves one labelled PNG at `out`. Holding a combination turns the
+   resting face off, so each cell shows only its own morphs on the bare mesh.
+
+Keep grids in `assets/private/`, which is gitignored. Useful sets are:
+
+- baseline vs candidates
+- each morph on its own at 1.0
+- one preset at 0.25, 0.5 and 1
+- mid-speech captures
+
+Pair the pictures with numeric checks of
+`__yidhariPreview.audition.mesh.morphTargetInfluences`. After neutral, only the
+resting face's morphs should stay above 0.01 (nothing at all with the resting
+face off), and `まばたき` and the visemes should keep their full
+range.
 
 ## Testing morphs in the renderer
 

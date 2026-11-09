@@ -82,6 +82,27 @@ needed distinction just to use fewer words.
 - If the result is `busy`, `no renderer`, or `bridge not running`, say so once
   and continue in text. Do not invent another speech path.
 
+## Remembered morph comparison grids
+
+When creating, tuning or reviewing PMX morphs or expression presets, show the
+result as labelled comparison grids instead of describing faces in words alone:
+baseline vs candidates, each morph on its own, intensities (0.25 / 0.5 / 1),
+and while speaking. Use the scripts in `tools/morph-grid/`. The workflow is in
+[Comparison grids](docs/pmx-morph-catalog.md#comparison-grids).
+
+- Run `setup.js`, then `grid.js`, with the Playwright MCP
+  `browser_run_code_unsafe` tool. Setup mocks the bridge socket, because a new
+  renderer page would otherwise take over the live avatar and her voice.
+- Save grids under `assets/private/` (gitignored), since the model is private.
+  Show them to the user, and describe them in PRs and docs without attaching
+  them.
+- Pair the grids with numeric checks (no leftover influences after neutral,
+  blink and lip-sync ranges) before promoting a preset.
+- Keep eyelid morphs such as `まばたき` that a preset uses for emotion. Replace
+  one only when a better eyelid shape does the same job.
+
+Requested by the user on 9 November 2026.
+
 ## Creating tickets
 
 When opening a github issue ticket. Use emoji's to denote visualise the issue.
@@ -124,3 +145,38 @@ checks instead, and record the actual validation performed.
 Commit updates to this instructions file on the active task branch and include
 them in the relevant PR. Preserve unrelated local edits. This workflow was
 requested by the user on 7 November 2026.
+
+## Investigating model and voice behaviour
+
+When a model (ONNX, RVC or other) cannot do something, or a voice change
+sounds wrong, investigate before redesigning. This method found per-token
+speed in Kokoro with a one-field patch (#83, `docs/testing-kokoro.md` §2h):
+
+1. **Read the signature.** List the session's inputs, outputs, shapes and
+   dtypes with onnxruntime before assuming anything.
+2. **Probe, then read the exact error.** Try the input you want (for example,
+   a vector where a scalar is declared) and keep the runtime's message as
+   evidence.
+3. **Trace the graph.** Use the `onnx` package to follow the consumers of that
+   input and the producers of the outputs, to find the smallest change. Install
+   analysis-only packages into the scratchpad, not the project venvs.
+4. **Patch a copy, never the original.** Write patched models to the
+   scratchpad first. Prove that old inputs give the same results. Check for
+   random ops (`RandomNormalLike`) first, and compare deterministic outputs
+   (durations), not waveforms.
+5. **Measure, then listen.** Record numbers such as frames per token, lengths
+   and timings, then write clips into the gitignored
+   `assets/private/speech/<ticket>/`. Write them for the source alone and after
+   RVC, and link them for the user's ears. A clip that sounds broken sets a
+   limit (8 frames on one vowel broke up, so the cap is 5).
+6. **When listening hears the wrong word, check the phonemes.** espeak
+   misreads spellings ("whaaat" → `wˈæææt`, heard as "whyat"), and stretching
+   the wrong sounds adds syllables ("really" → "reality"). Print the phonemes,
+   name the cause, then fix it.
+7. **Productise in small steps.** Setup derives the patch from the
+   hash-checked download and refuses an unexpected graph. Runtime falls back
+   when the patch is missing and reports why. Tests use a tiny synthetic graph
+   plus a real-model test that is skipped when the model is absent. Record
+   every listening verdict in the docs and on the PR.
+
+Requested by the user on 9 November 2026.

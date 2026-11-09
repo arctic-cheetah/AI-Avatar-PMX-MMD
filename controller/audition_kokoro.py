@@ -41,6 +41,7 @@ async def audition(args) -> None:
                              interjection_bend=args.interjection_bend,
                              interjection_hold=args.interjection_hold,
                              word_lifts=args.word_lifts, word_lift_bend=args.word_lift_bend,
+                             endearment_bend=args.endearment_bend, surprise_bend=args.surprise_bend,
                              question_rise_bend=args.question_rise_bend,
                              quote_voice=args.quote_voice, quote_bend=args.quote_bend,
                              dynamic_emphasis=args.dynamic_emphasis, drawl_bend=args.drawl_bend,
@@ -134,10 +135,13 @@ def main() -> None:
     parser.add_argument('--word-lifts', action=argparse.BooleanOptionalAction, default=True,
                         help='Lift endearments in address and the word before "!".')
     parser.add_argument('--word-lift-bend', type=float, default=4.0)
+    parser.add_argument('--endearment-bend', type=float, default=8.0)
+    parser.add_argument('--surprise-bend', type=float, default=5.0,
+                        help='Semitones a surprised "what"/"really" rises (-12 to 12).')
     parser.add_argument('--question-rise-bend', type=float, default=9.0)
     parser.add_argument('--quote-voice', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--quote-bend', type=float, default=-2.0)
-    parser.add_argument('--dynamic-emphasis', action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument('--dynamic-emphasis', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--drawl-bend', type=float, default=-2.0)
     parser.add_argument('--drawl-hold', type=float, default=0.0)
     parser.add_argument('--drawl-stretch', type=float, default=0.125)

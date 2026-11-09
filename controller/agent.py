@@ -23,7 +23,7 @@ import time
 import unicodedata
 from pathlib import Path
 
-from controller.bridge import THINKING, THINKING_WEIGHT, TagParser, speak_segments
+from controller.bridge import THINKING, THINKING_WEIGHT, TagParser, resolve_mood, speak_segments
 
 MAX_SAY = 500  # characters of spoken agent text
 MAX_REPORT = 16384  # characters of report text
@@ -192,9 +192,10 @@ def _weight(request):
 
 
 def _mood(name, catalog):
-    if not isinstance(name, str) or name not in catalog:
+    canonical = resolve_mood(catalog, name)
+    if canonical is None:
         raise AgentError(f"unknown mood: {str(name)[:40]}")
-    return name
+    return canonical
 
 
 def _hook(request, call):

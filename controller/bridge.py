@@ -31,6 +31,7 @@ THINKING, THINKING_WEIGHT = "thinking", 0.6
 MAX_IN_FLIGHT = 3  # sentences being synthesised or aligned at once
 MAX_FRAME = 65536 * 2  # TODO: largest accepted browser message (bytes)
 MAX_PROMPT = 4000  # TODO: longest accepted chat prompt (characters)
+MAX_GREETING = 500  # longest accepted page-open greeting (characters)
 MAX_TOKENS = 1024 * 2
 MIN_CONTEXT = 65536  # smallest context window assumed or accepted (tokens)
 CONTEXT_MARGIN = 512  # tokens kept spare beyond the estimate
@@ -64,9 +65,34 @@ def load_catalog(path=CATALOG):
             for key, value in morphs.items()
         ):
             raise ValueError(f"Invalid morphs: {name}")
+    seen = set(catalog)
+    for name, entry in catalog.items():
+        aliases = entry.get("aliases", [])
+        if not isinstance(aliases, list):
+            raise ValueError(f"Invalid aliases: {name}")
+        for alias in aliases:
+            if (
+                not isinstance(alias, str)
+                or not re.fullmatch(r"[a-z][a-z0-9-]*", alias)
+                or alias in seen
+            ):
+                raise ValueError(f"Invalid or duplicate alias: {name}")
+            seen.add(alias)
     if catalog["neutral"]["morphs"]:
         raise ValueError("Neutral must have no morphs")
     return catalog
+
+
+def resolve_mood(catalog, name):
+    """Return the catalog name for a mood or one of its aliases (#99), else None."""
+    if not isinstance(name, str):
+        return None
+    if name in catalog:
+        return name
+    for canonical, entry in catalog.items():
+        if name in entry.get("aliases", ()):
+            return canonical
+    return None
 
 
 class TagParser:
@@ -98,13 +124,14 @@ class TagParser:
                     text.append(char)
             elif char == "]":
                 match = None if self.overflow else TAG.fullmatch(self.pending)
-                if match and match[1] in self.catalog:
+                name = match and resolve_mood(self.catalog, match[1])
+                if name:
                     weight = float(match[2]) if match[2] is not None else 1.0
                     if math.isfinite(weight):
                         events.append(
                             {
                                 "type": "expression",
-                                "name": match[1],
+                                "name": name,
                                 "weight": max(0.0, min(1.0, weight)),
                             }
                         )
@@ -601,6 +628,30 @@ async def speak_segments(queue, send, worker, run=None):
         await asyncio.gather(*leftovers, return_exceptions=True)
 
 
+def greeting_segments(request, catalog):
+    """Validate a page-open greeting (#129) and turn it into speech segments."""
+    from controller.speech import Segmenter
+
+    text, mood, weight = request.get("text"), request.get("mood"), request.get("weight")
+    if (
+        not isinstance(text, str)
+        or not text.strip()
+        or len(text) > MAX_GREETING
+        or not isinstance(mood, str)
+        or mood not in catalog
+        or isinstance(weight, bool)
+        or not isinstance(weight, (int, float))
+        or not math.isfinite(weight)
+    ):
+        raise ValueError("Invalid greeting")
+    segmenter = Segmenter()
+    segments = segmenter.feed(
+        {"type": "expression", "name": mood, "weight": max(0.0, min(1.0, weight))}
+    )
+    segments += segmenter.feed({"type": "say", "text": text})
+    return segments + segmenter.finish()
+
+
 async def handle_connection(socket, args, catalog):
     from websockets.exceptions import ConnectionClosed
 
@@ -775,7 +826,25 @@ async def handle_connection(socket, args, catalog):
             if stage is not None:
                 stage.chat_finished()
 
+    async def speak_greeting(segments):
+        from controller.speech import clear_live_clips
+
+        try:
+            clear_live_clips()
+            queue = asyncio.Queue()
+            for segment in segments:
+                queue.put_nowait(segment)
+            queue.put_nowait(None)
+            await send({"type": "turn"})
+            await speak_segments(queue, send, worker, secrets.token_hex(8))
+        except (ConnectionClosed, asyncio.CancelledError):
+            raise
+        except Exception:
+            LOG.exception("Greeting speech failed")
+
     task = None
+    greeting = None
+    greeted = False
     try:
         async for raw in socket:
             try:
@@ -786,8 +855,17 @@ async def handle_connection(socket, args, catalog):
                     "start",
                     "reset",
                     "answer",
+                    "greet",
                 ):
                     raise ValueError("Unknown request")
+                if request["type"] == "greet":
+                    # Page-open greeting (#129): a fixed phrase, spoken without the LLM.
+                    segments = greeting_segments(request, catalog)
+                    if greeted or worker is None:
+                        continue
+                    greeted = True
+                    greeting = asyncio.create_task(speak_greeting(segments))
+                    continue
                 if request["type"] == "answer":
                     # The user's reply to an agent's ask (#27); never starts a chat reply.
                     text = request.get("text")
@@ -819,6 +897,10 @@ async def handle_connection(socket, args, catalog):
             except (ValueError, TypeError):
                 LOG.warning("Dropped invalid browser request")
                 continue
+            if greeting is not None and not greeting.done():
+                # A chat reply or new chat takes the voice from the greeting.
+                greeting.cancel()
+                await asyncio.gather(greeting, return_exceptions=True)
             if request["type"] == "reset":
                 # New chat: stop any reply and forget every turn.
                 if task is not None:
@@ -840,9 +922,10 @@ async def handle_connection(socket, args, catalog):
     except ConnectionClosed:
         pass
     finally:
-        if task is not None:
-            task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
+        for pending in (task, greeting):
+            if pending is not None:
+                pending.cancel()
+                await asyncio.gather(pending, return_exceptions=True)
         if stage is not None:
             router.detach(stage)
             await stage.close()
@@ -1084,9 +1167,21 @@ def build_parser():
         help="Semitones at a word lift's peak (-12 to 12).",
     )
     parser.add_argument(
+        "--surprise-bend",
+        type=float,
+        default=5.0,
+        help='Semitones a surprised "what"/"really" rises (-12 to 12).',
+    )
+    parser.add_argument(
+        "--endearment-bend",
+        type=float,
+        default=8.0,
+        help='Semitones at an endearment\'s lift ("sweetheart!", -12 to 12).',
+    )
+    parser.add_argument(
         "--dynamic-emphasis",
         action=argparse.BooleanOptionalAction,
-        default=False,
+        default=True,
         help='Kokoro: say "But…", skeptical "sure" and such deeper and drawn out; brighten *word*.',
     )
     parser.add_argument(
@@ -1203,6 +1298,8 @@ def speech_settings(args):
         interjection_hold=args.interjection_hold,
         word_lifts=args.word_lifts and not plain,
         word_lift_bend=args.word_lift_bend,
+        endearment_bend=args.endearment_bend,
+        surprise_bend=args.surprise_bend,
         question_rise_bend=args.question_rise_bend,
         quote_voice=args.quote_voice and not plain,
         dynamic_emphasis=args.dynamic_emphasis and not plain,

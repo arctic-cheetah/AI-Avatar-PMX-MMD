@@ -68,9 +68,9 @@ runs. Listen for word endings, pronunciation, breath artifacts and voice identit
 
 ## Expressive voice defaults
 
-Everything below that was approved by listening (#29, #84) is **on by default**:
+Everything below that was approved by listening (#29, #83, #84) is **on by default**:
 mood prosody (§2b), punctuation cadence (§2c), emphasis (§2d), interjection
-contours and word lifts (§2e), and quote voice (§2f). Turn a part off with its `--no-…` flag (for
+contours and word lifts (§2e), quote voice (§2f) and dynamic emphasis (§2g). Turn a part off with its `--no-…` flag (for
 example `--no-word-lifts`), or all of them with `--plain-voice`, e.g. to A/B
 against the plain Kokoro → RVC voice. Emphasis, contours and lifts only act
 with `--tts kokoro`.
@@ -133,7 +133,7 @@ the tag's weight (0–1) and clamped so back-to-back clips do not sound stitched
 | --- | --- | ---: | ---: | ---: |
 | Energetic | excited, joyful, happy, grin, cocky, smug, mischievous, hopeful | ×1.05 | ×0.7 | +1 |
 | Reflective | thinking, skeptical, confused, suspicious, serious, worried, nervous, troubled | ×0.95 | ×1.4 | 0 |
-| Low | sad, sad-v2, sad-sceptical, sleepy, disappointed, cry, sulky | ×0.92 | ×1.4 | −1 |
+| Low | sad, sorrowful, rueful, sleepy, disappointed, cry, sulky | ×0.92 | ×1.4 | −1 |
 | Unchanged | every other mood (neutral, soft-smile, tender, angry, surprised, …) | ×1 | ×1 | 0 |
 
 - Speed and clause pause multiply `--kokoro-speed` and `--kokoro-clause-pause`;
@@ -279,7 +279,10 @@ of word get a smaller rise-fall bump of `--word-lift-bend` semitones (default
 
 - terms of endearment used to address someone, i.e. followed by punctuation:
   "Thank you, *sweetheart*!", "Hi *honey*, …", "Oh, my *love*." ("I love it"
-  and "honey cake" are left alone);
+  and "honey cake" are left alone). These get their own, higher lift of
+  `--endearment-bend` semitones (default 8, ±12): at 4 st "sweetheart!" still
+  sounded a bit down, and of 4, 6 and 8 st, 8 sounded best (listened 9 Nov
+  2026, #83);
 - the word right before `!`: "We did *it*!".
 
 - the word right before `?` gets a **rise** instead of a rise-fall: Kokoro
@@ -333,11 +336,12 @@ model takes one speed per sentence, but a patched copy can take one per token
 
 Some words carry meaning in their delivery: a contrastive "**buuut**" said
 deeper and drawn out, or a sarcastic "suuure". With `--dynamic-emphasis`
-(Kokoro only, off until auditioned; `--plain-voice` turns it off):
+(Kokoro only; on by default since the drawn-out drawls were approved by
+listening on 9 Nov 2026; `--no-dynamic-emphasis` or `--plain-voice` turns it off):
 
 - **Drawl (deeper and longer):** a sentence-opening *But / Well / So / Now /
   Okay*; the attitude words *sure, really, right, totally, obviously* when
-  the mood is skeptical, suspicious, unimpressed, sad-sceptical, annoyed,
+  the mood is skeptical, suspicious, unimpressed, rueful, annoyed,
   sulky, pout or smug; and `*word*` marks in those moods. The word keeps
   Kokoro's own phonemes and gets a slightly deeper tone, a `--drawl-bend` dip
   (default −2 st, ±12). Kokoro draws its stressed vowel out itself with
@@ -346,6 +350,40 @@ deeper and drawn out, or a sarcastic "suuure". With `--dynamic-emphasis`
   repeats pitch periods instead, and is only used when the stretch is off.
 - **Bright emphasis:** a `*word*` mark in any other mood also gets the word
   lift (`--word-lift-bend`), on top of its pause.
+
+**Word-delivery list:** the families of words are rows of `DELIVERIES` in
+`controller/speech.py`, so a new family is a row plus a test, not new code.
+Each `Delivery` gives:
+
+| Field | Meaning | Drawl rows |
+| --- | --- | --- |
+| `family` | name reported in metrics | `drawl` |
+| `words` | the words (lower case, without punctuation) | `DRAWL_OPENERS`, `ATTITUDE_WORDS` |
+| `moods` | moods it applies in (`None`: any) | any; `SKEPTICAL_MOODS` |
+| `opener_only` | only as the sentence's first word | yes; no |
+| `standalone` | only when said on its own: followed by `?`, `!`, `,`, `…`, `;` or `:`, or an elongated spelling (a sentence-opening "What do you…" is a question word, not surprise) | no |
+| `bend` | the `ApplioSettings` field with its semitones | `drawl_bend` |
+| `peak` | where the bend peaks (`None`: the default rise-fall) | `None` |
+| `stretch` | Kokoro draws its stressed sound out (`--drawl-stretch`) | yes |
+
+The first row that matches a word wins.
+
+| Family | Words | Moods | Delivery |
+| --- | --- | --- | --- |
+| drawl | but, well, so, now, okay (first word) | any | `--drawl-bend` dip (default −2 st), drawn out |
+| drawl | sure, really, right, totally, obviously | skeptical moods | `--drawl-bend` dip (default −2 st), drawn out |
+| surprise | what, really, seriously, wow, whoa, said on their own | surprised, shocked, gasp, excited, wtf-dude | rise peaking at 70 % (`--surprise-bend`, default 5 st, ±12), drawn out |
+
+A surprised word that ends a question keeps the question's own rise
+(`--question-rise-bend`) and is only drawn out, so "Really?" is not given two
+bends. The surprise row is `standalone`, so intensifier "really" ("I'm really
+happy!") and relative "what" ("I don't know what to say") are left alone (#123
+review). A word gets one bend: a surprise word is taken out of the lifts, even
+when it is marked `*Really*` or ends with `!`. Rows other than drawls are
+reported as `delivered` in clip metrics, counting each row word that was bent
+or drawn out.
+Listening (9 Nov 2026): "whaaat" and "wooow" sounded great; "really" sounded
+like "reality" until only its stressed vowel was stretched (§2h).
 
 **Stress-mark check (#83 scope 3):** on ordinary words, Kokoro's marks change
 length, not loudness:
@@ -479,8 +517,11 @@ needs both halves slowed.
    durations as the stock model.
 2. **Request field** `stretch: [[word index, seconds], …]` (at most 4 words,
    seconds 0–0.125 per sound). `stretch_sounds()` picks the stressed vowel (both
-   halves of a diphthong, any `ː`) and a consonant you can hold right after it
-   (l, m, n, r, s, sh…).
+   halves of a real diphthong such as `oʊ`, `aɪ`, `eɪ`, `aʊ`, `ɔɪ`, and any `ː`)
+   and a consonant you can hold (l, m, n, r, s, sh…) only when it ends the word
+   ("wellll", "suuure"). Listening heard "really" drawn out over `i`, `ə` and
+   `l` as "reality" (9 Nov 2026): the `l` starts the next syllable, so only the
+   `i` is stretched now.
 3. **Two passes:** the sentence is synthesised once as usual. Kokoro's frames
    for those sounds give each one a speed of frames ÷ target, so it reaches
    the target and no more than 5 frames, and is never sped up. The target is
@@ -502,6 +543,46 @@ needs both halves slowed.
   --text "But I really did try." --text "Sure, that works." \
   --output-dir assets/private/speech/kokoro-audition/issue-83-stretch
 ```
+
+### Elongated spellings
+
+An LLM writes drawn-out words as spellings ("whaaat", "sooo", "suuure"), and
+espeak reads them letter by letter, so listening heard "whaaat" as "whyat"
+(9 Nov 2026):
+
+| Written | espeak | Heard |
+| --- | --- | --- |
+| whaaat | `wˈæææt` | "whyat" |
+| sooo | `sˈuːoʊ` | "soo-oh" |
+| suuure | `sˈuːjʊɹ` | "soo-yur" |
+| wellll | `wˈɛləl` | "wel-ul" |
+
+With `--tts kokoro`, `unstretch_spellings()` turns an elongated spelling back
+into the real word, before phonemes and lip sync. Each repeated-letter run is
+tried as 1, 2 or 3 letters (at most four runs), and the longest candidate found
+in a lexicon wins:
+
+- **The lexicon** is the system word list (`/usr/share/dict/words`, from
+  Debian/Ubuntu's `wamerican`) plus a few spoken words it lacks (`hmm`, `mmm`,
+  `shh`, `umm`, `yay`…). Without that file, a small built-in list is used.
+- **Results:** sorrrry → sorry, reallly → really, whaaatt → what, coooool →
+  cool (not "col"), tooo → too, hmmmm → hmm, mmmm → mmm, SOooo → So.
+- **Two-letter runs** are only shortened when the word as written is not a word
+  (soo → so, whaat → what), so "too", "see" and "good" stay as they are.
+- **Left alone:** a candidate needs a vowel unless it is one of those spoken
+  words, so "brrr" and "grrr" keep their spelling ("pssst" becomes "psst").
+  Tokens with `.`, `/` or `@` (addresses, handles) and interjections
+  ("Awww", "Ooh", "ohhh", §2e) are left alone too.
+
+Case, punctuation and the word count are kept. With dynamic emphasis on, the
+word is then drawn out by Kokoro like a drawl, but without the drawl's dip.
+Three or more letters get the full `--drawl-stretch`, and two letters get 60 %
+of it (whaat 75 ms, whaaat 125 ms). The stretch cannot grow past that, because
+125 ms is the most one sound may take (§2h). With `--no-dynamic-emphasis` the
+real word is spoken at its normal length. When a line has more than four
+drawn-out words, drawls come first. Edge reads the spellings itself, so they
+are left alone.
+Listening (9 Nov 2026): the elongated words sounded very good.
 
 Next, in small batches: a word-delivery list (surprise "whaaat?", affection
 "sooo", hesitation "hmmm") and a quotation pace (§2f).

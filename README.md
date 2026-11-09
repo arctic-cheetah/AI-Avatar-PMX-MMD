@@ -164,15 +164,35 @@ The transcript shows up as your chat bubble and goes down the same `{"type":"sta
 
    This creates `.venv-kokoro` and downloads the Kokoro model and voices into `models/kokoro/`. After setup, Kokoro synthesis runs locally and does not send speech text online.
 3. **Check Applio:** it should be installed next to this repository at `../Applio`, with `.venv/bin/python` and the voice model under `logs/Yidhari-zzz/`. For GPU conversion, follow [docs/setup.md](docs/setup.md): **AMD ROCm** uses the separate `../Applio-rocm` install (`--applio-dir ../Applio-rocm`), while **NVIDIA CUDA** uses the standard `../Applio` install.
-4. **Start the bridge with Kokoro speech (recommended default command):**
+4. **Choose the Applio RVC device and start the bridge with Kokoro speech:**
+
+   **AMD ROCm GPU:** use the ROCm Applio environment and require a usable GPU:
 
    ```bash
    .venv/bin/python controller/bridge.py --mode llm --speech \
      --tts kokoro --kokoro-voice af_heart:0.7,af_bella:0.3 --kokoro-speed 1.0 --kokoro-threads 2 \
-     --applio-dir "../Applio-rocm"
+     --applio-dir "../Applio-rocm" --rvc-device gpu
    ```
 
-   If you do not have `../Applio-rocm`, omit `--applio-dir` to use the CPU Applio install at `../Applio` (and optionally add `--rvc-threads 4`). Wait for `Applio worker ready…`, then chat as usual. She speaks each sentence as soon as it is ready, with her mouth following the audio.
+   **CPU:** force CPU conversion using the same Applio environment and voice model:
+
+   ```bash
+   .venv/bin/python controller/bridge.py --mode llm --speech \
+     --tts kokoro --kokoro-voice af_heart:0.7,af_bella:0.3 --kokoro-speed 1.0 --kokoro-threads 2 \
+     --applio-dir "../Applio-rocm" --rvc-device cpu
+   ```
+
+   Add `--agent` to either command for MCP/agent speech. For the standard
+   `../Applio` install, omit `--applio-dir`; keep `--rvc-device cpu` to force CPU,
+   or use `--rvc-device gpu` with a working CUDA environment. Optionally add
+   `--rvc-threads 4` for CPU conversion.
+
+   `--rvc-device auto` is the default when the flag is omitted: use a visible
+   GPU, otherwise CPU. Explicit `gpu` stops at startup if no GPU is available.
+   These flags select **Applio RVC only**; Kokoro source TTS still runs on CPU.
+   Wait for `Applio worker ready on GPU (rocm …)` or `Applio worker ready on CPU`,
+   then chat as usual. She speaks each sentence as soon as it is ready, with her
+   mouth following the audio.
 5. **Edge fallback (optional):** to compare against the online Edge source instead, start with `--tts edge`:
 
    ```bash

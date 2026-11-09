@@ -121,6 +121,9 @@ class ApplioSettings:
     kokoro_speed: float = 1.0
     kokoro_clause_pause: float = 0.25  # seconds at commas etc., inside one sentence
     kokoro_threads: int = 2
+    kokoro_device: str = "cpu"
+    kokoro_backend: str = "auto"
+    kokoro_python: Path | None = None
     sentence_tail: float = 0.4  # silence kept after a sentence: the gap between clips
     fragment_tail: float = FRAGMENT_TAIL_KEEP  # after a mood-tag fragment
     mood_prosody: bool = True  # mood tags also nudge speed, pauses and RVC pitch (#29)
@@ -148,6 +151,8 @@ class ApplioSettings:
 
     def __post_init__(self) -> None:
         self.applio_dir = Path(self.applio_dir).expanduser()
+        if self.kokoro_python is not None:
+            self.kokoro_python = Path(self.kokoro_python).expanduser()
         if self.pth is None:
             self.pth = self.applio_dir / DEFAULT_MODEL
         if self.index is None:
@@ -178,6 +183,9 @@ class ApplioSettings:
             raise ValueError("TTS provider must be edge or kokoro.")
         if self.rvc_device not in ("auto", "gpu", "cpu"):
             raise ValueError("RVC device must be auto, gpu or cpu.")
+        if self.tts_provider == "kokoro":
+            from controller.kokoro_runtime import validate_selection
+            validate_selection(self.kokoro_device, self.kokoro_backend)
         if self.rvc_threads < 0:
             raise ValueError("RVC threads must be nonnegative.")
         for name in ("sentence_tail", "fragment_tail", "ellipsis_tail", "exclaim_tail", "question_tail"):
@@ -217,14 +225,15 @@ class ApplioSettings:
                 self.kokoro_threads,
                 self.kokoro_clause_pause,
             )
-            for path in (
-                ROOT / ".venv-kokoro/bin/python",
-                MODEL_DIR / "kokoro-v1.0.onnx",
-                MODEL_DIR / "voices-v1.0.bin",
-            ):
+            from controller.kokoro_runtime import choose_python
+            paths = [choose_python(ROOT, self.kokoro_device, self.kokoro_backend, self.kokoro_python),
+                     MODEL_DIR / "voices-v1.0.bin"]
+            if self.kokoro_backend != "native" and self.kokoro_device != "gpu":
+                paths.append(MODEL_DIR / "kokoro-v1.0.onnx")
+            for path in paths:
                 if not path.is_file():
                     raise FileNotFoundError(
-                        f"Kokoro file not found: {path}; run python3 -m controller.setup_kokoro"
+                        f"Kokoro file not found: {path}; see docs/kokoro-native-worker.md for setup"
                     )
         for path in (
             self.applio_dir / ".venv" / "bin" / "python",
@@ -555,15 +564,18 @@ class ApplioWorker:
         command: list[str] | None = None,
         log_path: Path = WORKER_LOG,
         cwd: Path | None = None,
+        name: str = "Applio",
     ):
         self.settings = settings
+        self.name = name
         self.cwd = cwd or settings.applio_dir
         self.kokoro = None
         if command is None and settings.tts_provider == "kokoro":
+            from controller.kokoro_runtime import choose_python
             self.kokoro = ApplioWorker(
                 settings,
                 command=[
-                    str(ROOT / ".venv-kokoro/bin/python"),
+                    str(choose_python(ROOT, settings.kokoro_device, settings.kokoro_backend, settings.kokoro_python)),
                     "-m",
                     "controller.kokoro_worker",
                     "--worker",
@@ -575,7 +587,10 @@ class ApplioWorker:
                     str(settings.kokoro_clause_pause),
                     "--threads",
                     str(settings.kokoro_threads),
+                    "--device", settings.kokoro_device,
+                    "--backend", settings.kokoro_backend,
                 ],
+                name="Kokoro",
                 log_path=WORKER_LOG.with_name("kokoro-worker.log"),
                 cwd=ROOT,
             )
@@ -630,8 +645,8 @@ class ApplioWorker:
                 await self.close()
                 reason = message.get("error") if isinstance(message, dict) else None
                 raise RuntimeError(
-                    f"Applio worker failed to start: {reason}; see {self.log_path}"
-                    if reason else f"Applio worker failed to start; see {self.log_path}"
+                    f"{self.name} worker failed to start: {reason}; see {self.log_path}"
+                    if reason else f"{self.name} worker failed to start; see {self.log_path}"
                 )
             self.ready, self.pending = message, {}
             self.reader = asyncio.create_task(self._read(self.process, self.pending))
@@ -643,14 +658,14 @@ class ApplioWorker:
                 message = json.loads(line)
                 future = pending.pop(message.get("id"), None)
             except (ValueError, AttributeError):
-                LOG.warning("Dropped invalid Applio worker line")
+                LOG.warning("Dropped invalid %s worker line", self.name)
                 continue
             if future is not None and not future.done():
                 future.set_result(message)
         for future in pending.values():
             if not future.done():
                 future.set_exception(
-                    RuntimeError(f"Applio worker exited; see {self.log_path}")
+                    RuntimeError(f"{self.name} worker exited; see {self.log_path}")
                 )
         pending.clear()
 
@@ -782,7 +797,7 @@ class ApplioWorker:
         await self.process.stdin.drain()
         message = await future
         if not message.get("ok"):
-            raise RuntimeError(f"Applio worker: {message.get('error')}")
+            raise RuntimeError(f"{self.name} worker: {message.get('error')}")
         if source_metrics is not None:
             message.pop("edgeSeconds", None)
             message.pop("edgeRetries", None)

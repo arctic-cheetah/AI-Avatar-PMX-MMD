@@ -953,6 +953,10 @@ async def run(args):
             "Applio worker ready" + (" " if summary.startswith("on ") else ": ") + summary,
             flush=True,
         )
+        kokoro = getattr(args.speech_worker, "kokoro", None)
+        if kokoro is not None and isinstance(kokoro.ready, dict):
+            from controller.kokoro_runtime import ready_summary as kokoro_summary
+            print("Kokoro worker ready " + kokoro_summary(kokoro.ready), flush=True)
         if args.thinking_filler:
             from controller.filler import prepare_filler
 
@@ -1108,6 +1112,9 @@ def build_parser():
         help="Seconds Kokoro pauses at commas and other clause breaks (0-0.5).",
     )
     parser.add_argument("--kokoro-threads", type=int, default=2)
+    parser.add_argument("--kokoro-device", choices=("cpu", "gpu", "auto"), default="cpu")
+    parser.add_argument("--kokoro-backend", choices=("auto", "onnx", "native"), default="auto")
+    parser.add_argument("--kokoro-python", type=Path, help="Override the Kokoro worker interpreter")
     parser.add_argument(
         "--sentence-tail",
         type=float,
@@ -1284,6 +1291,9 @@ def speech_settings(args):
         kokoro_speed=args.kokoro_speed,
         kokoro_clause_pause=args.kokoro_clause_pause,
         kokoro_threads=args.kokoro_threads,
+        kokoro_device=args.kokoro_device,
+        kokoro_backend=args.kokoro_backend,
+        kokoro_python=args.kokoro_python,
         sentence_tail=args.sentence_tail,
         fragment_tail=args.fragment_tail,
         mood_prosody=args.mood_prosody and not plain,

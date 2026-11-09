@@ -1,0 +1,10 @@
+# Install with the ROCm 7.2 wheel index; independent of the CPU/Applio environments.
+torch==2.11.0+rocm7.2
+kokoro==0.9.4
+misaki==0.9.4
+transformers==5.13.1
+kokoro-onnx==0.6.1
+onnxruntime==1.31.1
+numpy==2.5.4
+soundfile==0.13.1
+onnx==1.23.2

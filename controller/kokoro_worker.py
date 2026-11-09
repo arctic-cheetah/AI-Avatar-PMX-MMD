@@ -1,4 +1,4 @@
-"""CPU Kokoro synthesis, either a standalone WAV audition or a JSON-line worker."""
+"""Kokoro synthesis with CPU ONNX or an optional native ROCm JSON-line worker."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import json
 import math
 from pathlib import Path
 import re
+import sys
 import tempfile
 import threading
 import time
@@ -467,33 +468,55 @@ def validate_settings(voice: str, speed: float, threads: int, clause_pause: floa
 
 class Synthesizer:
     def __init__(self, voice: str = 'af_heart:0.7,af_bella:0.3', speed: float = 1.0, threads: int = 2,
-                 clause_pause: float = 0.25):
+                 clause_pause: float = 0.25, *, device: str = 'cpu', backend: str = 'auto'):
         validate_settings(voice, speed, threads, clause_pause)
         import onnxruntime
         from kokoro_onnx import Kokoro
         import soundfile
 
-        onnxruntime.disable_telemetry_events()
-        options = onnxruntime.SessionOptions()
-        options.intra_op_num_threads = threads
-        options.inter_op_num_threads = 1
-        options.add_session_config_entry('session.intra_op.allow_spinning', '0')
-        options.add_session_config_entry('session.inter_op.allow_spinning', '0')
-        # The per-token copy gives the same durations for one speed, so it serves every sentence.
-        path = PER_TOKEN_MODEL if PER_TOKEN_MODEL.is_file() else MODEL_DIR / 'kokoro-v1.0.onnx'
-        session = onnxruntime.InferenceSession(
-            str(path), sess_options=options, providers=['CPUExecutionProvider'])
-        self.model = Kokoro.from_session(session, str(MODEL_DIR / 'voices-v1.0.bin'))
-        self.plan = None
-        self.token_speeds = (per_token_session(session) and self.model.has_timings
-                             and install_token_speeds(self.model, lambda: self.plan))
-        parts = parse_voice(voice)
-        for name, _ in parts:
-            if name not in self.model.voices:
-                raise ValueError(f'Unknown Kokoro voice: {name}; use --list-voices.')
-        # Mixed once here, so a blend costs nothing per sentence.
-        self.style = blend_style(parts, self.model.get_voice_style)
-        self.voice, self.speed, self.clause_pause, self.soundfile = voice, speed, clause_pause, soundfile
+        from controller.kokoro_runtime import select_session
+
+        def onnx_session():
+            onnxruntime.disable_telemetry_events()
+            options = onnxruntime.SessionOptions()
+            options.intra_op_num_threads = threads
+            options.inter_op_num_threads = 1
+            options.add_session_config_entry('session.intra_op.allow_spinning', '0')
+            options.add_session_config_entry('session.inter_op.allow_spinning', '0')
+            path = PER_TOKEN_MODEL if PER_TOKEN_MODEL.is_file() else MODEL_DIR / 'kokoro-v1.0.onnx'
+            session = onnxruntime.InferenceSession(
+                str(path), sess_options=options, providers=['CPUExecutionProvider'])
+            return session, {'device': 'cpu', 'backend': 'onnx', 'provider': 'CPUExecutionProvider',
+                             'onnxruntime': onnxruntime.__version__, 'model': path.name}
+
+        def native_session(selected):
+            from controller.kokoro_native import load_session
+            session = load_session(selected, threads)
+            return session, session.runtime
+
+        session, self.runtime = select_session(device, backend, onnx_session, native_session)
+        self.session = session
+        try:
+            self.model = Kokoro.from_session(session, str(MODEL_DIR / 'voices-v1.0.bin'))
+            self.plan = None
+            self.token_speeds = (per_token_session(session) and self.model.has_timings
+                                 and install_token_speeds(self.model, lambda: self.plan))
+            parts = parse_voice(voice)
+            for name, _ in parts:
+                if name not in self.model.voices:
+                    raise ValueError(f'Unknown Kokoro voice: {name}; use --list-voices.')
+            # Mixed once here, so a blend costs nothing per sentence.
+            self.style = blend_style(parts, self.model.get_voice_style)
+            self.voice, self.speed, self.clause_pause, self.soundfile = voice, speed, clause_pause, soundfile
+        except Exception:
+            self.close()
+            raise
+
+    def close(self):
+        if hasattr(self.session, 'close'):
+            self.session.close()
+        self.session = None
+        self.model = None
 
     def synthesize(self, text: str, path: str, speed: float | None = None,
                    clause_pause: float | None = None, emphasis: list[int] | None = None,
@@ -667,34 +690,49 @@ def main() -> None:
     parser.add_argument('--clause-pause', type=float, default=0.25)
     parser.add_argument('--threads', type=int, default=2)
     parser.add_argument('--list-voices', action='store_true')
+    parser.add_argument('--device', choices=('cpu', 'gpu', 'auto'), default='cpu')
+    parser.add_argument('--backend', choices=('auto', 'onnx', 'native'), default='auto')
     args = parser.parse_args()
     replies = protocol_stream() if args.worker else None
-    started = time.perf_counter()
-    synthesizer = Synthesizer(args.voice, args.speed, args.threads, args.clause_pause)
-    load_seconds = time.perf_counter() - started
-    if args.list_voices:
-        print('\n'.join(sorted(name for name in synthesizer.model.voices if name.startswith(('a', 'b')))))
-        return
-    if not args.worker:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        metrics = synthesizer.synthesize(args.text, str(args.output))
-        print(json.dumps({'output': str(args.output.resolve()), 'loadSeconds': round(load_seconds, 3),
-                          **metrics}, indent=2))
-        return
+    from controller.kokoro_runtime import prepare_synthesizer
+    synthesizer = None
+    try:
+        if args.list_voices:
+            synthesizer = Synthesizer(args.voice, args.speed, args.threads, args.clause_pause,
+                                      device=args.device, backend=args.backend)
+            print('\n'.join(sorted(name for name in synthesizer.model.voices if name.startswith(('a', 'b')))))
+            return
+        synthesizer, ready = prepare_synthesizer(
+            Synthesizer, device=args.device, backend=args.backend, voice=args.voice,
+            speed=args.speed, threads=args.threads, clause_pause=args.clause_pause)
+        if not args.worker:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            metrics = synthesizer.synthesize(args.text, str(args.output))
+            print(json.dumps({'output': str(args.output.resolve()), **ready, **metrics}, indent=2))
+            return
 
-    def reply(message):
-        replies.write(json.dumps(message) + '\n')
+        def reply(message):
+            replies.write(json.dumps(message) + '\n')
+            replies.flush()
 
-    with tempfile.TemporaryDirectory() as scratch:
-        warm = synthesizer.synthesize('Hello, I am ready.', str(Path(scratch) / 'warm.wav'))
-    reply({'ready': True, 'loadSeconds': round(load_seconds, 3), 'warmSeconds': warm['ttsSeconds']})
+        reply(ready)
 
-    async def run():
-        lines = asyncio.Queue()
-        threading.Thread(target=read_stdin, args=(asyncio.get_running_loop(), lines), daemon=True).start()
-        await serve(lines, synthesizer.synthesize, reply)
+        async def run():
+            lines = asyncio.Queue()
+            threading.Thread(target=read_stdin, args=(asyncio.get_running_loop(), lines), daemon=True).start()
+            await serve(lines, synthesizer.synthesize, reply)
 
-    asyncio.run(run())
+        asyncio.run(run())
+    except Exception as error:
+        if replies:
+            replies.write(json.dumps({'ready': False, 'error': f'Kokoro: {type(error).__name__}: {error}'}) + '\n')
+            replies.flush()
+        else:
+            print(f'Kokoro: {error}', file=sys.stderr)
+        raise SystemExit(1) from error
+    finally:
+        if synthesizer is not None:
+            synthesizer.close()
 
 
 if __name__ == '__main__':

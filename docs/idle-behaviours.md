@@ -92,6 +92,12 @@ when she leaves idle mid-motion, the pose eases back instead of snapping.
 - The tilt, sigh and stretch are small rotations multiplied on top of the
   rest pose: the tilt on the head after gaze, the rest on the sway layer. They
   never replace another layer's pose.
+- Bone signs were checked on the model with exaggerated angles (15–20°):
+  negative pitch tips the spine and head back, and a shrug is `左肩` negative
+  and `右肩` positive roll.
+- For previews and comparison grids, `globalThis.__yidhariIdlePose = { tilt, chest,
+  shoulders, back, headPitch, glance }` holds a pose (radians, normalised
+  glance) until it is set back to `null`.
 - Nothing plays while she is active, sleepy or waking, so the blocking rules
   above cover motions too.
 - The first motion waits a full gap after idle begins, and each new idle

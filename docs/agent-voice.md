@@ -39,6 +39,19 @@ Coding agent ──MCP stdio──► controller/mcp_server.py
 The MCP server opens no network port. The bridge opens no new TCP listener:
 the agent socket is a Unix domain socket that only your user can open.
 
+### Windows
+
+Windows has no AF_UNIX, so the agent channel is a **loopback TCP listener**
+instead. The "socket path" is a private directory (default
+`%LOCALAPPDATA%\yidhari`) that holds two files written by the bridge on
+startup: `agent.port` (the listener's ephemeral port on `127.0.0.1`) and
+`agent.token` (a random 64-hex bearer token). Every request must carry the
+token; only the owning user can read it, which preserves the same
+same-user-only boundary the Unix socket's `0700` directory gave. The token is
+regenerated each run, so a stale port file from a crashed bridge cannot be
+reused. On Windows the directory is not removed on shutdown — only the port
+and token files inside it are cleaned up.
+
 ## Quick start
 
 1. Install the requirements in the project venv (adds the `mcp` SDK):

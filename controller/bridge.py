@@ -1017,7 +1017,12 @@ async def run(args):
         if agent_server is not None:
             agent_server.close()
             await agent_server.wait_closed()
-            args.agent_socket.unlink(missing_ok=True)
+            if os.name == "nt":
+                # The socket path is a directory holding port/token files.
+                for name in ("agent.port", "agent.token"):
+                    (args.agent_socket / name).unlink(missing_ok=True)
+            else:
+                args.agent_socket.unlink(missing_ok=True)
         if args.speech_worker is not None:
             await args.speech_worker.close()
 
@@ -1253,13 +1258,13 @@ def build_parser():
     parser.add_argument(
         "--agent",
         action="store_true",
-        help="Let a coding agent speak through Yidhari via controller/mcp_server.py (owner-only Unix socket).",
+        help="Let a coding agent speak through Yidhari via controller/mcp_server.py (owner-only Unix socket; token-authenticated loopback TCP on Windows).",
     )
     parser.add_argument(
         "--agent-socket",
         type=Path,
         default=None,
-        help="Agent socket path (default: $XDG_RUNTIME_DIR/yidhari/agent.sock).",
+        help="Agent socket path (default: $XDG_RUNTIME_DIR/yidhari/agent.sock; %%LOCALAPPDATA%%\\yidhari on Windows).",
     )
     return parser
 

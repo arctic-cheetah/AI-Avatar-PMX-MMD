@@ -23,6 +23,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from controller import applio_python, venv_python
 from controller.kokoro_worker import AWW_WORD, MAX_EMPHASIS, MAX_SPANS, WORD_EDGES as AWW_EDGES
 from controller.prosody import Prosody, combine, prosody_for, punctuation_prosody
 from controller.speech_align import align
@@ -202,7 +203,7 @@ class ApplioSettings:
                 self.kokoro_clause_pause,
             )
             for path in (
-                ROOT / ".venv-kokoro/bin/python",
+                venv_python(ROOT / ".venv-kokoro"),
                 MODEL_DIR / "kokoro-v1.0.onnx",
                 MODEL_DIR / "voices-v1.0.bin",
             ):
@@ -211,7 +212,7 @@ class ApplioSettings:
                         f"Kokoro file not found: {path}; run python3 -m controller.setup_kokoro"
                     )
         for path in (
-            self.applio_dir / ".venv" / "bin" / "python",
+            applio_python(self.applio_dir),
             WORKER_SCRIPT,
             self.pth,
             self.index,
@@ -547,7 +548,7 @@ class ApplioWorker:
             self.kokoro = ApplioWorker(
                 settings,
                 command=[
-                    str(ROOT / ".venv-kokoro/bin/python"),
+                    str(venv_python(ROOT / ".venv-kokoro")),
                     "-m",
                     "controller.kokoro_worker",
                     "--worker",
@@ -564,7 +565,7 @@ class ApplioWorker:
                 cwd=ROOT,
             )
         self.command = command or [
-            str(settings.applio_dir / ".venv" / "bin" / "python"),
+            str(applio_python(settings.applio_dir)),
             str(WORKER_SCRIPT),
             json.dumps(settings.worker_config()),
         ]

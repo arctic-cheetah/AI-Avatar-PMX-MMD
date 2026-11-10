@@ -11,6 +11,8 @@ import sys
 import urllib.request
 import venv
 
+from controller import venv_python
+
 ROOT = Path(__file__).resolve().parents[1]
 MODEL_DIR = ROOT / 'models' / 'kokoro'
 RELEASE = 'https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1'
@@ -78,7 +80,7 @@ def main() -> None:
         raise SystemExit('Setup requires Python 3.11–3.13; Python 3.12 is recommended.')
     environment = ROOT / '.venv-kokoro'
     venv.EnvBuilder(with_pip=True).create(environment)
-    python = environment / 'bin' / 'python'
+    python = venv_python(environment)
     subprocess.run([str(python), '-m', 'pip', 'install', '-r',
                     str(ROOT / 'requirements-kokoro.txt')], check=True)
     MODEL_DIR.mkdir(parents=True, exist_ok=True)

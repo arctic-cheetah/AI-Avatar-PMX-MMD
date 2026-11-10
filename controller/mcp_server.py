@@ -128,7 +128,7 @@ def main():
         "--socket",
         type=Path,
         default=None,
-        help="Bridge agent socket (default: $XDG_RUNTIME_DIR/yidhari/agent.sock).",
+        help="Bridge agent socket (default: $XDG_RUNTIME_DIR/yidhari/agent.sock; %%LOCALAPPDATA%%\\yidhari on Windows).",
     )
     args = parser.parse_args()
     build_server(args.socket or default_socket_path(), args.name).run()

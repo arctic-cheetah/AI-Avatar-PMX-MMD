@@ -1,9 +1,14 @@
-"""Agent voice (#27): a coding agent's tool calls, received on an owner-only Unix socket.
+"""Agent voice (#27): a coding agent's tool calls, received on an owner-only channel.
 
 controller/mcp_server.py forwards each MCP tool call as one JSON line. The
 router validates it and hands it to the speech lane (Stage) of the newest
 renderer connection. Agent text is untrusted: it is capped, stripped of control
 characters, rate limited, and parsed with the same tag allowlist as LLM replies.
+
+The channel is a Unix domain socket on POSIX (dir 0700, same uid only). On
+Windows it is a loopback TCP listener whose port and bearer token live in a
+private directory; the token authenticates every request and only the owning
+user can read it, preserving the same-user-only boundary.
 """
 
 from __future__ import annotations
@@ -44,6 +49,9 @@ MAX_SOURCE = 40  # characters of agent name on chat bubbles
 MAX_QUEUED = 10  # agent items queued or speaking per renderer
 MAX_LINE = 262144  # bytes in one socket request (a 16 KiB report plus JSON escapes)
 MAX_SOCKET_PATH = 107  # bytes; Linux sun_path holds 108 including the final NUL
+# Windows has no AF_UNIX here, so the agent channel there is a loopback TCP
+# listener whose port and auth token live in the same "socket" directory.
+WINDOWS = os.name == "nt"
 MIN_INTERVAL = {
     "say": 1.0,
     "report": 1.0,
@@ -538,8 +546,15 @@ class AgentRouter:
 
 def default_socket_path(environ=None, uid=None, run_root=Path("/run/user")):
     """$XDG_RUNTIME_DIR, else /run/user/<uid> if it is ours (some hosts, such as
-    Claude Desktop, start MCP servers without XDG_RUNTIME_DIR), else /tmp."""
+    Claude Desktop, start MCP servers without XDG_RUNTIME_DIR), else /tmp.
+    On Windows the path is a private directory under %LOCALAPPDATA% (or the
+    temp dir) that holds the loopback listener's port and token files."""
     environ = os.environ if environ is None else environ
+    if WINDOWS:
+        base = environ.get("LOCALAPPDATA")
+        if base:
+            return Path(base) / "yidhari"
+        return Path(tempfile.gettempdir()) / "yidhari"
     uid = os.getuid() if uid is None else uid
     runtime = environ.get("XDG_RUNTIME_DIR")
     if runtime:
@@ -555,8 +570,20 @@ def default_socket_path(environ=None, uid=None, run_root=Path("/run/user")):
 
 
 def prepare_socket_dir(path):
-    """Create the socket's directory (0700, ours, not a symlink); clear a stale socket."""
+    """Create the socket's directory (0700, ours, not a symlink); clear a stale socket.
+    On Windows ``path`` is itself the directory holding the listener's port and
+    token files; %LOCALAPPDATA% is already per-user, so no mode checks apply."""
     path = Path(path)
+    if WINDOWS:
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+        except OSError as error:
+            raise AgentError(
+                f"Cannot create agent socket directory {path}: {error}"
+            ) from None
+        if not path.is_dir() or path.is_symlink():
+            raise AgentError(f"Agent socket path {path} is not a real directory")
+        return
     if len(os.fsencode(path)) > MAX_SOCKET_PATH:
         raise AgentError(
             f"Agent socket path is longer than {MAX_SOCKET_PATH} bytes: {path}"
@@ -605,9 +632,14 @@ def _peer_uid(writer):
 
 
 async def serve(path, router):
-    """Listen on the agent socket; one JSON request and one JSON reply per connection."""
+    """Listen on the agent socket; one JSON request and one JSON reply per connection.
+    On Windows this is a loopback TCP listener whose port and bearer token are
+    written into ``path`` (the socket directory); each request must carry the
+    token, which only the owning user can read."""
     path = Path(path)
     prepare_socket_dir(path)
+    if WINDOWS:
+        return await _serve_windows(path, router)
 
     async def client(reader, writer):
         try:
@@ -637,8 +669,46 @@ async def serve(path, router):
     return server
 
 
+async def _serve_windows(path, router):
+    """Loopback TCP variant of serve() for hosts without AF_UNIX.
+
+    ``path`` is the socket directory; ``agent.port`` and ``agent.token`` inside
+    it identify and authenticate the listener. The token is generated fresh on
+    each start, so a leftover port file from a crashed bridge cannot be reused.
+    """
+    token = secrets.token_hex(32)
+
+    async def client(reader, writer):
+        try:
+            try:
+                line = await asyncio.wait_for(reader.readline(), 10)
+                request = json.loads(line)
+            except (ValueError, asyncio.LimitOverrunError, asyncio.TimeoutError):
+                result = "error: request must be one JSON line"
+            else:
+                if request.get("token") != token:
+                    result = "error: missing or wrong agent token"
+                else:
+                    result = await router.handle(request)
+            writer.write(json.dumps({"result": result}).encode() + b"\n")
+            await writer.drain()
+        except (ConnectionError, OSError):
+            pass
+        finally:
+            writer.close()
+
+    server = await asyncio.start_server(client, "127.0.0.1", 0, limit=MAX_LINE)
+    port = server.sockets[0].getsockname()[1]
+    (path / "agent.port").write_text(f"{port}\n")
+    (path / "agent.token").write_text(token)
+    return server
+
+
 async def call_bridge(path, request, timeout=10.0):
     """Send one tool call to the bridge; return its result text."""
+    path = Path(path)
+    if WINDOWS:
+        return await _call_bridge_windows(path, request, timeout)
     try:
         reader, writer = await asyncio.wait_for(
             asyncio.open_unix_connection(path), timeout
@@ -650,6 +720,40 @@ async def call_bridge(path, request, timeout=10.0):
     except OSError as error:
         return f"error: cannot reach the bridge socket ({error.strerror or error})"
     try:
+        writer.write(json.dumps(request, ensure_ascii=False).encode() + b"\n")
+        await writer.drain()
+        line = await asyncio.wait_for(reader.readline(), timeout)
+        reply = json.loads(line)
+        result = reply.get("result") if isinstance(reply, dict) else None
+        return result if isinstance(result, str) else "error: invalid bridge reply"
+    except asyncio.TimeoutError:
+        return "bridge not responding"
+    except (ValueError, ConnectionError):
+        return "error: invalid bridge reply"
+    finally:
+        writer.close()
+
+
+async def _call_bridge_windows(path, request, timeout=10.0):
+    """TCP client variant of call_bridge() for hosts without AF_UNIX.
+
+    Reads ``agent.port``/``agent.token`` from the socket directory and attaches
+    the token to the request so the listener can authenticate this user."""
+    try:
+        port = int((path / "agent.port").read_text().strip())
+        token = (path / "agent.token").read_text().strip()
+    except (OSError, ValueError):
+        return "bridge not running"
+    try:
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection("127.0.0.1", port), timeout
+        )
+    except asyncio.TimeoutError:
+        return "bridge not responding"
+    except OSError:
+        return "bridge not running"
+    try:
+        request = dict(request, token=token)
         writer.write(json.dumps(request, ensure_ascii=False).encode() + b"\n")
         await writer.drain()
         line = await asyncio.wait_for(reader.readline(), timeout)

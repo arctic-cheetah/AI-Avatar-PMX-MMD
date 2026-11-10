@@ -18,6 +18,8 @@ import subprocess
 import tempfile
 import threading
 
+from controller import venv_python
+
 ROOT = Path(__file__).resolve().parents[1]
 WORK_DIR = ROOT / "assets" / "private" / "stt"
 MAX_UPLOAD = 2 * 1024 * 1024  # ~8 minutes of 32 kbit/s Opus; the renderer stops at 30 s
@@ -57,7 +59,7 @@ class SttWorker:
                  work_dir: Path = WORK_DIR, timeout: float = 30.0, start_timeout: float = 120.0,
                  prompt: str | None = None):
         self.command = command or [
-            str(ROOT / ".venv-stt" / "bin" / "python"), "-m", "controller.stt_worker",
+            str(venv_python(ROOT / ".venv-stt")), "-m", "controller.stt_worker",
             "--worker", "--model", model, "--threads", str(threads),
             *([] if prompt is None else ["--prompt", prompt])]
         self.work_dir, self.timeout, self.start_timeout = work_dir, timeout, start_timeout

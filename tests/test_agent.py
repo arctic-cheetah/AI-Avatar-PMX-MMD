@@ -275,6 +275,7 @@ class SummariserTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("ghp_", self.speech.spoken[0][0][0])
 
 
+@unittest.skipIf(os.name == "nt", "POSIX-only: Unix socket paths, uid and mode checks")
 class SocketPathTests(unittest.TestCase):
     def test_runtime_dir_and_fallback(self):
         self.assertEqual(default_socket_path({"XDG_RUNTIME_DIR": "/run/user/1000"}, 1000),
@@ -330,6 +331,79 @@ class SocketPathTests(unittest.TestCase):
             path.write_text("not a socket")
             with self.assertRaises(AgentError):
                 prepare_socket_dir(path)
+
+
+class WindowsSocketTests(unittest.TestCase):
+    """On Windows the agent channel is a token-authenticated loopback TCP
+    listener; the 'socket path' is a private directory holding port + token."""
+
+    def test_default_socket_path_uses_localappdata(self):
+        with patch("controller.agent.WINDOWS", True):
+            path = default_socket_path({"LOCALAPPDATA": r"C:\Users\me\AppData\Local"})
+            self.assertEqual(path, Path(r"C:\Users\me\AppData\Local") / "yidhari")
+
+    def test_default_socket_path_falls_back_to_temp(self):
+        with patch("controller.agent.WINDOWS", True):
+            path = default_socket_path({})
+            self.assertEqual(path, Path(tempfile.gettempdir()) / "yidhari")
+
+    def test_windows_prepare_dir_no_symlink_no_socket_checks(self):
+        with tempfile.TemporaryDirectory() as root, patch("controller.agent.WINDOWS", True):
+            path = Path(root) / "yidhari"
+            prepare_socket_dir(path)  # creates it
+            self.assertTrue(path.is_dir())
+            prepare_socket_dir(path)  # idempotent
+
+    def test_windows_serve_writes_port_and_token(self):
+        async def run_test():
+            with tempfile.TemporaryDirectory() as root, patch("controller.agent.WINDOWS", True):
+                path = Path(root) / "yidhari"
+                router = AgentRouter(CATALOG)
+                server = await serve(path, router)
+                try:
+                    port = int((path / "agent.port").read_text().strip())
+                    token = (path / "agent.token").read_text().strip()
+                    self.assertGreater(port, 0)
+                    self.assertEqual(len(token), 64)
+                    # a request without the token is refused
+                    reader, writer = await asyncio.open_connection("127.0.0.1", port)
+                    writer.write(b'{"tool":"set_mood","name":"happy"}\n')
+                    await writer.drain()
+                    reply = json.loads(await reader.readline())
+                    writer.close()
+                    self.assertIn("error", reply["result"])
+                finally:
+                    server.close()
+                    await server.wait_closed()
+
+        asyncio.run(run_test())
+
+    def test_windows_call_bridge_roundtrip(self):
+        async def run_test():
+            with tempfile.TemporaryDirectory() as root, patch("controller.agent.WINDOWS", True):
+                path = Path(root) / "yidhari"
+
+                class EchoRouter:
+                    async def handle(self, request):
+                        return f"ok:{request['tool']}"
+
+                server = await serve(path, EchoRouter())
+                try:
+                    result = await call_bridge(path, {"tool": "say", "text": "hi"})
+                    self.assertEqual(result, "ok:say")
+                finally:
+                    server.close()
+                    await server.wait_closed()
+
+        asyncio.run(run_test())
+
+    def test_windows_call_bridge_not_running(self):
+        async def run_test():
+            with tempfile.TemporaryDirectory() as root, patch("controller.agent.WINDOWS", True):
+                path = Path(root) / "yidhari"
+                self.assertEqual(await call_bridge(path, {"tool": "say"}), "bridge not running")
+
+        asyncio.run(run_test())
 
 
 class StageTests(unittest.IsolatedAsyncioTestCase):
@@ -638,6 +712,7 @@ class AgentNotifyTests(unittest.IsolatedAsyncioTestCase):
 
 
 class SocketTests(unittest.IsolatedAsyncioTestCase):
+    @unittest.skipIf(os.name == "nt", "POSIX-only: AF_UNIX socket and mode checks")
     async def test_round_trip_and_bad_lines(self):
         router = AgentRouter(CATALOG)
         with tempfile.TemporaryDirectory() as root:
@@ -658,6 +733,7 @@ class SocketTests(unittest.IsolatedAsyncioTestCase):
                 server.close()
                 await server.wait_closed()
 
+    @unittest.skipIf(os.name == "nt", "POSIX-only: overlong AF_UNIX path behaviour")
     async def test_bridge_not_running(self):
         with tempfile.TemporaryDirectory() as root:
             missing = Path(root) / "agent.sock"

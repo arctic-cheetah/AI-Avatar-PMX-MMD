@@ -18,6 +18,7 @@ This is a companion project, kept outside `my_code_pc` so it does not compete fo
 - 👄 **Lip sync:** Rhubarb Lip Sync times mouth shapes from the final audio, and the renderer plays them on the audio clock.
 - 👀 **Idle life and tuning:** automatic blinking, plus wink controls and a morph test bench for tuning expressions.
 - 🌊 **Slow sway:** her upper body drifts on gentle sine waves with a breathing motion, and settles back to still when toggled off — see [docs/body-sway.md](docs/body-sway.md).
+- 😴 **Idle behaviours:** after a quiet minute she idles, and after ten she turns sleepy with slower blinks. Any chat, voice, mouse or agent activity wakes her with a brief surprised → happy. Timings and an off switch are in the panel — see [docs/idle-behaviours.md](docs/idle-behaviours.md).
 - 👁️ **Gaze tracking:** her eyes (and gently, her head) follow your mouse cursor and/or your face on webcam — see [docs/gaze-tracking.md](docs/gaze-tracking.md). The webcam only starts when you toggle it on, and frames never leave the browser.
 - 📌 **Pop-out window:** click **📌 Pop out** to float her portrait in an always-on-top picture-in-picture window while you work in other apps (Chrome/Edge 116+; Firefox and VS Code's browser get a popup window; on Ubuntu Wayland pin either with **Super+T**). **💬** adds the chat and settings panel beside her; speech, moods and agent voice keep working — see [docs/pop-out-window.md](docs/pop-out-window.md).
 
@@ -366,6 +367,7 @@ avatar-yidhari/
 | [pmx-morph-catalog.md](docs/pmx-morph-catalog.md)                 | Every PMX facial morph                                  |
 | [gaze-tracking.md](docs/gaze-tracking.md)                         | Cursor + webcam gaze tracking design (issue #6)         |
 | [body-sway.md](docs/body-sway.md)                               | Slow sine-wave body sway design (issue #4)              |
+| [idle-behaviours.md](docs/idle-behaviours.md)                   | Idle, sleepy and wake-up states and settings (#71)      |
 | [animation-transitions.md](docs/animation-transitions.md)         | Smooth, interruptible transitions and layer rules (#54) |
 | [pop-out-window.md](docs/pop-out-window.md)                       | Floating window, Firefox popup, platform limits (#52)   |
 | [shared-expression-catalog.md](docs/shared-expression-catalog.md) | Mood presets used by the LLM                            |

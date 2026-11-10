@@ -1,7 +1,7 @@
 // Morph grid setup (#99). Run with the Playwright MCP tool browser_run_code_unsafe
 // (filename: tools/morph-grid/setup.js) while `python3 renderer/serve.py` is up.
 // It mocks the bridge socket, so the live avatar keeps its renderer and voice:
-// the bridge routes agent speech to the most recently connected page.
+// a second bridge connection would compete for agent speech (#100).
 async (page) => {
   await page.routeWebSocket(/127\.0\.0\.1:8765/, () => {});
   await page.setViewportSize({ width: 1280, height: 800 });

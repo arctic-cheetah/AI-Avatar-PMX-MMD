@@ -1,7 +1,7 @@
 // Run with: node --test tests/renderer/
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { startFrame, resetFrame, agentEvent, answerFrame, connectBridge } from "../../renderer/bridge-client.js";
+import { startFrame, resetFrame, agentEvent, answerFrame, presenceFrame, claimFrame, connectBridge } from "../../renderer/bridge-client.js";
 import { installPage } from "./fake-dom.mjs";
 
 test("typed and spoken prompts share one start frame; history lives in the bridge", () => {
@@ -153,4 +153,61 @@ test("the user's own message is shown exactly as typed", (t) => {
   const body = bodyOf(page.log().children[0]);
   assert.equal(body.textContent, "**hi** <b>there</b>");
   assert.equal(body.descendants().length, 0);
+});
+
+// Speech ownership (#100): the bridge speaks for agents in one page only.
+test("presence and claim frames tell the bridge which page may speak", () => {
+  assert.deepEqual(JSON.parse(presenceFrame({ automated: true, visible: false })),
+    { type: "presence", automated: true, visible: false });
+  assert.deepEqual(JSON.parse(claimFrame()), { type: "claim" });
+});
+
+function connectForVoice(t, options = {}) {
+  const page = installPage(t);
+  page.document.hasFocus = () => options.focused ?? false;
+  page.document.visibilityState = "visible";
+  connectBridge({
+    catalog: CATALOG, onStart() {}, onFinish() {}, onExpression() {}, onText() {}, onSpeak() {},
+    automated: options.automated ?? false,
+  });
+  page.socket.onopen();
+  page.frames = () => page.sent.map((frame) => JSON.parse(frame));
+  return page;
+}
+
+test("a focused page says hello and claims speech when it connects", (t) => {
+  const page = connectForVoice(t, { focused: true });
+  assert.deepEqual(page.frames(), [
+    { type: "presence", automated: false, visible: true },
+    { type: "claim" },
+  ]);
+});
+
+test("an automated page says hello but never claims speech by itself", (t) => {
+  const page = connectForVoice(t, { focused: true, automated: true });
+  assert.deepEqual(page.frames(), [{ type: "presence", automated: true, visible: true }]);
+});
+
+test("a page without speech shows it and can take it back", (t) => {
+  const page = connectForVoice(t);
+  const owner = page.nodes.get("#voice-owner");
+  const take = page.nodes.get("#voice-claim");
+  page.receive({ type: "voice", owner: false });
+  assert.match(owner.textContent, /another page/);
+  assert.equal(take.hidden, false);
+  take.listeners.click[0]();
+  assert.deepEqual(page.frames().at(-1), { type: "claim" });
+  page.receive({ type: "voice", owner: true });
+  assert.match(owner.textContent, /this page/);
+  assert.equal(take.hidden, true);
+});
+
+test("a disconnected page says so instead of claiming to speak", (t) => {
+  const page = connectForVoice(t);
+  page.receive({ type: "voice", owner: true });
+  const original = globalThis.setTimeout;
+  globalThis.setTimeout = () => 0;
+  t.after(() => { globalThis.setTimeout = original; });
+  page.socket.onclose();
+  assert.match(page.nodes.get("#voice-owner").textContent, /disconnected/i);
 });

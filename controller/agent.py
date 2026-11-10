@@ -1,8 +1,8 @@
 """Agent voice (#27): a coding agent's tool calls, received on an owner-only Unix socket.
 
 controller/mcp_server.py forwards each MCP tool call as one JSON line. The
-router validates it and hands it to the speech lane (Stage) of the newest
-renderer connection. Agent text is untrusted: it is capped, stripped of control
+router validates it and hands it to the speech lane (Stage) of the renderer
+that owns agent speech (#100). Agent text is untrusted: it is capped, stripped of control
 characters, rate limited, and parsed with the same tag allowlist as LLM replies.
 """
 
@@ -284,6 +284,11 @@ class Stage:
         self.current = None
         self.epoch = 0  # bumped by cancel_agent; items from an older epoch are dropped
         self.asks = {}  # ask id -> future for the user's reply
+        # Speech ownership (#100), reported by the page in presence frames.
+        self.automated = False  # navigator.webdriver: never chosen automatically
+        self.visible = True
+        self.announced = False  # sent presence, so it understands voice events
+        self.claimed = -math.inf  # when the page last claimed speech
         self.runner = asyncio.create_task(self._run())
 
     @property
@@ -418,20 +423,81 @@ async def _no_reasoning():
 
 
 class AgentRouter:
-    """Validate agent tool calls and send them to the newest renderer's stage."""
+    """Validate agent tool calls and send them to the stage that owns agent speech.
+
+    Connecting does not take speech (#100): the first page owns it until a page
+    claims it, and the owner closing hands it to the non-automated page that
+    claimed most recently. Automated pages are never chosen automatically.
+    """
 
     def __init__(self, catalog, clock=time.monotonic):
         self.catalog, self.clock = catalog, clock
         self.stages = []
+        self.owner = None
         self.last = {}
         self.last_report = -math.inf  # the model's own report, not a hook's
+        self._notices = set()
 
     def attach(self, stage):
         self.stages.append(stage)
+        if self.owner is None and not stage.automated:
+            self._set_owner(stage)
 
     def detach(self, stage):
         if stage in self.stages:
             self.stages.remove(stage)
+        if self.owner is stage:
+            self._set_owner(self._fallback())
+
+    def presence(self, stage, automated, visible):
+        """The page said whether it is automated and visible."""
+        stage.automated, stage.visible = bool(automated), bool(visible)
+        first = not stage.announced
+        stage.announced = True
+        if self.owner is stage and stage.automated and stage.claimed == -math.inf:
+            self._set_owner(self._fallback(exclude=stage))
+        elif self.owner is None and not stage.automated and stage in self.stages:
+            self._set_owner(stage)
+        elif first:
+            self._notify(stage)
+
+    def claim(self, stage):
+        """The page asked for speech: the user's focus, click, or Take voice."""
+        if stage not in self.stages:
+            return
+        stage.claimed = self.clock()
+        if self.owner is not stage:
+            self._set_owner(stage)
+
+    def _fallback(self, exclude=None):
+        """The non-automated page that claimed last, else the newest; or None."""
+        ranked = [
+            (stage.claimed, index, stage)
+            for index, stage in enumerate(self.stages)
+            if stage is not exclude and not stage.automated
+        ]
+        return max(ranked, key=lambda entry: entry[:2])[2] if ranked else None
+
+    def _set_owner(self, stage):
+        previous, self.owner = self.owner, stage
+        for each in (previous, stage):
+            if each is not None and each in self.stages:
+                self._notify(each)
+
+    def _notify(self, stage):
+        """Tell a page that sent presence whether it owns speech."""
+        if not stage.announced:
+            return
+
+        async def send():
+            try:
+                await stage.send({"type": "voice", "owner": stage is self.owner})
+            except Exception:
+                pass  # the page is closing; detach follows
+
+        task = asyncio.get_running_loop().create_task(send())
+        self._notices.add(task)
+        task.add_done_callback(self._notices.discard)
 
     def _limited(self, tool):
         now = self.clock()
@@ -446,10 +512,10 @@ class AgentRouter:
             call = validate(request, self.catalog)
         except AgentError as error:
             return f"error: {error}"
-        if not self.stages:
+        if self.owner is None:
             return "no renderer"
         try:
-            return await self._dispatch(self.stages[-1], call)
+            return await self._dispatch(self.owner, call)
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -475,7 +541,7 @@ class AgentRouter:
             event["text"] = call["text"]
             await stage.send(event)
             stage.enqueue(call)
-            return "queued"
+            return "queued" if stage.visible else "queued: her page is in the background"
         if self._limited("set_mood"):
             return "busy"
         return await self._mood(stage, call)

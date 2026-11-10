@@ -160,8 +160,9 @@ the Playwright MCP server's `browser_run_code_unsafe` tool (`filename`
 parameter) while `python3 renderer/serve.py` is serving the renderer:
 
 1. **`setup.js`** opens the renderer at 1280×800 and mocks the bridge socket.
-   This matters: the bridge sends agent speech to the most recently connected
-   page, so an unmocked page would take over the live avatar's voice. It also
+   Playwright pages no longer take agent speech (#100), but an unmocked page
+   would still add a bridge connection and could be handed speech by a
+   **Take voice** click, so the mock keeps the live avatar's voice untouched. It also
    turns off sway and cursor gaze so every cell is framed the same.
 2. **Set the spec with `browser_evaluate`:**
 

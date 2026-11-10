@@ -31,6 +31,25 @@ export function greetFrame({ text, mood, weight }) {
 }
 
 /**
+ * Agent speech ownership (#100): whether this page is automated (navigator.webdriver)
+ * and visible. The bridge never hands speech to an automated page by itself.
+ */
+export function presenceFrame({ automated, visible }) {
+  return JSON.stringify({ type: 'presence', automated, visible });
+}
+
+/** Ask the bridge to speak agent replies in this page (focus, a click, or Take voice). */
+export function claimFrame() {
+  return JSON.stringify({ type: 'claim' });
+}
+
+const VOICE_TEXT = {
+  here: 'Agent voice · this page',
+  elsewhere: 'Agent voice · another page',
+  disconnected: 'Agent voice · disconnected',
+};
+
+/**
  * Validate a coding agent's event (#27): a say line or a full report for the chat log, or a rest mood.
  * @returns {{ kind: 'say', source: string, text: string } |
  *   { kind: 'report', source: string, status: string, text: string } |
@@ -62,7 +81,10 @@ export function agentEvent(event, catalog) {
   throw new Error('Unknown agent event');
 }
 
-export function connectBridge({ catalog, onStart, onFinish, onExpression, onText, onSpeak, onFiller, onReset, onAgentSay, onAgentMood, onTurn, greeting = null, onGreeting }) {
+export function connectBridge({
+  catalog, onStart, onFinish, onExpression, onText, onSpeak, onFiller, onReset, onAgentSay, onAgentMood, onTurn,
+  greeting = null, onGreeting, automated = globalThis.navigator?.webdriver === true,
+}) {
   const button = document.querySelector('#bridge-start');
   const status = document.querySelector('#bridge-status');
   const chatBar = document.querySelector('#chat-bar');
@@ -72,7 +94,11 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
   const chatMic = document.querySelector('#chat-mic');
   const chatLog = document.querySelector('#chat-log');
   const chatNew = document.querySelector('#chat-new');
+  const voiceOwner = document.querySelector('#voice-owner');
+  const voiceClaim = document.querySelector('#voice-claim');
   let socket;
+  /** Whether the bridge speaks agent replies in this page (#100). */
+  let ownsVoice = false;
   let busy = false;
   let reply = null;
   /** The streamed reply's Markdown source; the bubble is rendered from it, never read back. */
@@ -194,6 +220,23 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     socket.send(startFrame(prompt));
     status.textContent = 'Waiting for reply…';
   }
+  function setVoice(state) {
+    ownsVoice = state === 'here';
+    voiceOwner.textContent = VOICE_TEXT[state];
+    voiceClaim.hidden = state !== 'elsewhere';
+  }
+
+  function sendPresence() {
+    if (socket?.readyState !== WebSocket.OPEN) return;
+    socket.send(presenceFrame({ automated, visible: document.visibilityState !== 'hidden' }));
+  }
+
+  /** Claim speech for the user's own interaction; an automated page waits for Take voice. */
+  function claimForUser() {
+    if (automated || ownsVoice || socket?.readyState !== WebSocket.OPEN) return;
+    socket.send(claimFrame());
+  }
+
   let greeted = false;
   function connect() {
     socket = new WebSocket('ws://127.0.0.1:8765');
@@ -202,6 +245,8 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
       button.disabled = false;
       chatBar.hidden = false;
       setChatEnabled(true);
+      sendPresence();
+      if (document.hasFocus?.()) claimForUser();
       chatInput.focus();
       // Page-open greeting (#72): once here, and the gate in main.js keeps it
       // to once per page load, so reconnects below never greet again.
@@ -217,6 +262,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
       // close/reconnect cycle repeats and would keep forcing neutral.
       busy = false; setPendingAsk(null); onFinish(); button.disabled = true; voice.cancel(); setChatEnabled(false);
       status.textContent = 'Disconnected · retrying…';
+      setVoice('disconnected');
       // onExpression('neutral', 1);
       setTimeout(connect, 2000);
     };
@@ -252,6 +298,9 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
             onSpeak({ id: event.id, expression: event.expression, weight: Math.max(0, Math.min(1, event.weight)), text: event.text }); break;
           case 'turn':
             onTurn?.(); break;
+          case 'voice':
+            if (typeof event.owner !== 'boolean') throw new Error('Invalid voice owner');
+            setVoice(event.owner ? 'here' : 'elsewhere'); break;
           case 'agent': {
             const agent = agentEvent(event, catalog);
             if (agent.kind === 'say') {
@@ -301,6 +350,13 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
       startGeneration(null);
     }
   });
+  voiceClaim.addEventListener('click', () => {
+    if (socket?.readyState === WebSocket.OPEN) socket.send(claimFrame());
+  });
+  document.addEventListener?.('visibilitychange', sendPresence);
+  globalThis.addEventListener?.('focus', claimForUser);
+  document.addEventListener?.('pointerdown', claimForUser, { capture: true });
+  document.addEventListener?.('keydown', claimForUser, { capture: true });
   chatNew.addEventListener('click', () => {
     if (socket?.readyState === WebSocket.OPEN) socket.send(resetFrame());
   });

@@ -46,11 +46,12 @@ flowchart LR
   divider and settings panel are moved into the window, not copied, and no
   second renderer starts.
 - Because nothing reconnects, the bridge WebSocket, the agent MCP routing
-  (`say`, `report`, `ask`, `set_mood` go to the newest renderer
-  connection), the speech AudioContext, lip sync and moods carry on
+  (`say`, `report`, `ask`, `set_mood` go to the page that owns agent
+  speech), the speech AudioContext, lip sync and moods carry on
   unchanged. Closing the floating window never closes the bridge.
 - Opening a second renderer tab instead would make a second bridge
-  connection. That one would take agent speech away from the first and load
+  connection. It would compete for agent speech with the first (see
+  [Which page owns agent speech](agent-voice.md#which-page-owns-agent-speech)) and load
   the PMX twice, which is why that route was not taken.
 - The page's style rules are copied into the floating window inline (a
   `<link>` only for sheets whose rules cannot be read), so the very first

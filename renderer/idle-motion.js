@@ -1,5 +1,5 @@
 // Idle motions for issue #71: glances, head tilts and sighs while idle, and a
-// stretch just before sleepy. No DOM or Three.js imports, so node --test
+// stretch with a slow yawn just before sleepy. No DOM or Three.js imports, so node --test
 // covers it (tests/renderer/idle-motion.test.mjs). main.js turns the pose into
 // a gaze target and small bone rotations on top of the rest pose.
 // See docs/idle-behaviours.md#idle-motions.
@@ -23,17 +23,20 @@ export const IDLE_MOTION = Object.freeze({
   tilt: Object.freeze({ duration: Object.freeze([2, 3.5]), angle: 5 * DEG, rise: 0.6 }),
   sigh: Object.freeze({ inhale: 1.1, exhale: 1.7, chest: 2 * DEG, shoulders: 2.5 * DEG }),
   stretch: Object.freeze({ rise: 1, back: 5 * DEG, headPitch: 7 * DEG, shoulders: 6 * DEG }),
+  /** The yawn during the stretch: the user's mouth pick, opened slowly (#71). */
+  yawn: Object.freeze({ open: 1.4, hold: 0.6, close: 1.0, morphs: Object.freeze({ "あ": 1, "お": 0.4 }) }),
   /** Spring rate for every angle, so interrupted motions ease back. */
   rate: 8,
 });
 
-const ANGLES = ["tilt", "chest", "shoulders", "back", "headPitch"];
+const ANGLES = ["tilt", "chest", "shoulders", "back", "headPitch", "yawn"];
 const LIMITS = Object.freeze({
   tilt: [-IDLE_MOTION.tilt.angle, IDLE_MOTION.tilt.angle],
   chest: [0, IDLE_MOTION.sigh.chest],
   shoulders: [0, Math.max(IDLE_MOTION.sigh.shoulders, IDLE_MOTION.stretch.shoulders)],
   back: [0, IDLE_MOTION.stretch.back],
   headPitch: [0, IDLE_MOTION.stretch.headPitch],
+  yawn: [0, 1],
 });
 
 const smoothstep = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
@@ -60,10 +63,20 @@ function sighCurve(t) {
   return t < inhale ? smoothstep(t / inhale) : 1 - smoothstep((t - inhale) / exhale);
 }
 
+/** Yawn: open slowly, hold, close; 0 outside its length. */
+function yawnCurve(t) {
+  const { open, hold, close } = IDLE_MOTION.yawn;
+  if (!(t > 0) || t >= open + hold + close) return 0;
+  if (t < open) return smoothstep(t / open);
+  if (t < open + hold) return 1;
+  return 1 - smoothstep((t - open - hold) / close);
+}
+
 /**
  * Turns the idle state into one small motion at a time.
- * update() returns `{ glance, tilt, chest, shoulders, back, headPitch }`:
- * glance is a normalised gaze target or null, and the rest are radians.
+ * update() returns `{ glance, tilt, chest, shoulders, back, headPitch, yawn }`:
+ * glance is a normalised gaze target or null, yawn is a 0–1 weight for
+ * IDLE_MOTION.yawn.morphs, and the rest are radians.
  */
 export class IdleMotion {
   /** @param {{ random?: () => number }} [options] Random source in [0, 1). */
@@ -79,11 +92,11 @@ export class IdleMotion {
    * @param {number} delta Seconds since the previous frame; invalid values count as 0.
    * @param {string} state IdleController state.
    * @param {number} stateTime Seconds in that state.
-   * @returns {{glance:{x:number,y:number}|null,tilt:number,chest:number,shoulders:number,back:number,headPitch:number}}
+   * @returns {{glance:{x:number,y:number}|null,tilt:number,chest:number,shoulders:number,back:number,headPitch:number,yawn:number}}
    */
   update(delta, state, stateTime) {
     const dt = Number.isFinite(delta) && delta > 0 ? delta : 0;
-    const target = { tilt: 0, chest: 0, shoulders: 0, back: 0, headPitch: 0 };
+    const target = { tilt: 0, chest: 0, shoulders: 0, back: 0, headPitch: 0, yawn: 0 };
     let glance = null;
     if (state === "idle") {
       this.gapLeft ??= this.#gap();
@@ -107,6 +120,7 @@ export class IdleMotion {
         target.back = weight * back;
         target.headPitch = weight * headPitch;
         target.shoulders = weight * shoulders;
+        target.yawn = yawnCurve(stateTime);
       }
     }
     const pose = { glance };

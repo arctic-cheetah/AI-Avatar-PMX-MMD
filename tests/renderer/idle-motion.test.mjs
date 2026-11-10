@@ -31,7 +31,7 @@ function play(motion, state, seconds, { fps = 60, from = 0 } = {}) {
   return poses;
 }
 
-const isRest = (pose) => pose.glance === null && ANGLES.every((k) => Math.abs(pose[k]) < 1e-9);
+const isRest = (pose) => pose.glance === null && pose.yawn === 0 && ANGLES.every((k) => Math.abs(pose[k]) < 1e-9);
 
 test("bump eases in, holds and eases out within its duration", () => {
   assert.equal(bump(0, 2, 0.5), 0);
@@ -171,4 +171,31 @@ test("invalid deltas hold the pose", () => {
     assert.ok(isRest(motion.update(delta, "idle", 0)));
   }
   assert.equal(motion.current, null);
+});
+
+test("she yawns slowly during the stretch: about three seconds, open then closed", () => {
+  const motion = new IdleMotion({ random: seeded() });
+  const poses = play(motion, "stretching", IDLE_TIMING.stretch);
+  const yawn = poses.map((p) => p.yawn);
+  const peakAt = yawn.indexOf(Math.max(...yawn));
+  assert.ok(yawn[peakAt] > 0.9, `opens fully (${yawn[peakAt].toFixed(2)})`);
+  assert.ok(yawn[Math.round(0.34 * 60)] < 0.15, "opens slowly, not in the usual 0.34 s");
+  assert.ok(peakAt / 60 >= 1.2, `still opening after 1.2 s (peak at ${(peakAt / 60).toFixed(2)} s)`);
+  const { open, hold, close } = IDLE_MOTION.yawn;
+  assert.ok(open + hold + close >= 2.5 && open + hold + close <= IDLE_TIMING.stretch, "2.5 s up to the stretch length");
+  for (let i = 1; i < yawn.length; i += 1) assert.ok(Math.abs(yawn[i] - yawn[i - 1]) < 0.03, `smooth at frame ${i}`);
+  const after = play(motion, "sleepy", 1.5);
+  assert.ok(after.at(-1).yawn < 0.01, "mouth closed again once she is sleepy");
+});
+
+test("no yawn while active, idle, sleepy or waking, and a block mid-yawn closes the mouth smoothly", () => {
+  for (const state of ["active", "idle", "sleepy", "waking"]) {
+    const motion = new IdleMotion({ random: seeded() });
+    assert.ok(play(motion, state, 30, { fps: 10 }).every((p) => p.yawn === 0), state);
+  }
+  const motion = new IdleMotion({ random: seeded() });
+  play(motion, "stretching", 1.6);
+  const back = play(motion, "active", 1.5);
+  assert.ok(back[0].yawn > 0.3, "eases, not snaps");
+  assert.ok(back.at(-1).yawn < 0.01);
 });

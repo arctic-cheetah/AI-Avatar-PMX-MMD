@@ -165,6 +165,10 @@ export class ExpressionController {
       this.targets.set(index, 0);
     }
     const shown = name === "neutral" ? this.restingFace : name;
+    // A preset may ease at its own rate (#71: sleepy drifts in like a yawn);
+    // the next preset uses its own, so leaving a slow face is not slow.
+    const ease = name === "neutral" ? undefined : this.catalog[name]?.ease;
+    this.rate = Number.isFinite(ease) && ease > 0 ? ease : TIMING.expression;
     if (name === "neutral") this.restWeight = weight;
     if (shown) {
       const intensity = Math.max(0, Math.min(weight, 1));

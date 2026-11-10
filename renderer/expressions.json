@@ -228,7 +228,8 @@
     "morphs": {
       "じと目": 1,
       "下": 0.4
-    }
+    },
+    "ease": 3
   },
   "relieved": {
     "description": "React when a worry or difficulty has passed.",

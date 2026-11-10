@@ -50,7 +50,7 @@ import { addSeeThroughBrows, bindSeeThroughBrowsToggle } from "./see-through-bro
 import { installCollapsiblePanel } from "./collapsible-panel.js";
 import { FrameLoop, PopOut, popupWindow } from "./pop-out.js";
 import { IDLE_STATE_LABELS, IdleController, bindIdleSettings } from "./idle-behaviour.js";
-import { IdleMotion } from "./idle-motion.js";
+import { IDLE_MOTION, IdleMotion } from "./idle-motion.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
 const MODEL_URL = "/yidhari-mmd/伊德海莉.pmx";
@@ -385,6 +385,21 @@ function setupIdleMotion(object) {
   for (const { name, pitch, roll, own } of IDLE_BONES) {
     const bone = object.skeleton?.getBoneByName(name);
     if (bone) idleBones.push({ bone, rest: own ? bone.quaternion.clone() : null, pitch, roll });
+  }
+}
+
+/**
+ * Open the mouth for the idle yawn (#71), on top of the mood and speech
+ * morphs written this frame. Speech blocks idle, so the yawn has eased shut
+ * before visemes take the mouth.
+ * @returns {void}
+ */
+function applyYawn() {
+  if (!mesh || !(idlePose.yawn > 0)) return;
+  const influences = mesh.morphTargetInfluences;
+  for (const [name, weight] of Object.entries(IDLE_MOTION.yawn.morphs)) {
+    const index = mesh.morphTargetDictionary[name];
+    if (index !== undefined) influences[index] = Math.min(1, influences[index] + idlePose.yawn * weight);
   }
 }
 
@@ -917,7 +932,7 @@ function updateIdle(delta) {
   }
   // A held pose lets previews and comparison grids show one motion on demand.
   idlePose = globalThis.__yidhariIdlePose
-    ? { glance: null, tilt: 0, chest: 0, shoulders: 0, back: 0, headPitch: 0, ...globalThis.__yidhariIdlePose }
+    ? { glance: null, tilt: 0, chest: 0, shoulders: 0, back: 0, headPitch: 0, yawn: 0, ...globalThis.__yidhariIdlePose }
     : idleMotion.update(delta.eased, idle.state, idle.stateTime);
   gaze.setIdle(idlePose.glance);
   if (idle.state !== shownIdleState) {
@@ -1556,6 +1571,7 @@ function animate() {
   expressions?.update(delta);
   syncThinkingState();
   speech?.update(delta);
+  applyYawn();
   updateWinks(delta);
   updateBlink(now / 1000);
   applyThinkingPose(delta);

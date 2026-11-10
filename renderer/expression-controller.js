@@ -112,7 +112,7 @@ export class ExpressionController {
    * Cycle through every available expression, holding each for a fixed time.
    * Includes each available catalog entry. Non-positive intervals are rejected.
    * @param {number} [intervalSeconds=3] Seconds each expression is held.
-   * @param {number} [weight=1] Intensity for every loop step.
+   * @param {number} [weight=1] Mood intensity from 0 to 1 for every loop step.
    * @returns {boolean} Whether the loop was started.
    */
   startLoop(intervalSeconds = 3, weight = 1) {
@@ -132,18 +132,22 @@ export class ExpressionController {
     return true;
   }
 
-  /** Rescale the active mood and loop without stopping either.
-   * @param {number} weight Intensity from 0 to 1.
-   * @returns {boolean} Whether the value was accepted.
+  /**
+   * Rescale the active mood, and any running loop, without changing either.
+   * @param {number} weight Mood intensity from 0 to 1.
+   * @returns {boolean} Whether the weight was accepted.
    */
   setIntensity(weight) {
-    if (!Number.isFinite(weight)) return false;
+    if (!Number.isFinite(weight)) {
+      return false;
+    }
     this.loopWeight = weight;
     this.applyExpression(this.activeExpression, weight);
     return true;
   }
 
-  /** Stop cycling while retaining the current expression.
+  /**
+   * Stop the expression loop. The currently shown expression stays active.
    * @returns {void}
    */
   stopLoop() {

@@ -1,6 +1,7 @@
 /** Bridge client: chat input, voice input, text preview, moods, and (with bridge --speech) spoken clip IDs. */
 import { VoiceInput, voiceSupported } from './voice-input.js';
 import { renderMarkdown, plainText } from './markdown.js';
+import { ChatHistory } from './chat-history.js';
 
 const CLIP_ID = /^[0-9a-f]{16}$/;
 const MAX_PROMPT = 2000;
@@ -9,6 +10,8 @@ const MAX_SOURCE = 40;
 const REPORT_STATUS = new Set(['progress', 'done', 'error']);
 const ASK_ID = /^[0-9a-f]{1,32}$/;
 const SUMMARY_LENGTH = 80;
+const RESTORED_NOTE = "Restored after a refresh · Yidhari won't remember these in new replies";
+const DAMAGED_NOTE = 'Part of the earlier chat could not be restored';
 
 /** The one message that starts a reply, whether the prompt was typed or spoken. */
 export function startFrame(prompt) {
@@ -62,7 +65,12 @@ export function agentEvent(event, catalog) {
   throw new Error('Unknown agent event');
 }
 
-export function connectBridge({ catalog, onStart, onFinish, onExpression, onText, onSpeak, onFiller, onReset, onAgentSay, onAgentMood, onTurn, greeting = null, onGreeting }) {
+/**
+ * Connect the chat UI to the bridge. history keeps the visible log across a page
+ * refresh (#105); win is the window whose pagehide saves a reply still streaming.
+ */
+export function connectBridge({ catalog, onStart, onFinish, onExpression, onText, onSpeak, onFiller, onReset, onAgentSay, onAgentMood, onTurn, greeting = null, onGreeting,
+  history = new ChatHistory(), win = globalThis }) {
   const button = document.querySelector('#bridge-start');
   const status = document.querySelector('#bridge-status');
   const chatBar = document.querySelector('#chat-bar');
@@ -120,6 +128,54 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     body.append(details);
   }
 
+  /** Label a reply that stopped before it finished. */
+  function markInterrupted(body) {
+    body.parentElement.classList.add('chat-interrupted');
+    body.parentElement.children[0].textContent += ' · interrupted';
+  }
+
+  /** Draw one saved or live log entry; a restored ask is shown as no longer waiting. */
+  function renderEntry(entry, { restored = false } = {}) {
+    let body;
+    if (entry.who === 'you' || entry.who === 'tool') {
+      body = addLine(entry.who);
+      body.textContent = entry.text;
+    } else if (entry.who === 'yidhari') {
+      body = addLine('yidhari');
+      renderMarkdown(body, entry.text);
+    } else if (entry.kind === 'report') {
+      addReport(entry);
+      return;
+    } else {
+      body = addLine('agent', entry.source);
+      renderMarkdown(body, entry.kind === 'ask' ? `❓ ${entry.text}` : entry.text);
+      if (entry.kind === 'ask' && restored) body.parentElement.classList.add('chat-ask-closed');
+    }
+    if (entry.interrupted) markInterrupted(body);
+  }
+
+  /** Show a live entry and save it for a refresh. */
+  function show(entry) {
+    renderEntry(entry);
+    history.add(entry);
+  }
+
+  /** A status line about restoring; shown only, never saved. */
+  function addNote(text) {
+    const body = addLine('tool');
+    body.textContent = text;
+    body.parentElement.classList.add('chat-restored');
+  }
+
+  /** Save the streamed reply once: complete on end, interrupted otherwise. */
+  function finishReply({ interrupted = false } = {}) {
+    if (reply && replySource) {
+      if (interrupted) markInterrupted(reply);
+      history.add({ who: 'yidhari', text: replySource, ...(interrupted ? { interrupted: true } : {}) });
+    }
+    reply = null; replySource = '';
+  }
+
   function canSend() {
     return !busy && socket?.readyState === WebSocket.OPEN;
   }
@@ -152,7 +208,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
   /** Show a prompt as the user's bubble and start a reply; false if the bridge cannot take it now. */
   function sendPrompt(prompt) {
     if (!prompt || !canSend()) return false;
-    addLine('you').textContent = prompt;
+    show({ who: 'you', text: prompt });
     chatInput.value = '';
     fitChatInput({ reset: true });
     if (pendingAsk) {
@@ -213,6 +269,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
       }
     };
     socket.onclose = () => {
+      finishReply({ interrupted: true });
       // Do not reset the expression here: while the bridge is down this
       // close/reconnect cycle repeats and would keep forcing neutral.
       busy = false; setPendingAsk(null); onFinish(); button.disabled = true; voice.cancel(); setChatEnabled(false);
@@ -255,13 +312,13 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
           case 'agent': {
             const agent = agentEvent(event, catalog);
             if (agent.kind === 'say') {
-              renderMarkdown(addLine('agent', agent.source), agent.text);
+              show({ who: 'agent', kind: 'say', source: agent.source, text: agent.text });
               onAgentSay?.(busy);
             } else if (agent.kind === 'report') {
-              addReport(agent);
+              show({ who: 'agent', kind: 'report', source: agent.source, status: agent.status, text: agent.text });
               onAgentSay?.(busy);
             } else if (agent.kind === 'ask') {
-              renderMarkdown(addLine('agent', agent.source), `❓ ${agent.text}`);
+              show({ who: 'agent', kind: 'ask', source: agent.source, text: agent.text });
               setPendingAsk({ id: agent.id, source: agent.source });
               status.textContent = `${agent.source} is asking · your next message answers`;
               onAgentSay?.(busy);
@@ -277,18 +334,18 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
           }
           case 'notice':
             if (typeof event.text !== 'string') throw new Error('Invalid notice');
-            addLine('tool').textContent = event.text;
+            show({ who: 'tool', text: event.text });
             status.textContent = event.text; break;
           case 'end':
-            busy = false; reply = null; replySource = ''; onFinish(); button.disabled = false; setChatEnabled(true);
+            finishReply(); busy = false; onFinish(); button.disabled = false; setChatEnabled(true);
             status.textContent = 'Complete'; break;
           case 'error':
             if (typeof event.text !== 'string') throw new Error('Invalid error');
-            busy = false; reply = null; replySource = ''; onFinish(); button.disabled = false; setChatEnabled(true);
+            finishReply({ interrupted: true }); busy = false; onFinish(); button.disabled = false; setChatEnabled(true);
             status.textContent = event.text; break;
           case 'reset':
             // The bridge has forgotten every turn; clear what the user sees to match.
-            busy = false; reply = null; replySource = ''; setPendingAsk(null); chatLog.replaceChildren(); onReset?.(); onFinish();
+            busy = false; reply = null; replySource = ''; setPendingAsk(null); chatLog.replaceChildren(); history.clear(); onReset?.(); onFinish();
             button.disabled = false; setChatEnabled(true);
             status.textContent = 'New chat · ready'; break;
           default: throw new Error('Unknown event');
@@ -344,5 +401,12 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
   chatMic.title = voiceSupported() ? '' : 'Voice input needs microphone recording support in this browser';
   chatMic.addEventListener('click', () => voice.toggle(canSend()));
   updateMic();
+  // #105: rebuild the log saved before a refresh. Display only: no speech,
+  // moods, tools or open questions, and the bridge's memory starts fresh.
+  const saved = history.load();
+  for (const entry of saved.entries) renderEntry(entry, { restored: true });
+  if (saved.damaged) addNote(DAMAGED_NOTE);
+  if (saved.entries.length) addNote(RESTORED_NOTE);
+  win?.addEventListener?.('pagehide', () => finishReply({ interrupted: true }));
   connect();
 }

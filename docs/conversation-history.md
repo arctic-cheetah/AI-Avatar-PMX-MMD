@@ -1,8 +1,11 @@
 # Conversation history
 
 Yidhari remembers earlier turns of the current chat, so a follow-up like
-"say another one" keeps the topic. Memory lasts for one browser connection only;
-there is no saving across restarts and no long-term memory.
+"say another one" keeps the topic. Her memory lasts for one browser connection
+only. The chat log on screen survives a page refresh (see
+[Chat log after a refresh](#chat-log-after-a-refresh)), but her memory does not.
+Nothing is saved across bridge restarts and there is no long-term memory. Full
+persistence is tracked in #141.
 
 ## How it works
 
@@ -69,15 +72,45 @@ retries once. If it fails again, she shows an error and nothing is stored.
   browser then clears the chat log and stops any speech still playing.
 - Each connection has its own history, so two tabs never share memory.
 - A reconnect (bridge restart, network blip, page reload) starts a fresh
-  conversation. Old bubbles may remain on screen after a blip, but the model no
-  longer sees them. Press **New chat** to clear them.
+  conversation. Old bubbles stay on screen after a blip or a reload, but the
+  model no longer sees them. Press **New chat** to clear them.
+
+## Chat log after a refresh
+
+The renderer saves the visible chat log in the tab's `sessionStorage`
+(`yidhari.chat-log.v1`) and rebuilds it when the page loads, before the bridge
+connects (#105). This is **display only**:
+
+- Saved: your messages, her replies, agent say, ask and report bubbles (with the
+  full report text), and tool notices. The raw text is kept, so restored bubbles
+  go through the same Markdown rendering as live ones.
+- Not saved: the page-open greeting, so refreshing doesn't pile up greetings.
+- Restoring plays no speech, changes no mood, runs no tools and sends nothing to
+  the bridge. A restored agent question is shown as no longer waiting, and your
+  next message starts a normal chat reply.
+- Her memory starts fresh. A note under the restored bubbles says she won't
+  remember them in new replies.
+- A reply that is still streaming when the page unloads, the bridge drops or an
+  error arrives is saved with its partial text and labelled **interrupted**.
+- **New chat** clears the saved log as well.
+- The saved log keeps the latest 200 entries and at most 1,000,000 characters.
+  The oldest entries go first.
+- `sessionStorage` belongs to one tab. Closing the tab discards the log, and two
+  tabs keep separate logs. A duplicated tab starts with a copy.
+- If storage is blocked or full, the chat works as before and just isn't saved.
+  Damaged saved data is skipped with a notice in the log, and the next message
+  saves over it.
 
 ## Security note 🛡️
 
 With memory, a successful prompt injection or jailbreak persists for the rest of
 the conversation instead of ending with the turn. Only your own messages and
 her completed replies are ever stored. **New chat** or a reconnect wipes the
-slate. History stays in bridge memory only and is never written to disk.
+slate. Her history stays in bridge memory only and is never written to disk.
+The on-screen log in `sessionStorage` is never sent back to the model. Browsers
+can still keep `sessionStorage` in the profile to restore tabs, so treat the
+chat log, including agent reports, like any other page content in that
+browser profile.
 
 ## Example llama-server setup
 

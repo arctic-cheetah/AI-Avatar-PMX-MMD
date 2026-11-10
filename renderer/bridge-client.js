@@ -63,9 +63,9 @@ export function agentEvent(event, catalog) {
 }
 
 /**
- * Connect the chat bar to the bridge. onActivity fires on every bridge event
- * and voice-input state change, and onAskChange(open) when an agent ask opens
- * or closes; both feed the idle timer (#71).
+ * Connect the chat bar to the bridge. onActivity fires on every sent chat
+ * message, bridge event and voice-input state change, and onAskChange(open)
+ * when an agent ask opens or closes; both feed the idle timer (#71).
  */
 export function connectBridge({ catalog, onStart, onFinish, onExpression, onText, onSpeak, onFiller, onReset, onAgentSay, onAgentMood, onTurn, greeting = null, onGreeting, onActivity, onAskChange }) {
   const button = document.querySelector('#bridge-start');
@@ -159,6 +159,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
   /** Show a prompt as the user's bubble and start a reply; false if the bridge cannot take it now. */
   function sendPrompt(prompt) {
     if (!prompt || !canSend()) return false;
+    onActivity?.();
     addLine('you').textContent = prompt;
     chatInput.value = '';
     fitChatInput({ reset: true });

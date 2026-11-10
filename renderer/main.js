@@ -253,9 +253,9 @@ const IDLE_BONES = Object.freeze([
 let idleBones = [];
 const idleEuler = new THREE.Euler();
 const idleQuat = new THREE.Quaternion();
-const IDLE_ACTIVITY_EVENTS = ["pointermove", "pointerdown", "keydown", "wheel"];
+// Only conversation keeps her awake: sent chat, voice input and bridge events.
+// The mouse, keys and cursor gaze do not (see docs/idle-behaviours.md).
 const noteActivity = () => idle.activity();
-for (const type of IDLE_ACTIVITY_EVENTS) window.addEventListener(type, noteActivity, { passive: true });
 const cameraGaze = new CameraGaze((target) => gaze.setCamera(target, cameraGazeToggle.checked));
 
 /**
@@ -1671,7 +1671,6 @@ function onPopOut(view) {
   if (view) {
     view.addEventListener("pointermove", followCursor);
     view.addEventListener("pointerleave", centreCursor);
-    for (const type of IDLE_ACTIVITY_EVENTS) view.addEventListener(type, noteActivity, { passive: true });
     view.addEventListener("resize", resize);
     view.addEventListener("resize", panelResizer.refresh);
     // An observer from the floating window's own realm follows the canvas there.

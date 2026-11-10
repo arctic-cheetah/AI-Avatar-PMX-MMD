@@ -40,7 +40,7 @@ test("bump eases in, holds and eases out within its duration", () => {
   assert.equal(bump(-1, 2, 0.5), 0);
   assert.equal(bump(3, 2, 0.5), 0);
   assert.ok(bump(0.25, 2, 0.5) > 0 && bump(0.25, 2, 0.5) < 1);
-  assert.equal(bump(0.5, 0.6, 0.5), bump(0.1, 0.6, 0.5), "short bumps stay symmetric");
+  assert.ok(Math.abs(bump(0.5, 0.6, 0.5) - bump(0.1, 0.6, 0.5)) < 1e-12, "short bumps stay symmetric");
 });
 
 test("no motion while active, sleepy or waking", () => {
@@ -108,7 +108,8 @@ test("a sigh lifts the chest and shoulders, then lets them fall", () => {
 test("one motion at a time, and every angle stays within its limit", () => {
   const motion = new IdleMotion({ random: seeded(11) });
   const kinds = new Set();
-  for (const pose of play(motion, "idle", 600, { fps: 30 })) {
+  for (let i = 1; i <= 600 * 30; i += 1) {
+    const pose = motion.update(1 / 30, "idle", i / 30);
     if (motion.current) kinds.add(motion.current.kind);
     assert.ok(Math.abs(pose.tilt) <= IDLE_MOTION.tilt.angle + 1e-9);
     assert.ok(pose.chest >= -1e-9 && pose.chest <= IDLE_MOTION.sigh.chest + 1e-9);

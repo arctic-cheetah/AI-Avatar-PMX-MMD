@@ -841,13 +841,14 @@ function scheduleBlink(now) {
 
 /**
  * Advance the idle-state timer (#71) and apply its moods.
- * Speech, thinking, an open ask, a streaming reply or a running preview block it.
+ * Speech, thinking, an open ask, a streaming reply or a morph audition block it.
+ * The mood preview loop that starts on load does not: turning sleepy stops it.
  * @param {number} delta Real seconds since the previous frame, uncapped.
  * @returns {void}
  */
 function updateIdle(delta) {
   if (!expressions) return;
-  idle.setBlocked(!speechIdle() || chatResponding || askOpen || expressions.looping
+  idle.setBlocked(!speechIdle() || chatResponding || askOpen
     || audition?.sweeping || Boolean(globalThis.__yidhariHold)
     || expressions.activeExpression === "thinking");
   for (const action of idle.update(delta)) {

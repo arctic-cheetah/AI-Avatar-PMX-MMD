@@ -6,6 +6,7 @@ for both **AMD ROCm** and **NVIDIA CUDA** machines. 🌸
 
 > **Which path should I pick?**
 > - 🟢 **AMD Radeon** (e.g. Ryzen AI MAX+ 395 / Radeon 8060S, `gfx1151`) → **Path A: ROCm**
+> - 🟡 **AMD Ryzen AI 9 HX (PRO) 370 / Radeon 890M** (`gfx1150`, same RDNA 3.5 family) → **Path A**, then confirm with [A6](#a6-check-the-gpu-path-with-the-rvc-check-) before switching (#111)
 > - 🟢 **NVIDIA GeForce/RTX** → **Path B: CUDA** (upstream Applio already targets this)
 > - ⚪ **No supported GPU** → Applio still works on CPU; just slower. Use either path and let PyTorch fall back, or skip to [Connect it to the avatar](#-connect-it-to-the-avatar).
 
@@ -154,6 +155,101 @@ speech took **1.58 s (GPU)** vs **3.34 s (CPU)**; per-sentence live conversions
 land around `rvcSeconds 0.6–2.0`. Also listen to the output — same quality is
 required, not just speed. 🎧
 
+### A6. Check the GPU path with the RVC check 🔬
+
+`controller.rvc_check` starts the bridge's own Applio worker exactly as the
+bridge would, so it measures what you will feel: the **spool-up** (worker start
+to ready, including model load and warm-up), the backend it really used, and a
+few conversions of one real speech clip. Run it from the avatar repo once per
+device and compare:
+
+```bash
+cd ~/Code/AI-Avatar-PMX-MMD
+# Generate a local source clip if sample-01.wav is not available:
+.venv-kokoro/bin/python -m controller.kokoro_worker \
+  --text "Good morning, sweetheart. My local voice is ready." \
+  --output assets/private/speech/rocm-source.wav
+.venv/bin/python -m controller.rvc_check --applio-dir ../Applio-rocm --rvc-device gpu \
+  --source assets/private/speech/rocm-source.wav --output assets/private/speech/rocm-gpu.wav
+.venv/bin/python -m controller.rvc_check --applio-dir ../Applio-rocm --rvc-device cpu \
+  --source assets/private/speech/rocm-source.wav --output assets/private/speech/rocm-cpu.wav
+```
+
+- `--source` picks the clip (default `assets/private/speech/sample-01.wav`);
+  `--runs` sets the number of timed conversions (default 3);
+  `--output` keeps the last converted WAV so you can listen to it.
+- It prints one JSON summary: `device` (`gpu`/`cpu`, backend, GPU name, arch),
+  `spoolSeconds`, `loadSeconds`, `warmSeconds`, `rvcMedian`/`rvcMin`/`rvcMax`
+  and `rtf` (median conversion time ÷ clip length).
+- `--rvc-device gpu` fails straight away if PyTorch sees no GPU, instead of
+  quietly measuring the CPU.
+
+Measured on the Ryzen AI MAX+ 395 (8 Nov 2026, `../Applio-rocm`, the 10.66 s
+`sample-01.wav`, 3 runs, `llama-server` idle):
+
+| `--rvc-device` | Backend | Spool-up (load + warm-up) | Conversion median (min–max) | RTF |
+|---|---|---:|---:|---:|
+| `gpu` | rocm 7.2.26015, Radeon 8060S, `gfx1151` | 6.82 s (2.07 + 4.73) | **1.28 s** (1.22–1.64) | 0.12 |
+| `cpu` | cpu | 4.80 s (1.77 + 3.00) | 2.76 s (2.72–3.13) | 0.26 |
+
+The GPU converts about **2.2× faster**, but it starts about 2 s **slower**
+because the first GPU run compiles its kernels. A GPU does not shorten
+spool-up; it shortens every sentence after it.
+
+**Ryzen AI 9 HX PRO 370 (Radeon 890M, `gfx1150`).** Same steps as the 395:
+build `~/Code/Applio-rocm` with A1–A3, then check:
+
+1. `rocminfo | grep -A2 gfx1150` and `check_gpu.py` (A4) report `gfx1150` and `PASS`.
+   If `available` is `False` on this wheel, record it on #111 rather than
+   forcing `HSA_OVERRIDE_GFX_VERSION`.
+2. Run both `rvc_check` commands above, ideally once with `llama-server` idle and
+   once while it is decoding, and keep the JSON.
+3. Listen to both `--output` files. Switch the bridge to `--applio-dir
+   ../Applio-rocm` only if the GPU is faster **and** sounds the same; the CPU
+   Applio install stays untouched either way.
+
+On a work laptop, check that installing the ROCm PyTorch wheel (several GB) and
+`render`-group access are allowed first, and expect the iGPU to use more battery.
+
+#### HX PRO 370 checkpoint — 9 November 2026
+
+RVC conversion and agent-mode speech were exercised on Ubuntu 24.04.5,
+kernel `6.17.0-1033-oem`, with Radeon 890M (`gfx1150`),
+PyTorch `2.11.0+rocm7.2` and HIP `7.2.26015`. The GPU ready line and real
+conversions confirmed this path; Kokoro source TTS remained on CPU.
+
+This host initially had `/dev/kfd` owned by `root:render` without access for
+the running login. After adding the account with
+`sudo usermod -aG render,video "$USER"`, a **full logout/login** applies the
+new groups to the desktop and bridge. `newgrp render` refreshes access in one
+terminal. Check the running groups with `id`, not just membership in the
+group database. Once access was refreshed, GPU detection and a PyTorch
+matrix multiplication passed; no architecture override was needed.
+
+A fresh check used the same 3.70 s Kokoro source WAV for both devices, three
+conversions each, GPU first and CPU second. The benchmark used
+`controller.rvc_check.run` with separate private worker logs to avoid
+truncating the live bridge log. Ambient desktop work and some regression
+tests overlapped this check; it was **not** a controlled idle/load comparison.
+
+| RVC device | Spool-up (load + warm-up) | Conversion median (min–max) | RTF |
+|---|---:|---:|---:|
+| GPU, ROCm / `gfx1150` | 8.36 s (2.06 + 6.25) | 2.29 s (2.19–3.13) | 0.619 |
+| CPU, same ROCm environment | 5.56 s (1.60 + 3.90) | 1.93 s (1.89–3.03) | 0.522 |
+
+CPU was faster for this short-clip check. In the user's earlier matched
+five-sentence live passage, GPU RVC totalled 16.69 s versus 18.97 s on CPU,
+about 12% less conversion time, while first-clip latency was nearly equal
+(5.06 s versus 5.15 s). These are separate workloads, not a universal speedup
+or a contradiction of the 395 measurements above. Longer clips, concurrent
+CPU work, shared GPU load and startup costs need separate repeated checks.
+No controlled CPU-headroom, concurrent LLM or audio-quality equivalence
+claim is made by this checkpoint; listen to the saved outputs.
+
+This validates the supported ROCm runtime on this 890M. It does **not**
+establish support for the Ryzen 5825U / Vega `gfx90c`, ONNX/Vulkan or
+DirectML RVC routes from #111. Optional GPU Kokoro is separate work in #62.
+
 ---
 
 ## Path B — NVIDIA CUDA (GeForce/RTX) 💚
@@ -232,6 +328,10 @@ cd ~/Code/avatar-yidhari
 
 # CPU fallback: omit --applio-dir and optionally cap CPU threads:
 #   ... --rvc-threads 4
+
+# Pin the device instead of letting PyTorch choose (default: auto):
+#   ... --rvc-device gpu   # fail at startup if no GPU is visible
+#   ... --rvc-device cpu   # hide the GPU, e.g. to leave it to the LLM
 ```
 
 Notes:
@@ -240,8 +340,11 @@ Notes:
   (`logs/Yidhari-zzz/Yidhari-zzz_75e_21450s.pth` + `Yidhari-zzz.index`);
   `--pth` / `--index` override individually.
 - `--rvc-threads` is a CPU-torch setting; the GPU paths ignore it.
-- Watch for `Applio worker ready: load …s, warm-up …s` at bridge startup and
-  per-sentence `rvcSeconds` in the log — that's your end-to-end proof. 📈
+- `--rvc-device auto` (default) uses the GPU when Applio's PyTorch sees one,
+  otherwise the CPU. `gpu` refuses to start without a GPU; `cpu` hides it.
+- Watch for `Applio worker ready on GPU (rocm 7.2…, Radeon 8060S Graphics, gfx1151): load …s, warm-up …s`
+  (or `on CPU`) at bridge startup and per-sentence `rvcSeconds` in the log —
+  that's your end-to-end proof, and it catches a silent CPU fallback. 📈
 
 ---
 
@@ -254,6 +357,7 @@ Notes:
 | `torch …+cu128` inside Applio-rocm | ROCm | A plain-PyPI install overwrote ROCm. Reinstall with `--index-url https://download.pytorch.org/whl/rocm7.2`. |
 | `torch.cuda.is_available()` is `False` | CUDA | Update the NVIDIA driver (`nvidia-smi` must work outside Python first). |
 | Bridge stops at startup with "Applio file not found" | both | The chosen `--applio-dir` lacks `.venv/bin/python`, the `.pth`, or the `.index` — check the path in the error and copy the model in (§0). |
+| Bridge stops with `failed to start: RuntimeError: --rvc-device gpu: no GPU visible…` | both | That Applio venv's PyTorch has no usable GPU (the message names its build, e.g. `cuda 12.8`). Point `--applio-dir` at the ROCm/CUDA install, fix the driver checks above, or use `--rvc-device auto`. |
 | First conversion is very slow, later ones fast | both | Normal: model load + kernel warm-up. The bridge warms the worker once at startup; don't judge by clip #1. |
 | RVC runs but the LLM slows down | ROCm | On UMA APUs the iGPU is shared with `llama-server` (Vulkan). Measure tokens/s with/without speech (#15) before tuning. |
 

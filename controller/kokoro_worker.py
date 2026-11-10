@@ -1,4 +1,4 @@
-"""CPU Kokoro synthesis, either a standalone WAV audition or a JSON-line worker."""
+"""Kokoro synthesis with CPU ONNX or an optional native ROCm JSON-line worker."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import json
 import math
 from pathlib import Path
 import re
+import sys
 import tempfile
 import threading
 import time
@@ -36,6 +37,7 @@ SPAN_PUNCTUATION = frozenset(',.!?…;:—"\'()')
 MAX_EMPHASIS = 3          # emphasised words per sentence
 MAX_EMPHASIS_PAUSE = 0.3  # seconds
 SPLICE_FADE = 0.005       # seconds faded out and in around a spliced pause
+PAUSE_QUIET_DB = -40.0    # spaces can contain coarticulated speech; only splice into actual quiet
 FRAME = 0.025             # seconds per Kokoro duration frame (600 samples at 24 kHz)
 MAX_STRETCH = 0.125       # seconds one sound may be drawn out to: 5 frames sounded natural, 8 broke up
 STRESS_MARKS = ('ˈ', 'ˌ')  # primary first
@@ -372,11 +374,12 @@ def shift_spans(spans: dict, points: list[float], seconds: float) -> dict:
             for index, (start, end) in spans.items()}
 
 
-def pause_points(timings, words) -> list[float]:
-    """Seconds, in the middle of the space before each spoken word index in ``words``.
+def pause_points(timings, words, *, samples=None, rate=None) -> list[float]:
+    """Pause locations inside the space before each requested word.
 
-    ``timings`` are Kokoro's per-phoneme timings (``phoneme``, ``start``, ``end``),
-    spaces included. The first word and indices past the end get no pause.
+    Timing-only callers receive candidate midpoints. With audio, require a quiet
+    window wide enough for both splice fades, inside that space's timing span.
+    A text space can be fully voiced: skip it rather than break coarticulation.
     """
     spaces, current, gap, index = {}, '', None, 0
     for timing in [*timings, None]:
@@ -386,11 +389,41 @@ def pause_points(timings, words) -> list[float]:
                     spaces[index] = gap
                 index += 1
             if timing is not None:
-                gap = (timing.start + timing.end) / 2
+                gap = (timing.start, timing.end)
             current = ''
         else:
             current += timing.phoneme
-    return [round(spaces[word], 6) for word in sorted(set(words)) if word in spaces]
+    gaps = [spaces[word] for word in sorted(set(words)) if word in spaces]
+    if samples is None:
+        return [round((start + end) / 2, 6) for start, end in gaps]
+    if not gaps:
+        return []
+    if rate is None or rate <= 0:
+        raise ValueError('Audio pause selection needs a positive sample rate.')
+    peak = max((abs(float(sample)) for sample in samples), default=0.0)
+    if peak == 0:
+        return []
+    fade = max(1, int(SPLICE_FADE * rate))
+    width = 2 * fade
+    limit = width * (peak * 10 ** (PAUSE_QUIET_DB / 20)) ** 2
+    points = []
+    for start, end in gaps:
+        first, last = max(0, math.ceil(start * rate)), min(len(samples), math.floor(end * rate))
+        if last - first < width:
+            continue
+        middle = (start + end) * rate / 2
+        energy = sum(float(sample) ** 2 for sample in samples[first:first + width])
+        best = None
+        for at in range(first, last - width + 1):
+            if at > first:
+                energy += float(samples[at + width - 1]) ** 2 - float(samples[at - 1]) ** 2
+            if energy <= limit:
+                center = at + fade
+                if best is None or abs(center - middle) < abs(best - middle):
+                    best = center
+        if best is not None:
+            points.append(round(best / rate, 6))
+    return points
 
 
 def splice_silence(samples: list[float], rate: int, points: list[float], seconds: float) -> list[float]:
@@ -435,33 +468,55 @@ def validate_settings(voice: str, speed: float, threads: int, clause_pause: floa
 
 class Synthesizer:
     def __init__(self, voice: str = 'af_heart:0.7,af_bella:0.3', speed: float = 1.0, threads: int = 2,
-                 clause_pause: float = 0.25):
+                 clause_pause: float = 0.25, *, device: str = 'cpu', backend: str = 'auto'):
         validate_settings(voice, speed, threads, clause_pause)
         import onnxruntime
         from kokoro_onnx import Kokoro
         import soundfile
 
-        onnxruntime.disable_telemetry_events()
-        options = onnxruntime.SessionOptions()
-        options.intra_op_num_threads = threads
-        options.inter_op_num_threads = 1
-        options.add_session_config_entry('session.intra_op.allow_spinning', '0')
-        options.add_session_config_entry('session.inter_op.allow_spinning', '0')
-        # The per-token copy gives the same durations for one speed, so it serves every sentence.
-        path = PER_TOKEN_MODEL if PER_TOKEN_MODEL.is_file() else MODEL_DIR / 'kokoro-v1.0.onnx'
-        session = onnxruntime.InferenceSession(
-            str(path), sess_options=options, providers=['CPUExecutionProvider'])
-        self.model = Kokoro.from_session(session, str(MODEL_DIR / 'voices-v1.0.bin'))
-        self.plan = None
-        self.token_speeds = (per_token_session(session) and self.model.has_timings
-                             and install_token_speeds(self.model, lambda: self.plan))
-        parts = parse_voice(voice)
-        for name, _ in parts:
-            if name not in self.model.voices:
-                raise ValueError(f'Unknown Kokoro voice: {name}; use --list-voices.')
-        # Mixed once here, so a blend costs nothing per sentence.
-        self.style = blend_style(parts, self.model.get_voice_style)
-        self.voice, self.speed, self.clause_pause, self.soundfile = voice, speed, clause_pause, soundfile
+        from controller.kokoro_runtime import select_session
+
+        def onnx_session():
+            onnxruntime.disable_telemetry_events()
+            options = onnxruntime.SessionOptions()
+            options.intra_op_num_threads = threads
+            options.inter_op_num_threads = 1
+            options.add_session_config_entry('session.intra_op.allow_spinning', '0')
+            options.add_session_config_entry('session.inter_op.allow_spinning', '0')
+            path = PER_TOKEN_MODEL if PER_TOKEN_MODEL.is_file() else MODEL_DIR / 'kokoro-v1.0.onnx'
+            session = onnxruntime.InferenceSession(
+                str(path), sess_options=options, providers=['CPUExecutionProvider'])
+            return session, {'device': 'cpu', 'backend': 'onnx', 'provider': 'CPUExecutionProvider',
+                             'onnxruntime': onnxruntime.__version__, 'model': path.name}
+
+        def native_session(selected):
+            from controller.kokoro_native import load_session
+            session = load_session(selected, threads)
+            return session, session.runtime
+
+        session, self.runtime = select_session(device, backend, onnx_session, native_session)
+        self.session = session
+        try:
+            self.model = Kokoro.from_session(session, str(MODEL_DIR / 'voices-v1.0.bin'))
+            self.plan = None
+            self.token_speeds = (per_token_session(session) and self.model.has_timings
+                                 and install_token_speeds(self.model, lambda: self.plan))
+            parts = parse_voice(voice)
+            for name, _ in parts:
+                if name not in self.model.voices:
+                    raise ValueError(f'Unknown Kokoro voice: {name}; use --list-voices.')
+            # Mixed once here, so a blend costs nothing per sentence.
+            self.style = blend_style(parts, self.model.get_voice_style)
+            self.voice, self.speed, self.clause_pause, self.soundfile = voice, speed, clause_pause, soundfile
+        except Exception:
+            self.close()
+            raise
+
+    def close(self):
+        if hasattr(self.session, 'close'):
+            self.session.close()
+        self.session = None
+        self.model = None
 
     def synthesize(self, text: str, path: str, speed: float | None = None,
                    clause_pause: float | None = None, emphasis: list[int] | None = None,
@@ -511,7 +566,8 @@ class Synthesizer:
                 stretched, stretch_skipped, redone = self._stretch(spoken, timings, stretch, speed, create_timed)
                 if redone is not None:
                     samples, rate, timings = redone
-            points = pause_points(timings, emphasis or [])
+            candidates = pause_points(timings, emphasis or [])
+            points = pause_points(timings, emphasis or [], samples=samples, rate=rate)
             wanted = [*(spans or []), *(index for index, _ in holds or [])]
             heard = {index: audible_span(samples, rate, start, end)
                      for index, (start, end) in word_spans(timings, wanted).items()}
@@ -531,7 +587,8 @@ class Synthesizer:
                 pauses = len(points)
                 if not points:
                     skipped = ('no-timings' if not timings else
-                               'first-word' if all(i == 0 for i in emphasis) else 'not-found')
+                               'first-word' if all(i == 0 for i in emphasis) else
+                               'no-safe-gap' if candidates else 'not-found')
         elif spoken and spoken != phonemes:  # pronunciation fix only
             samples, rate = self.model.create(
                 spoken, voice=self.style, speed=speed, lang=lang, trim=False,
@@ -633,34 +690,49 @@ def main() -> None:
     parser.add_argument('--clause-pause', type=float, default=0.25)
     parser.add_argument('--threads', type=int, default=2)
     parser.add_argument('--list-voices', action='store_true')
+    parser.add_argument('--device', choices=('cpu', 'gpu', 'auto'), default='cpu')
+    parser.add_argument('--backend', choices=('auto', 'onnx', 'native'), default='auto')
     args = parser.parse_args()
     replies = protocol_stream() if args.worker else None
-    started = time.perf_counter()
-    synthesizer = Synthesizer(args.voice, args.speed, args.threads, args.clause_pause)
-    load_seconds = time.perf_counter() - started
-    if args.list_voices:
-        print('\n'.join(sorted(name for name in synthesizer.model.voices if name.startswith(('a', 'b')))))
-        return
-    if not args.worker:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        metrics = synthesizer.synthesize(args.text, str(args.output))
-        print(json.dumps({'output': str(args.output.resolve()), 'loadSeconds': round(load_seconds, 3),
-                          **metrics}, indent=2))
-        return
+    from controller.kokoro_runtime import prepare_synthesizer
+    synthesizer = None
+    try:
+        if args.list_voices:
+            synthesizer = Synthesizer(args.voice, args.speed, args.threads, args.clause_pause,
+                                      device=args.device, backend=args.backend)
+            print('\n'.join(sorted(name for name in synthesizer.model.voices if name.startswith(('a', 'b')))))
+            return
+        synthesizer, ready = prepare_synthesizer(
+            Synthesizer, device=args.device, backend=args.backend, voice=args.voice,
+            speed=args.speed, threads=args.threads, clause_pause=args.clause_pause)
+        if not args.worker:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            metrics = synthesizer.synthesize(args.text, str(args.output))
+            print(json.dumps({'output': str(args.output.resolve()), **ready, **metrics}, indent=2))
+            return
 
-    def reply(message):
-        replies.write(json.dumps(message) + '\n')
+        def reply(message):
+            replies.write(json.dumps(message) + '\n')
+            replies.flush()
 
-    with tempfile.TemporaryDirectory() as scratch:
-        warm = synthesizer.synthesize('Hello, I am ready.', str(Path(scratch) / 'warm.wav'))
-    reply({'ready': True, 'loadSeconds': round(load_seconds, 3), 'warmSeconds': warm['ttsSeconds']})
+        reply(ready)
 
-    async def run():
-        lines = asyncio.Queue()
-        threading.Thread(target=read_stdin, args=(asyncio.get_running_loop(), lines), daemon=True).start()
-        await serve(lines, synthesizer.synthesize, reply)
+        async def run():
+            lines = asyncio.Queue()
+            threading.Thread(target=read_stdin, args=(asyncio.get_running_loop(), lines), daemon=True).start()
+            await serve(lines, synthesizer.synthesize, reply)
 
-    asyncio.run(run())
+        asyncio.run(run())
+    except Exception as error:
+        if replies:
+            replies.write(json.dumps({'ready': False, 'error': f'Kokoro: {type(error).__name__}: {error}'}) + '\n')
+            replies.flush()
+        else:
+            print(f'Kokoro: {error}', file=sys.stderr)
+        raise SystemExit(1) from error
+    finally:
+        if synthesizer is not None:
+            synthesizer.close()
 
 
 if __name__ == '__main__':

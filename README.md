@@ -164,15 +164,59 @@ The transcript shows up as your chat bubble and goes down the same `{"type":"sta
 
    This creates `.venv-kokoro` and downloads the Kokoro model and voices into `models/kokoro/`. After setup, Kokoro synthesis runs locally and does not send speech text online.
 3. **Check Applio:** it should be installed next to this repository at `../Applio`, with `.venv/bin/python` and the voice model under `logs/Yidhari-zzz/`. For GPU conversion, follow [docs/setup.md](docs/setup.md): **AMD ROCm** uses the separate `../Applio-rocm` install (`--applio-dir ../Applio-rocm`), while **NVIDIA CUDA** uses the standard `../Applio` install.
-4. **Start the bridge with Kokoro speech (recommended default command):**
+4. **Choose the Applio RVC device and start the bridge with Kokoro speech:**
+
+   **AMD ROCm RVC GPU, Kokoro CPU:** use the ROCm Applio environment and require a usable RVC GPU:
 
    ```bash
    .venv/bin/python controller/bridge.py --mode llm --speech \
      --tts kokoro --kokoro-voice af_heart:0.7,af_bella:0.3 --kokoro-speed 1.0 --kokoro-threads 2 \
-     --applio-dir "../Applio-rocm"
+     --applio-dir "../Applio-rocm" --rvc-device gpu
    ```
 
-   If you do not have `../Applio-rocm`, omit `--applio-dir` to use the CPU Applio install at `../Applio` (and optionally add `--rvc-threads 4`). Wait for `Applio worker ready…`, then chat as usual. She speaks each sentence as soon as it is ready, with her mouth following the audio.
+   **CPU:** force CPU conversion using the same Applio environment and voice model:
+
+   ```bash
+   .venv/bin/python controller/bridge.py --mode llm --speech \
+     --tts kokoro --kokoro-voice af_heart:0.7,af_bella:0.3 --kokoro-speed 1.0 --kokoro-threads 2 \
+     --applio-dir "../Applio-rocm" --rvc-device cpu
+   ```
+
+   Add `--agent` to either command for MCP/agent speech. For the standard
+   `../Applio` install, omit `--applio-dir`; keep `--rvc-device cpu` to force CPU,
+   or use `--rvc-device gpu` with a working CUDA environment. Optionally add
+   `--rvc-threads 4` for CPU conversion.
+
+   `--rvc-device auto` is the default when the flag is omitted: use a visible
+   GPU, otherwise CPU. Explicit `gpu` stops at startup if no GPU is available.
+   These flags select **Applio RVC only**; Kokoro source TTS defaults to CPU.
+
+   **Optional Kokoro ROCm GPU source (#62, experimental):** on the tested Linux
+   Python 3.12 setup, install its separate runtime once:
+
+   ```bash
+   python3 -m controller.setup_kokoro_rocm
+   ```
+
+   **Both Kokoro and RVC on the GPU:**
+
+   ```bash
+   .venv/bin/python -m controller.bridge --mode llm --agent --speech --tts kokoro \
+     --kokoro-voice af_heart:0.7,af_bella:0.3 --kokoro-threads 2 \
+     --kokoro-device gpu --kokoro-backend native \
+     --applio-dir ../Applio-rocm --rvc-device gpu
+   ```
+
+   `--rvc-device gpu` alone leaves Kokoro on its CPU default. To require the
+   original CPU ONNX source, use `--kokoro-device cpu --kokoro-backend onnx`.
+   Choose `--kokoro-device auto --kokoro-backend auto` to try native GPU with a
+   visible ONNX CPU fallback. RVC's device remains independently selected.
+   For the both-GPU command, wait for **both** `Kokoro worker ready on GPU` and
+   `Applio worker ready on GPU`; these are separate warm-ups.
+   See [native worker setup, listening results and limits](docs/kokoro-native-worker.md).
+   Wait for `Applio worker ready on GPU (rocm …)` or `Applio worker ready on CPU`,
+   then chat as usual. She speaks each sentence as soon as it is ready, with her
+   mouth following the audio.
 5. **Edge fallback (optional):** to compare against the online Edge source instead, start with `--tts edge`:
 
    ```bash
@@ -201,7 +245,10 @@ for limits and listening checks.
 | `--kokoro-clause-pause` | `0.25`                         | Seconds of pause Kokoro inserts at commas and other clause breaks (0–0.5)     |
 | `--sentence-tail`  | `0.4`                               | Seconds of silence kept after a full sentence (0–0.8); sets the inter-sentence gap |
 | `--fragment-tail`  | `0.1`                               | Seconds kept after a fragment split by a mood tag (0–0.8)                      |
-| `--kokoro-threads` | `2`                                 | CPU ONNX threads for the Kokoro worker                                         |
+| `--kokoro-threads` | `2`                                 | CPU threads inside the selected Kokoro runtime                                |
+| `--kokoro-device` | `cpu`                                | `cpu`, required ROCm `gpu`, or `auto` with visible fallback                    |
+| `--kokoro-backend` | `auto`                              | `auto`, `onnx` (CPU), or `native` (PyTorch with matching CustomSTFT)            |
+| `--kokoro-python` | matching environment                 | Override worker Python; defaults to `.venv-kokoro` or `.venv-kokoro-rocm`       |
 | `--plain-voice`    | off                                 | Turn every expressive part off (each also has `--no-…`, e.g. `--no-word-lifts`) |
 | `--mood-prosody`   | on                                  | Let each sentence's mood tag nudge Kokoro speed/pauses and RVC pitch (clamped) |
 | `--interjection-contours` | on                           | Kokoro: "Aww"/"Ooh" rise then fall via an RVC pitch bend (`--interjection-bend` 8 st; optional `--interjection-hold`) |
@@ -214,6 +261,7 @@ for limits and listening checks.
 | `--pth`            | model under `--applio-dir`          | Applio voice model                                                             |
 | `--index`          | index under `--applio-dir`          | Applio voice index                                                             |
 | `--rvc-threads`    | `0` (PyTorch default)               | CPU RVC threads; mainly for the CPU Applio path                                |
+| `--rvc-device`     | `auto`                              | RVC on `gpu` (stop if none is visible), `cpu` (hide the GPU) or `auto`; the ready line names the backend |
 | `--llama-url`      | `http://127.0.0.1:8080`             | Any OpenAI-compatible base URL (or full `…/chat/completions` endpoint); cloud/proxy URLs send chat text off-machine |
 | `--model`          | none                                  | Model name/id; required for non-loopback URLs                                  |
 | `--api-key-env`    | `OPENAI_API_KEY`                    | Env var holding the upstream API key (bridge only, sent as Bearer)             |
@@ -240,6 +288,7 @@ for limits and listening checks.
 | `--mood-prosody`      | Mood tags also shape the voice per sentence: Kokoro speed and clause pause, RVC pitch (±2 semitones); see docs/testing-kokoro.md §2b.                                         |
 | `--kokoro-threads`    | CPU ONNX thread count for the Kokoro worker.                                                                                                                                           |
 | `--rvc-threads`       | PyTorch CPU thread count for RVC when using the CPU Applio path.                                                                                                                       |
+| `--rvc-device`        | `auto` (default), `gpu` or `cpu`. `gpu` fails at startup without a visible GPU; `cpu` hides it. Compare devices with `python -m controller.rvc_check` (docs/setup.md A6).          |
 | `--applio-dir`        | Applio installation to launch. Defaults to `../Applio`; use `../Applio-rocm` for ROCm GPU RVC.                                                                                     |
 | `--pth`               | Explicit Applio voice model path. If omitted, the default Yidhari model under `--applio-dir` is used.                                                                                |
 | `--index`             | Explicit Applio voice index path. If omitted, the default Yidhari index under `--applio-dir` is used.                                                                                |

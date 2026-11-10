@@ -1,4 +1,4 @@
-// Idle-state timer for issue #71: active -> idle -> sleepy -> waking -> active.
+// Idle-state timer for issue #71: active -> idle -> stretching -> sleepy -> waking -> active.
 // No DOM or Three.js imports, so node --test covers it
 // (tests/renderer/idle-behaviour.test.mjs). main.js feeds it activity and
 // blocking each frame and applies the actions it returns; the expression
@@ -18,6 +18,8 @@ export const IDLE_TIMING = Object.freeze({
   /** Wake-up beats: surprised, then happy, then her resting mood. */
   wakeSurprised: 0.6,
   wakeHappy: 1.6,
+  /** The stretch fills the last seconds before sleepy, so sleepy starts on time. */
+  stretch: 3.2,
 });
 
 const LIMITS = Object.freeze({
@@ -40,6 +42,7 @@ const AWAKE_BLINK = Object.freeze({ interval: 1, duration: 1 });
 export const IDLE_STATE_LABELS = Object.freeze({
   active: "Active",
   idle: "Idle",
+  stretching: "Stretching",
   sleepy: "Sleepy 💤",
   waking: "Waking up",
 });
@@ -52,7 +55,7 @@ const finiteOr = (value, fallback) =>
  * Fill in and clamp idle timings. Unreadable values fall back to the
  * defaults, and sleepy never starts before idle.
  * @param {unknown} raw Partial timings in seconds.
- * @returns {{idleAfter:number,sleepAfter:number,wakeSurprised:number,wakeHappy:number}}
+ * @returns {{idleAfter:number,sleepAfter:number,wakeSurprised:number,wakeHappy:number,stretch:number}}
  */
 export function normaliseIdleTiming(raw) {
   const source = raw && typeof raw === "object" ? raw : {};
@@ -66,6 +69,7 @@ export function normaliseIdleTiming(raw) {
     sleepAfter,
     wakeSurprised: IDLE_TIMING.wakeSurprised,
     wakeHappy: IDLE_TIMING.wakeHappy,
+    stretch: IDLE_TIMING.stretch,
   };
 }
 
@@ -80,8 +84,10 @@ export class IdleController {
     this.timing = normaliseIdleTiming(timing);
     this.enabled = enabled !== false;
     this.blocked = false;
-    /** @type {"active"|"idle"|"sleepy"|"waking"} */
+    /** @type {"active"|"idle"|"stretching"|"sleepy"|"waking"} */
     this.state = "active";
+    /** Seconds since the current state began; drives the idle motions. */
+    this.stateTime = 0;
     this.elapsed = 0;
     this.wakeTime = 0;
     this.wakeStep = null;
@@ -132,10 +138,11 @@ export class IdleController {
       this.pendingActivity = false;
       return actions;
     }
+    this.stateTime += dt;
     if (this.pendingActivity) {
       this.pendingActivity = false;
       if (this.state === "sleepy") {
-        this.state = "waking";
+        this.#enter("waking");
         this.wakeTime = 0;
         this.wakeStep = "surprised";
         actions.push({ type: "mood", ...IDLE_MOODS.surprised });
@@ -157,16 +164,26 @@ export class IdleController {
       return actions;
     }
     this.elapsed += dt;
-    if (this.state === "active" && this.elapsed >= this.timing.idleAfter) this.state = "idle";
-    if (this.state === "idle" && this.elapsed >= this.timing.sleepAfter) {
-      this.state = "sleepy";
+    const { idleAfter, sleepAfter, stretch } = this.timing;
+    const stretchAt = Math.max(idleAfter, sleepAfter - stretch);
+    if (this.state === "active" && this.elapsed >= idleAfter) this.#enter("idle");
+    if (this.state === "idle" && this.elapsed >= stretchAt && this.elapsed < sleepAfter) {
+      this.#enter("stretching");
+    }
+    if ((this.state === "idle" || this.state === "stretching") && this.elapsed >= sleepAfter) {
+      this.#enter("sleepy");
       actions.push({ type: "mood", ...IDLE_MOODS.sleepy });
     }
     return actions;
   }
 
+  #enter(state) {
+    this.state = state;
+    this.stateTime = 0;
+  }
+
   #toActive() {
-    this.state = "active";
+    this.#enter("active");
     this.elapsed = 0;
     this.wakeTime = 0;
     this.wakeStep = null;

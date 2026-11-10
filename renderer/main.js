@@ -50,6 +50,7 @@ import { addSeeThroughBrows, bindSeeThroughBrowsToggle } from "./see-through-bro
 import { installCollapsiblePanel } from "./collapsible-panel.js";
 import { FrameLoop, PopOut, popupWindow } from "./pop-out.js";
 import { IDLE_STATE_LABELS, IdleController, bindIdleSettings } from "./idle-behaviour.js";
+import { IdleMotion } from "./idle-motion.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
 const MODEL_URL = "/yidhari-mmd/伊德海莉.pmx";
@@ -231,6 +232,27 @@ let askOpen = false;
 /** The mood the idle controller last applied, so rest never overwrites someone else's. */
 let idleMood = null;
 let shownIdleState = null;
+/** Glances, tilts, sighs and the stretch (#71), as a pose for this frame. */
+const idleMotion = new IdleMotion();
+let idlePose = idleMotion.update(0, "active", 0);
+/**
+ * Idle motion bones: which angle of the pose each one takes, and its sign
+ * (checked on the model: negative pitch leans back, see docs/idle-behaviours.md).
+ * Bones another layer rewrites each frame get the delta on top of that layer;
+ * the shoulders have no other writer, so they keep their own rest.
+ */
+const IDLE_BONES = Object.freeze([
+  { name: "上半身", pitch: ["back", -1] },
+  { name: "上半身2", pitch: ["chest", -1] },
+  { name: "首", pitch: ["headPitch", -0.4] },
+  { name: "頭", pitch: ["headPitch", -0.6], roll: ["tilt", 1] },
+  { name: "左肩", roll: ["shoulders", -1], own: true },
+  { name: "右肩", roll: ["shoulders", 1], own: true },
+]);
+/** @type {{ bone: THREE.Bone, rest: THREE.Quaternion | null, pitch?: [string, number], roll?: [string, number] }[]} */
+let idleBones = [];
+const idleEuler = new THREE.Euler();
+const idleQuat = new THREE.Quaternion();
 const IDLE_ACTIVITY_EVENTS = ["pointermove", "pointerdown", "keydown", "wheel"];
 const noteActivity = () => idle.activity();
 for (const type of IDLE_ACTIVITY_EVENTS) window.addEventListener(type, noteActivity, { passive: true });
@@ -350,6 +372,36 @@ function setupSway(object) {
   }
   swayToggle.disabled = swayBones.length === 0;
   swayButton.disabled = swayBones.length === 0;
+}
+
+/**
+ * Capture the idle motion bones (#71). Runs after restArms() and the gaze and
+ * sway setup, so their rest poses are the lowered-arm pose.
+ * @param {THREE.SkinnedMesh} object Loaded PMX mesh.
+ * @returns {void}
+ */
+function setupIdleMotion(object) {
+  idleBones = [];
+  for (const { name, pitch, roll, own } of IDLE_BONES) {
+    const bone = object.skeleton?.getBoneByName(name);
+    if (bone) idleBones.push({ bone, rest: own ? bone.quaternion.clone() : null, pitch, roll });
+  }
+}
+
+/**
+ * Multiply this frame's idle motion on top of the gaze and sway layers.
+ * Those layers rewrite their bones every frame, so nothing accumulates.
+ * @returns {void}
+ */
+function applyIdleMotion() {
+  for (const { bone, rest, pitch, roll } of idleBones) {
+    const x = pitch ? idlePose[pitch[0]] * pitch[1] : 0;
+    const z = roll ? idlePose[roll[0]] * roll[1] : 0;
+    if (rest) bone.quaternion.copy(rest);
+    if (x === 0 && z === 0) continue;
+    idleEuler.set(x, 0, z, "YXZ");
+    bone.quaternion.multiply(idleQuat.setFromEuler(idleEuler));
+  }
 }
 
 /**
@@ -843,7 +895,7 @@ function scheduleBlink(now) {
  * Advance the idle-state timer (#71) and apply its moods.
  * Speech, thinking, an open ask, a streaming reply or a morph audition block it.
  * The mood preview loop that starts on load does not: turning sleepy stops it.
- * @param {number} delta Real seconds since the previous frame, uncapped.
+ * @param {{ real: number, eased: number }} delta Real (uncapped) and eased (capped) frame seconds.
  * @returns {void}
  */
 function updateIdle(delta) {
@@ -851,7 +903,7 @@ function updateIdle(delta) {
   idle.setBlocked(!speechIdle() || chatResponding || askOpen
     || audition?.sweeping || Boolean(globalThis.__yidhariHold)
     || expressions.activeExpression === "thinking");
-  for (const action of idle.update(delta)) {
+  for (const action of idle.update(delta.real)) {
     if (action.type === "mood") {
       applyMood(action.name, action.weight);
       idleMood = action.name;
@@ -863,6 +915,11 @@ function updateIdle(delta) {
     }
     idleMood = null;
   }
+  // A held pose lets previews and comparison grids show one motion on demand.
+  idlePose = globalThis.__yidhariIdlePose
+    ? { glance: null, tilt: 0, chest: 0, shoulders: 0, back: 0, headPitch: 0, ...globalThis.__yidhariIdlePose }
+    : idleMotion.update(delta.eased, idle.state, idle.stateTime);
+  gaze.setIdle(idlePose.glance);
   if (idle.state !== shownIdleState) {
     shownIdleState = idle.state;
     idleStatus.textContent = `Idle state: ${IDLE_STATE_LABELS[idle.state]}`;
@@ -1368,6 +1425,7 @@ function onModelLoaded(loaded, data) {
   setupGaze(mesh);
   setupThinkingPose(mesh);
   setupSway(mesh);
+  setupIdleMotion(mesh);
 
   const morphCount = mesh.morphTargetInfluences?.length ?? 0;
   const unavailable = [];
@@ -1492,7 +1550,7 @@ function animate() {
   // The idle timer counts real time, so a hidden tab still ages it (#71).
   const idleDelta = Math.max(0, (now - previousFrame) / 1000);
   previousFrame = now;
-  updateIdle(idleDelta);
+  updateIdle({ real: idleDelta, eased: delta });
   controls.update();
   mesh?.morphTargetInfluences?.fill(0);
   expressions?.update(delta);
@@ -1503,6 +1561,7 @@ function animate() {
   applyThinkingPose(delta);
   applyGaze(delta);
   applySway(now / 1000, delta);
+  applyIdleMotion();
   audition?.update(delta);
   audition?.apply();
   // A held preview wins the frame so a visual check is not overwritten by the mood loop.

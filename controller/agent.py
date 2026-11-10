@@ -583,6 +583,7 @@ def prepare_socket_dir(path):
             ) from None
         if not path.is_dir() or path.is_symlink():
             raise AgentError(f"Agent socket path {path} is not a real directory")
+        _refuse_live_windows_listener(path)
         return
     if len(os.fsencode(path)) > MAX_SOCKET_PATH:
         raise AgentError(
@@ -617,6 +618,50 @@ def prepare_socket_dir(path):
             path.unlink()  # stale: left by a bridge that did not exit cleanly
             return
     raise AgentError(f"Another bridge is already listening on {path}")
+
+
+def _refuse_live_windows_listener(path):
+    """Refuse to start if another bridge already owns this agent channel.
+
+    Mirrors the POSIX stale-socket probe. Without it a second bridge would
+    silently overwrite ``agent.port``/``agent.token`` and hijack the channel:
+    ``call_bridge`` would then reach the new listener while the first bridge's
+    clients are orphaned. Reads the port/token a live bridge left behind; if
+    the port answers, the channel is owned and we refuse. If the files are
+    absent, stale, or the port is dead, we let startup proceed (the stale
+    files are overwritten by ``_serve_windows``)."""
+    try:
+        port = int((path / "agent.port").read_text().strip())
+        token = (path / "agent.token").read_text().strip()
+    except (OSError, ValueError):
+        return  # no prior listener recorded
+    if not (0 < port < 65536) or not token:
+        return
+    # A deliberately invalid tool: with a valid token the live bridge answers a
+    # validation error (proving ownership) without mutating any state; with the
+    # wrong/missing token it answers the auth error. Either reply proves a live
+    # agent channel owns this port, unlike a random TCP service which would not
+    # return our JSON shape.
+    probe = json.dumps({"tool": "__probe__", "token": token}).encode() + b"\n"
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=2) as conn:
+            conn.sendall(probe)
+            reply = conn.recv(MAX_LINE)
+    except OSError:
+        return  # port dead: stale port file, safe to take over
+    # A listener answered on this port. A real agent channel returns a JSON
+    # {"result": ...} line — a validation error for the unknown tool, or the
+    # auth error for a wrong token — either way proving a live bridge owns the
+    # channel, so we must not overwrite its port/token files.
+    try:
+        result = json.loads(reply.split(b"\n")[0]).get("result")
+    except (ValueError, IndexError):
+        result = None
+    if isinstance(result, str) and result:
+        raise AgentError(
+            f"Another bridge is already listening on the agent channel "
+            f"(loopback port {port})"
+        )
 
 
 def _peer_uid(writer):

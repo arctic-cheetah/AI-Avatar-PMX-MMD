@@ -227,8 +227,11 @@
     "description": "Express tiredness or drowsiness.",
     "morphs": {
       "じと目": 1,
-      "下": 0.4
-    }
+      "下": 0.4,
+      "あ": 1,
+      "お": 0.4
+    },
+    "ease": 3
   },
   "relieved": {
     "description": "React when a worry or difficulty has passed.",

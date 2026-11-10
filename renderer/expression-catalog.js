@@ -1,7 +1,7 @@
 /**
  * Browser adapter for expressions.json, also readable directly by Python.
  * Descriptions document intended usage; preview presets to judge their look.
- * @typedef {{description: string, morphs: Record<string, number>, aliases?: string[]}} Expression
+ * @typedef {{description: string, morphs: Record<string, number>, aliases?: string[], ease?: number}} Expression
  */
 /** @returns {Promise<Record<string, Expression>>} Validated mood presets. */
 export async function loadExpressionCatalog() {
@@ -16,6 +16,8 @@ export async function loadExpressionCatalog() {
       if (!morph.trim() || !Number.isFinite(weight) || weight < 0 || weight > 1) throw new Error(`Invalid morph weight: ${name}`);
     }
     if (name === 'neutral' && Object.keys(preset.morphs).length) throw new Error('Neutral must have an empty morph map.');
+    // Optional spring rate (1/s) while this preset is shown, e.g. sleepy's slow yawn (#71).
+    if (Object.hasOwn(preset, 'ease') && !(typeof preset.ease === 'number' && preset.ease > 0 && preset.ease <= 60)) throw new Error(`Invalid ease: ${name}`);
   }
   // Old names of renamed presets (#99); the bridge resolves them, so names arrive canonical.
   const seen = new Set(Object.keys(catalog));

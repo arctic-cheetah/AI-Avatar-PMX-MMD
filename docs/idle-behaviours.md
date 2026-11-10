@@ -55,7 +55,13 @@ The timer is frozen at zero, and no idle state is entered, while:
 - speech is playing, loading or queued;
 - the mood is `thinking`;
 - an agent `ask` is waiting for an answer;
-- a chat reply is streaming.
+- a chat reply is streaming;
+- a morph audition sweep or held preview is running (developer tools).
+
+The mood preview loop that starts when the page loads does not block idle.
+It cycles moods until something stops it, so blocking on it would keep her
+awake forever without a bridge. Turning sleepy stops the loop, like any
+other mood selection.
 
 If one of these starts while she is sleepy or waking, the idle state ends at
 once and hands her face back. The renderer only restores the resting mood

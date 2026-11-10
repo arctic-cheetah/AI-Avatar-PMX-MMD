@@ -72,6 +72,13 @@ class FakeElement {
     }
   }
   appendChild(node) { this.append(node); return node; }
+  removeChild(node) {
+    const index = this.children.indexOf(node);
+    if (index < 0) throw new Error("Node is not a child");
+    this.children.splice(index, 1);
+    node.parentElement = null;
+    return node;
+  }
   replaceChildren(...nodes) {
     for (const child of this.children) child.parentElement = null;
     this.children = [];
@@ -84,6 +91,7 @@ class FakeElement {
   set outerHTML(_) { throw new Error("outerHTML must not be assigned"); }
   insertAdjacentHTML() { throw new Error("insertAdjacentHTML must not be used"); }
   addEventListener(type, listener) { (this.listeners[type] ??= []).push(listener); }
+  emit(type) { for (const listener of this.listeners[type] ?? []) listener(); }
   removeEventListener() {}
   setPointerCapture() {}
   focus() {}

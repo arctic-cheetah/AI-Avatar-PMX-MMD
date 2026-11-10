@@ -405,6 +405,41 @@ class WindowsSocketTests(unittest.TestCase):
 
         asyncio.run(run_test())
 
+    def test_windows_second_bridge_refused_not_silent_takeover(self):
+        """A live bridge's port must not be overwritten by a second listener."""
+        async def run_test():
+            with tempfile.TemporaryDirectory() as root, patch("controller.agent.WINDOWS", True):
+                path = Path(root) / "yidhari"
+
+                class EchoRouter:
+                    async def handle(self, request):
+                        return "error: unknown tool"
+
+                server = await serve(path, EchoRouter())
+                try:
+                    # prepare_socket_dir is synchronous; run it on a thread so
+                    # this loop stays free to answer the probe (in production
+                    # the second bridge is a separate process).
+                    with self.assertRaises(AgentError) as ctx:
+                        await asyncio.to_thread(prepare_socket_dir, path)
+                    self.assertIn("already listening", str(ctx.exception))
+                finally:
+                    server.close()
+                    await server.wait_closed()
+
+        asyncio.run(run_test())
+
+    def test_windows_stale_port_files_allow_takeover(self):
+        """Dead port/token files must not block startup; they get overwritten."""
+        with tempfile.TemporaryDirectory() as root, patch("controller.agent.WINDOWS", True):
+            path = Path(root) / "yidhari"
+            path.mkdir(parents=True)
+            # Stale files left by a crashed bridge on a dead port.
+            (path / "agent.port").write_text("1\n")
+            (path / "agent.token").write_text("x" * 64)
+            prepare_socket_dir(path)  # must not raise
+            self.assertTrue(path.is_dir())
+
 
 class StageTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):

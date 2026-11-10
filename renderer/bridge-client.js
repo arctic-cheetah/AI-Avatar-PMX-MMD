@@ -68,8 +68,9 @@ export function agentEvent(event, catalog) {
 /**
  * Connect the chat UI to the bridge. history keeps the visible log across a page
  * refresh (#105); win is the window whose pagehide saves a reply still streaming.
- * onActivity fires on every bridge event and voice-input state change, and
- * onAskChange(open) when an agent ask opens or closes; both feed the idle timer (#71).
+ * onActivity fires on every sent chat message, bridge event and voice-input
+ * state change, and onAskChange(open) when an agent ask opens or closes; both
+ * feed the idle timer (#71).
  */
 export function connectBridge({ catalog, onStart, onFinish, onExpression, onText, onSpeak, onFiller, onReset, onAgentSay, onAgentMood, onTurn, greeting = null, onGreeting,
   onActivity, onAskChange, history = new ChatHistory(), win = globalThis }) {
@@ -212,6 +213,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
   /** Show a prompt as the user's bubble and start a reply; false if the bridge cannot take it now. */
   function sendPrompt(prompt) {
     if (!prompt || !canSend()) return false;
+    onActivity?.();
     show({ who: 'you', text: prompt });
     chatInput.value = '';
     fitChatInput({ reset: true });

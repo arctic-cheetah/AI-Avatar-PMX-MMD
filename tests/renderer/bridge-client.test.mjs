@@ -178,3 +178,27 @@ test("every bridge event counts as activity for the idle timer (#71)", (t) => {
   page.receive({ type: "turn" });
   assert.equal(activity, 3);
 });
+
+test("sending a chat message or answering an ask counts as activity before any reply (#71)", (t) => {
+  const page = installPage(t);
+  let activity = 0;
+  connect(page, { onActivity: () => { activity += 1; } });
+  page.nodes.get("#chat-input").value = "Hello";
+  page.nodes.get("#chat-bar").listeners.submit[0]({ preventDefault() {} });
+  assert.equal(activity, 1, "the sent chat");
+  page.receive({ type: "end" });
+  page.receive({ type: "agent", kind: "ask", source: "Claude Code", id: "a1", text: "Commit?" });
+  const before = activity;
+  page.nodes.get("#chat-input").value = "Yes";
+  page.nodes.get("#chat-bar").listeners.submit[0]({ preventDefault() {} });
+  assert.equal(activity - before, 1, "the answer");
+});
+
+test("an empty chat submit is not activity (#71)", (t) => {
+  const page = installPage(t);
+  let activity = 0;
+  connect(page, { onActivity: () => { activity += 1; } });
+  page.nodes.get("#chat-input").value = "   ";
+  page.nodes.get("#chat-bar").listeners.submit[0]({ preventDefault() {} });
+  assert.equal(activity, 0);
+});

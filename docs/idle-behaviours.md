@@ -1,9 +1,10 @@
 # Idle behaviours (issue #71)
 
-When nobody interacts for a while, Yidhari drifts from active to idle, and
-after a long quiet she turns sleepy, with slower blinks. Any activity wakes
-her with a brief surprised look, then a happy one, before she settles back
-into her resting mood.
+When no chat or message comes through the bridge for a while, Yidhari drifts
+from active to idle, and after a long quiet she turns sleepy, with slower
+blinks. The next chat, voice input or bridge message wakes her with a brief
+surprised look, then a happy one, before she settles back into her resting
+mood.
 
 #71 lands in parts:
 
@@ -44,11 +45,19 @@ for the long, sleepy idle.
 
 ## What counts as activity
 
-- Pointer movement, clicks, wheel and key presses in the page or in the
-  pop-out window.
-- Any event from the bridge: a chat reply starting, a speech clip, an agent
-  `say`, `report`, `ask` or `set_mood`.
+Only conversation with her counts:
+
+- Sending a chat message, including an answer to an agent `ask`. It counts
+  as soon as it is sent, before the bridge replies. An empty message does not
+  count.
+- Any event from the bridge (`controller/bridge.py`): a chat reply starting,
+  a speech clip, an agent `say`, `report`, `ask` or `set_mood`.
 - Voice input changing state (recording, transcribing).
+
+The mouse, keyboard, wheel and cursor gaze do not count. Moving the mouse
+neither keeps her awake nor wakes her, and her eyes still follow the cursor
+while she is awake. This was the user's choice on 11 November 2026: she gets
+sleepy when nobody talks to her, not when nobody touches the page.
 
 ## When idle behaviours never play
 
@@ -85,9 +94,9 @@ when she leaves idle mid-motion, the pose eases back instead of snapping.
 | Sigh | 30 % | 1.1 s in, 1.7 s out | Chest (`上半身2` pitch) and both `肩` lift, then fall | 2° chest, 2.5° shoulders |
 | Stretch | Before sleepy | 3.2 s | Back arches (`上半身` pitch), head tips back (`首`/`頭`), shoulders lift | 5° back, 7° head, 6° shoulders |
 
-- The glance is a gaze source. It outranks a still cursor, because no
-  activity means the cursor is not moving, but a face tracked by the camera
-  still wins. When the glance ends, gaze returns to the cursor or the centre,
+- The glance is a gaze source. For its 1–2 s it outranks the cursor, which
+  may still be moving because the mouse is not activity, but a face tracked
+  by the camera still wins. When the glance ends, gaze returns to the cursor or the centre,
   using the gaze spring from #54.
 - The tilt, sigh and stretch are small rotations multiplied on top of the
   rest pose: the tilt on the head after gaze, the rest on the sway layer. They
@@ -126,8 +135,8 @@ To try the states quickly, set *Idle after* to 5 and *Sleepy after* to 0.2
 
 The timer uses the real time between frames, without the 0.25 s frame cap
 used for easing. A hidden tab pauses the frame loop, so after a long time
-away she is already sleepy on the first frame back, and the movement that
-brings you back wakes her up.
+away she is already sleepy on the first frame back, until a chat or bridge
+message wakes her.
 
 ## Code
 

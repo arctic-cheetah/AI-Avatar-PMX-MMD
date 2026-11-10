@@ -68,6 +68,8 @@ export class GazeController {
     this.cameraTimeout = cameraTimeout;
     this.cursor = { enabled: false, target: { x: 0, y: 0 } };
     this.camera = { enabled: false, target: { x: 0, y: 0 }, at: -Infinity };
+    /** Idle glance target (#71), or null. */
+    this.idle = null;
     this.current = { x: 0, y: 0 };
     this.springs = { x: new Spring(0), y: new Spring(0) };
   }
@@ -92,12 +94,23 @@ export class GazeController {
   }
 
   /**
-   * Pick the active target: fresh camera beats cursor; none means centre.
+   * Idle glance (#71). It outranks the cursor, which is still while she is
+   * idle, but not a tracked face.
+   * @param {{x:number,y:number}|null} target Normalised target, or null to end it.
+   * @returns {void}
+   */
+  setIdle(target) {
+    this.idle = target ? clampTarget(target) : null;
+  }
+
+  /**
+   * Pick the active target: fresh camera, then idle glance, then cursor; none means centre.
    * @param {number} now Timestamp in ms.
    * @returns {{x:number,y:number}} Active normalised target.
    */
   #activeTarget(now) {
     if (this.camera.enabled && now - this.camera.at <= this.cameraTimeout) return this.camera.target;
+    if (this.idle) return this.idle;
     if (this.cursor.enabled) return this.cursor.target;
     return { x: 0, y: 0 };
   }

@@ -68,9 +68,11 @@ export function agentEvent(event, catalog) {
 /**
  * Connect the chat UI to the bridge. history keeps the visible log across a page
  * refresh (#105); win is the window whose pagehide saves a reply still streaming.
+ * onActivity fires on every bridge event and voice-input state change, and
+ * onAskChange(open) when an agent ask opens or closes; both feed the idle timer (#71).
  */
 export function connectBridge({ catalog, onStart, onFinish, onExpression, onText, onSpeak, onFiller, onReset, onAgentSay, onAgentMood, onTurn, greeting = null, onGreeting,
-  history = new ChatHistory(), win = globalThis }) {
+  onActivity, onAskChange, history = new ChatHistory(), win = globalThis }) {
   const button = document.querySelector('#bridge-start');
   const status = document.querySelector('#bridge-status');
   const chatBar = document.querySelector('#chat-bar');
@@ -90,7 +92,9 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
   const chatPlaceholder = chatInput.placeholder;
 
   function setPendingAsk(ask) {
+    const wasOpen = Boolean(pendingAsk);
     pendingAsk = ask;
+    if (wasOpen !== Boolean(ask)) onAskChange?.(Boolean(ask));
     chatInput.placeholder = ask ? `Answer ${ask.source}…` : chatPlaceholder;
     chatBar.classList.toggle('answering', Boolean(ask));
   }
@@ -231,7 +235,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
       }
     },
     onStatus: (text) => { status.textContent = text; },
-    onState: updateMic,
+    onState: () => { updateMic(); onActivity?.(); },
   });
 
   function updateMic() {
@@ -282,6 +286,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
       try {
         const event = JSON.parse(data);
         if (!event || typeof event !== 'object' || Array.isArray(event)) throw new Error('Invalid event');
+        onActivity?.();
         switch (event.type) {
           case 'start':
             busy = true; button.disabled = true; setChatEnabled(false);

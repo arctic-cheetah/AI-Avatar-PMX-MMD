@@ -49,6 +49,7 @@ import { bindRestingFaceToggle } from "./resting-face.js";
 import { addSeeThroughBrows, bindSeeThroughBrowsToggle } from "./see-through-brows.js";
 import { installCollapsiblePanel } from "./collapsible-panel.js";
 import { FrameLoop, PopOut, popupWindow } from "./pop-out.js";
+import { IDLE_STATE_LABELS, IdleController, bindIdleSettings } from "./idle-behaviour.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
 const MODEL_URL = "/yidhari-mmd/伊德海莉.pmx";
@@ -100,6 +101,10 @@ const cameraGazeToggle = document.querySelector("#camera-gaze-toggle");
 const restingFaceToggle = document.querySelector("#resting-face-toggle");
 const seeThroughBrowsToggle = document.querySelector("#see-through-brows-toggle");
 const gazeStatus = document.querySelector("#gaze-status");
+const idleToggle = document.querySelector("#idle-toggle");
+const idleAfterInput = document.querySelector("#idle-after");
+const sleepAfterInput = document.querySelector("#sleep-after");
+const idleStatus = document.querySelector("#idle-status");
 const frameButtons = {
   face: document.querySelector("#frame-face-button"),
   bust: document.querySelector("#frame-bust-button"),
@@ -218,6 +223,17 @@ const swayEuler = new THREE.Euler();
 const swayQuat = new THREE.Quaternion();
 /** Stop/start state for the sway button; mirrored onto the button label. */
 const sway = new SwayController();
+/** Idle-state timer (#71): sleepy after a long quiet, waking on activity. */
+const idle = new IdleController();
+bindIdleSettings(idle, { toggle: idleToggle, idleAfterInput, sleepAfterInput });
+/** Whether an agent ask is waiting for an answer; idle waits too. */
+let askOpen = false;
+/** The mood the idle controller last applied, so rest never overwrites someone else's. */
+let idleMood = null;
+let shownIdleState = null;
+const IDLE_ACTIVITY_EVENTS = ["pointermove", "pointerdown", "keydown", "wheel"];
+const noteActivity = () => idle.activity();
+for (const type of IDLE_ACTIVITY_EVENTS) window.addEventListener(type, noteActivity, { passive: true });
 const cameraGaze = new CameraGaze((target) => gaze.setCamera(target, cameraGazeToggle.checked));
 
 /**
@@ -813,12 +829,44 @@ function restArms(object) {
  * @returns {void}
  */
 function scheduleBlink(now) {
+  // Sleepy blinks (#71) come further apart and close and open more slowly.
+  const { interval, duration } = idle.blinkScale;
   blink = {
-    start: now + 2.2 + Math.random() * 3.4,
-    close: 0.07,
-    hold: 0.05,
-    open: 0.11,
+    start: now + (2.2 + Math.random() * 3.4) * interval,
+    close: 0.07 * duration,
+    hold: 0.05 * duration,
+    open: 0.11 * duration,
   };
+}
+
+/**
+ * Advance the idle-state timer (#71) and apply its moods.
+ * Speech, thinking, an open ask, a streaming reply or a morph audition block it.
+ * The mood preview loop that starts on load does not: turning sleepy stops it.
+ * @param {number} delta Real seconds since the previous frame, uncapped.
+ * @returns {void}
+ */
+function updateIdle(delta) {
+  if (!expressions) return;
+  idle.setBlocked(!speechIdle() || chatResponding || askOpen
+    || audition?.sweeping || Boolean(globalThis.__yidhariHold)
+    || expressions.activeExpression === "thinking");
+  for (const action of idle.update(delta)) {
+    if (action.type === "mood") {
+      applyMood(action.name, action.weight);
+      idleMood = action.name;
+      continue;
+    }
+    // Rest only if her face still shows the idle mood and nothing is speaking.
+    if (idleMood && expressions.activeExpression === idleMood && speechIdle()) {
+      applyMood(liveSpeech.restMood.name, liveSpeech.restMood.weight);
+    }
+    idleMood = null;
+  }
+  if (idle.state !== shownIdleState) {
+    shownIdleState = idle.state;
+    idleStatus.textContent = `Idle state: ${IDLE_STATE_LABELS[idle.state]}`;
+  }
 }
 
 /**
@@ -1381,6 +1429,8 @@ function onModelLoaded(loaded, data) {
       liveSpeech.setRestMood(name, weight);
       if (speechIdle()) applyMood(name, weight);
     },
+    onActivity: noteActivity,
+    onAskChange: (open) => { askOpen = open; },
   });
 }
 
@@ -1439,7 +1489,10 @@ function loadModel() {
 function animate() {
   const now = performance.now();
   const delta = frameDelta(now, previousFrame);
+  // The idle timer counts real time, so a hidden tab still ages it (#71).
+  const idleDelta = Math.max(0, (now - previousFrame) / 1000);
   previousFrame = now;
+  updateIdle(idleDelta);
   controls.update();
   mesh?.morphTargetInfluences?.fill(0);
   expressions?.update(delta);
@@ -1559,6 +1612,7 @@ function onPopOut(view) {
   if (view) {
     view.addEventListener("pointermove", followCursor);
     view.addEventListener("pointerleave", centreCursor);
+    for (const type of IDLE_ACTIVITY_EVENTS) view.addEventListener(type, noteActivity, { passive: true });
     view.addEventListener("resize", resize);
     view.addEventListener("resize", panelResizer.refresh);
     // An observer from the floating window's own realm follows the canvas there.

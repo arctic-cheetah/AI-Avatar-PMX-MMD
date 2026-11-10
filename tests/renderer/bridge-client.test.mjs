@@ -154,3 +154,27 @@ test("the user's own message is shown exactly as typed", (t) => {
   assert.equal(body.textContent, "**hi** <b>there</b>");
   assert.equal(body.descendants().length, 0);
 });
+
+test("an open agent ask is reported so idle behaviours wait for the answer (#71)", (t) => {
+  const page = installPage(t);
+  const asks = [];
+  connect(page, { onAskChange: (open) => asks.push(open) });
+  page.receive({ type: "agent", kind: "ask", source: "Claude Code", id: "a1", text: "Commit?" });
+  page.receive({ type: "agent", kind: "ask-closed", source: "Claude Code", id: "a1" });
+  page.receive({ type: "agent", kind: "ask", source: "Claude Code", id: "a2", text: "Push?" });
+  page.nodes.get("#chat-input").value = "Yes";
+  page.nodes.get("#chat-bar").listeners.submit[0]({ preventDefault() {} });
+  page.receive({ type: "agent", kind: "ask", source: "Claude Code", id: "a3", text: "Merge?" });
+  page.receive({ type: "reset" });
+  assert.deepEqual(asks, [true, false, true, false, true, false], "open, closed, open, answered, open, reset");
+});
+
+test("every bridge event counts as activity for the idle timer (#71)", (t) => {
+  const page = installPage(t);
+  let activity = 0;
+  connect(page, { onActivity: () => { activity += 1; } });
+  page.receive({ type: "agent", kind: "mood", source: "Agent", name: "happy", weight: 1 });
+  page.receive({ type: "agent", kind: "say", source: "Agent", text: "Hi" });
+  page.receive({ type: "turn" });
+  assert.equal(activity, 3);
+});

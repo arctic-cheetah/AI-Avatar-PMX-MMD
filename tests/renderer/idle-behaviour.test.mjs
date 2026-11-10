@@ -53,6 +53,40 @@ test("after the sleep time she turns sleepy once", () => {
   assert.deepEqual(run(idle, 60), [], "sleepy is not re-applied every frame");
 });
 
+test("she stretches just before turning sleepy, so sleepy still starts on time", () => {
+  const idle = new IdleController();
+  run(idle, IDLE_TIMING.sleepAfter - IDLE_TIMING.stretch - 0.1);
+  assert.equal(idle.state, "idle");
+  run(idle, 0.2);
+  assert.equal(idle.state, "stretching");
+  assert.ok(idle.stateTime < 0.2, "stateTime restarts in each state");
+  assert.deepEqual(moods(run(idle, IDLE_TIMING.stretch)), ["sleepy"]);
+  assert.equal(idle.state, "sleepy");
+});
+
+test("activity or a block during the stretch returns to active without touching her face", () => {
+  const idle = new IdleController();
+  run(idle, IDLE_TIMING.sleepAfter - 1);
+  assert.equal(idle.state, "stretching");
+  idle.activity();
+  assert.deepEqual(idle.update(1 / 60), []);
+  assert.equal(idle.state, "active");
+
+  const blocked = new IdleController();
+  run(blocked, IDLE_TIMING.sleepAfter - 1);
+  blocked.setBlocked(true);
+  assert.deepEqual(blocked.update(1 / 60), []);
+  assert.equal(blocked.state, "active");
+});
+
+test("stateTime counts seconds in the current state", () => {
+  const idle = new IdleController();
+  run(idle, 30);
+  assert.ok(Math.abs(idle.stateTime - 30) < 1e-6);
+  run(idle, 40);
+  assert.ok(Math.abs(idle.stateTime - 10) < 0.05, "10 s into idle");
+});
+
 test("activity while sleepy wakes her: surprised, then happy, then her resting mood", () => {
   const idle = new IdleController();
   run(idle, 601);
@@ -218,6 +252,7 @@ test("timings are normalised: bad values fall back, ranges are clamped, sleep ne
   const order = normaliseIdleTiming({ idleAfter: 120, sleepAfter: 30 });
   assert.equal(order.sleepAfter, 120);
   assert.equal(normaliseIdleTiming({ wakeHappy: 99 }).wakeHappy, IDLE_TIMING.wakeHappy, "wake beats are fixed");
+  assert.equal(normaliseIdleTiming({ stretch: 99 }).stretch, IDLE_TIMING.stretch, "the stretch length is fixed");
 });
 
 /** A checkbox or number input double with change listeners. */

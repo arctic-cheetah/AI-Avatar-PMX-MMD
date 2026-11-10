@@ -109,3 +109,23 @@ test("stale camera frames expire instead of freezing the gaze", () => {
   gaze.update(0.5, 2100);
   assert.equal(gaze.update(0.5, 2600).eyeYaw, 0, "expired -> centre (no cursor)");
 });
+
+test("an idle glance (#71) beats the resting cursor, a face beats the glance", () => {
+  const gaze = new GazeController({ rate: 1000 });
+  gaze.setCursor({ x: -1, y: 0 }, true);
+  gaze.setIdle({ x: 0.6, y: 0 });
+  assert.ok(gaze.update(0.1).eyeYaw > 0, "idle glance wins over a still cursor");
+  gaze.setCamera({ x: -1, y: 0 }, true);
+  assert.ok(gaze.update(0.1).eyeYaw < 0, "a fresh face wins over the glance");
+  gaze.setCamera(null, false);
+  gaze.setIdle(null);
+  assert.ok(gaze.update(0.1).eyeYaw < 0, "cursor resumes when the glance ends");
+});
+
+test("an idle glance works with cursor tracking off and is clamped", () => {
+  const gaze = new GazeController({ rate: 1000 });
+  gaze.setIdle({ x: 5, y: 0 });
+  assert.equal(gaze.update(0.1).eyeYaw, LIMITS.eyeYaw);
+  gaze.setIdle(null);
+  assert.equal(gaze.update(0.1).eyeYaw, 0);
+});

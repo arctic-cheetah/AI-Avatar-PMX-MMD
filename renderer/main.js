@@ -47,6 +47,7 @@ import { composeBlink, eyeClosure } from "./facial-layers.js";
 import { GreetingGate, bindGreetingToggle } from "./greeting.js";
 import { bindRestingFaceToggle } from "./resting-face.js";
 import { addSeeThroughBrows, bindSeeThroughBrowsToggle } from "./see-through-brows.js";
+import { installCollapsiblePanel } from "./collapsible-panel.js";
 import { FrameLoop, PopOut, popupWindow } from "./pop-out.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
@@ -104,6 +105,7 @@ const frameButtons = {
   bust: document.querySelector("#frame-bust-button"),
 };
 const panelEl = document.querySelector("#panel");
+installCollapsiblePanel(panelEl);
 
 // One preview button per catalog mood, so new catalog entries appear here.
 const expressionButtons = Object.entries(EXPRESSION_CATALOG).map(([name, definition]) => {

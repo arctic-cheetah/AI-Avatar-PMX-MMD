@@ -12,7 +12,7 @@ mood.
 | --- | --- | --- |
 | Idle-state timer | States, sleepy face and blinks, wake-up, blocking, settings | Done |
 | Idle motions | Side glances, head tilts, a visual sigh, a stretch before sleepy | Done |
-| Sleepy mouth | An open, yawn-like mouth on the `sleepy` face that eases in slowly | Done |
+| Sleepy mouth | A slow yawn (`あ` 1 + `お` 0.4) during the stretch, a closed mouth while sleepy | Done |
 | Sigh and yawn clips | Short synthesised clips, cached like the thinking filler | Planned |
 
 Authored VMD/VPD idle motion is a separate ticket, #140.
@@ -34,7 +34,7 @@ active ──(idle after, 60 s)──▶ idle ──(sleepy after − 3.2 s)─�
   gets only the time in between.
 - **sleepy:** reached after *Sleepy after*, counted from the last activity,
   not from the start of idle. She shows `sleepy` at 0.8 (see
-  [Sleepy face](#sleepy-face)), and her blinks come
+  [Sleepy face and yawn](#sleepy-face-and-yawn)), and her blinks come
   twice as far apart and close and open 2.5 times as slowly.
 - **waking:** only from sleepy. `surprised` at 0.6 for 0.6 s, then `happy` at
   0.8 for 1.6 s, then her resting mood: the last agent mood, or neutral.
@@ -81,22 +81,28 @@ when her face still shows the mood the idle controller set and no speech is
 running, so it never overwrites a mood that speech, thinking or an agent has
 just applied.
 
-## Sleepy face
+## Sleepy face and yawn
 
-`sleepy` is half-lidded eyes (`じと目` 1, `下` 0.4) with an open, drowsy mouth:
-`あ` 1 + `お` 0.4, chosen by the user from rendered comparison grids on
-11 November 2026. At the idle weight of 0.8 that is `あ` 0.8 + `お` 0.32.
+`sleepy` is half-lidded eyes (`じと目` 1, `下` 0.4) with her mouth closed.
+Its `"ease": 3` lets the eyelids droop over about 1.6 s instead of the usual
+0.34 s. Waking uses `surprised`'s own (normal) rate, so she still wakes
+quickly.
 
-- **A slow, yawn-like ease.** The preset sets `"ease": 3`, so the whole face
-  drifts in over about 1.6 s on a critically damped spring, instead of the
-  usual 0.34 s. The largest change in one 60 fps frame is under 0.03, and the
-  curve is the same at 15 and 60 fps. Waking uses `surprised`'s own (normal)
-  rate, so she still wakes up quickly.
-- **Lip sync.** `あ` and `お` are speech morphs. While she speaks, speech holds
-  them, so visemes replace the open mouth rather than stacking on it, and
-  the open mouth comes back when she stops.
-- **Grids.** Candidates (`あ`, `お`, `え`, mixes at 0.15–0.35), the user's pick
-  at 0.25 / 0.5 / 0.7 / 0.8 / 1, and mid-speech captures are kept in
+She **yawns once during the stretch**, just before sleepy:
+
+- **Mouth:** `あ` 1 + `お` 0.4, chosen by the user from rendered comparison
+  grids on 11 November 2026.
+- **Timing:** opens over 1.4 s, holds 0.6 s, closes over 1.0 s, so about 3 s
+  in all. It fits inside the 3.2 s stretch. The curve goes through the
+  motion spring, so the largest change in one 60 fps frame is under 0.03.
+- **After the yawn:** the mouth is closed again by the time she is sleepy.
+  An earlier version held the open mouth for the whole sleepy state, and the
+  user's live check found it looked wrong.
+- **Lip sync:** `あ` and `お` are speech morphs. Speech blocks idle, so the
+  yawn eases shut before visemes take the mouth. The yawn adds on top of
+  whatever is already shown, capped at 1.
+- **Grids:** candidates (`あ`, `お`, `え`, mixes), the pick at several
+  strengths, the yawn through its curve, and mid-speech captures are kept in
   `assets/private/71/` (private model).
 
 ## Idle motions
@@ -111,7 +117,7 @@ when she leaves idle mid-motion, the pose eases back instead of snapping.
 | Glance | 40 % | 1.2–2.2 s | Eyes, head following at 45 %, to one side | 0.45–0.75 of the gaze range sideways, ±0.15 up/down |
 | Head tilt | 30 % | 2–3.5 s | `頭` roll to one side | 5° |
 | Sigh | 30 % | 1.1 s in, 1.7 s out | Chest (`上半身2` pitch) and both `肩` lift, then fall | 2° chest, 2.5° shoulders |
-| Stretch | Before sleepy | 3.2 s | Back arches (`上半身` pitch), head tips back (`首`/`頭`), shoulders lift | 5° back, 7° head, 6° shoulders |
+| Stretch | Before sleepy | 3.2 s | Back arches (`上半身` pitch), head tips back (`首`/`頭`), shoulders lift, and she yawns | 5° back, 7° head, 6° shoulders, yawn 1 |
 
 - The glance is a gaze source. For its 1–2 s it outranks the cursor, which
   may still be moving because the mouse is not activity, but a face tracked

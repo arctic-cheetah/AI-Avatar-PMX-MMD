@@ -15,7 +15,7 @@ preset name. `ease`, when present, is the preset's own spring rate in 1/s
 (above 0, at most 60). The renderer uses it while that preset is shown, instead
 of the usual mood rate of 14, so a face can drift in slowly. The next preset
 uses its own rate, so leaving a slow face is not slow. Only `sleepy` sets one
-(3, about 1.6 s, like a yawn, #71). The bridge ignores it. Load failures appear
+(3, so her eyelids droop over about 1.6 s, #71). The bridge ignores it. Load failures appear
 in the page status; hover over a preset for its description.
 
 The test bench's **Copy as catalog JSON** exports a JSON object. Fill in the TODO

@@ -44,11 +44,11 @@ To audition anything below, use the renderer's test bench panel (see [Testing mo
 
 | PMX morph    | Pronunciation (Romaji) | English label in PMX | Current use                      |
 | ------------ | ---------------------- | -------------------- | -------------------------------- |
-| `あ`       | a                      | `Fac_Mth_Uu`       | Speech shape D; `[sleepy]` mouth (#71) |
+| `あ`       | a                      | `Fac_Mth_Uu`       | Speech shape D; idle yawn (#71) |
 | `い`       | i                      | `Fac_Mth_Ii`       | Unmapped; candidate speech shape |
 | `う`       | u                      | `Fac_Mth_Uu`       | Unmapped; candidate speech shape |
 | `え`       | e                      | `Fac_Mth_Uu`       | Unmapped; candidate speech shape |
-| `お`       | o                      | `Fac_Mth_Uu`       | Speech shape E; `[sleepy]` mouth (#71) |
+| `お`       | o                      | `Fac_Mth_Uu`       | Speech shape E; idle yawn (#71) |
 | `□`       | shikaku                | `Fac_Mth_AaShout`  | Unmapped                         |
 | `ワ`       | wa                     | `Fac_Mth_AaTalk`   | Unmapped                         |
 | `え２`     | e 2                    | `Fac_Mth_Ee`       | Unmapped                         |

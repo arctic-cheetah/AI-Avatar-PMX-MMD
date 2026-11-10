@@ -20,7 +20,8 @@ def main() -> None:
         raise SystemExit('Setup requires Python 3.11–3.13; Python 3.12 is recommended.')
     environment = ROOT / '.venv-stt'
     venv.EnvBuilder(with_pip=True).create(environment)
-    python = environment / 'bin' / 'python'
+    from controller import venv_python
+    python = venv_python(environment)
     subprocess.run([str(python), '-m', 'pip', 'install', '-r',
                     str(ROOT / 'requirements-stt.txt')], check=True)
     MODEL_DIR.mkdir(parents=True, exist_ok=True)

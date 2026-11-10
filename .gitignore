@@ -7,6 +7,11 @@ assets/private/
 yidhari-mmd/
 node_modules/
 .*
+# Tracked project dotfiles (the `.*` rule above would otherwise hide them).
+!.gitattributes
+!.github/
+!.gitignore
+!.env.example
 .xgrok/
 .grok/
 AGENTS.md

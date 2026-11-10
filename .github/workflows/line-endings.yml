@@ -1,0 +1,27 @@
+name: line-endings
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+# Fails the build if a tracked text file is committed with CRLF terminators.
+# .gitattributes (eol=lf) already prevents this at commit time; this check is a
+# safety net for contributors whose editors or Git config ignore attributes.
+jobs:
+  crlf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fail on CRLF line endings
+        run: |
+          # CRLF-bearing tracked files, excluding Windows scripts that need them.
+          bad=$(git grep -Il $'\r' -- ':*.bat' ':*.cmd' ':*.ps1' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::CRLF line endings found in tracked files:"
+            echo "$bad"
+            echo "Fix: run 'git add --renormalize .' or save with LF endings."
+            exit 1
+          fi
+          echo "All tracked files use LF line endings."

@@ -1,0 +1,10 @@
+# Normalise text files to LF in the repository. Windows editors may save CRLF;
+# keeping LF in the tree keeps diffs honest and avoids whole-file churn like the
+# Windows-port commit introduced. Genuine Windows scripts keep CRLF so they run
+# correctly when checked out on Windows.
+* text=auto eol=lf
+
+# Windows-only scripts must keep CRLF line endings.
+*.bat  text=auto eol=crlf
+*.cmd  text=auto eol=crlf
+*.ps1  text=auto eol=crlf

@@ -40,6 +40,8 @@ units of 1/s (so a time constant τ is `1 / rate`).
 | Idle blink | Authored ramps | 70 ms close, 50 ms hold, 110 ms open | — |
 | Sleepy blink (#71) | Authored ramps, ×2.5 slower | 175 ms close, 125 ms hold, 275 ms open, twice as far apart | — |
 | Idle moods: sleepy, wake-up (#71) | Mood springs above | Same as mood morphs | 0.34 s per step |
+| Idle tilt, sigh, stretch (#71) | Authored curve, then critically damped spring | 8 | 0.6 s |
+| Idle glance (#71) | Gaze spring above | 15 | 0.32 s |
 
 A critically damped spring starts and stops gently, never overshoots when
 starting from rest, and carries its velocity into a new target. That last

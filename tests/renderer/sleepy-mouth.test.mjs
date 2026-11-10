@@ -6,6 +6,7 @@ import { readFile } from "node:fs/promises";
 import { loadExpressionCatalog } from "../../renderer/expression-catalog.js";
 import { ExpressionController } from "../../renderer/expression-controller.js";
 import { TIMING } from "../../renderer/smoothing.js";
+import { IDLE_MOTION } from "../../renderer/idle-motion.js";
 
 const read = async (path) => JSON.parse(await readFile(new URL(path, import.meta.url), "utf8"));
 const REAL = await read("../../renderer/expressions.json");
@@ -20,12 +21,17 @@ function serve(t, catalog) {
   t.after(() => { globalThis.fetch = original; });
 }
 
-test("the sleepy face parts the mouth, using only morphs lip sync takes over", () => {
-  const mouth = Object.entries(REAL.sleepy.morphs).filter(([morph]) => MOUTH.test(morph));
-  assert.ok(mouth.length > 0, "sleepy has an open mouth");
-  assert.ok(mouth.reduce((sum, [, weight]) => sum + weight, 0) >= 0.5, "open enough to read at a glance");
-  for (const [morph] of mouth) assert.ok(SPEECH_MORPHS.has(morph), `${morph} is a speech morph`);
+test("the sleepy face keeps her mouth closed; only the yawn opens it", () => {
+  const mouth = Object.keys(REAL.sleepy.morphs).filter((morph) => MOUTH.test(morph));
+  assert.deepEqual(mouth, [], "no open mouth held for the whole sleepy state");
   assert.ok(REAL.sleepy.morphs["じと目"] > 0, "the drowsy eyelids stay");
+});
+
+test("the yawn mouth is the user's pick and uses only morphs lip sync takes over", () => {
+  assert.deepEqual({ ...IDLE_MOTION.yawn.morphs }, { "あ": 1, "お": 0.4 });
+  for (const morph of Object.keys(IDLE_MOTION.yawn.morphs)) {
+    assert.ok(SPEECH_MORPHS.has(morph), `${morph} is a speech morph`);
+  }
 });
 
 test("sleepy eases in slowly, like a yawn, and still settles within two seconds", () => {

@@ -12,7 +12,7 @@ mood.
 | --- | --- | --- |
 | Idle-state timer | States, sleepy face and blinks, wake-up, blocking, settings | Done |
 | Idle motions | Side glances, head tilts, a visual sigh, a stretch before sleepy | Done |
-| Sleepy mouth | A slightly parted mouth on the `sleepy` face, picked with comparison grids | Planned |
+| Sleepy mouth | An open, yawn-like mouth on the `sleepy` face that eases in slowly | Done |
 | Sigh and yawn clips | Short synthesised clips, cached like the thinking filler | Planned |
 
 Authored VMD/VPD idle motion is a separate ticket, #140.
@@ -33,7 +33,8 @@ active ──(idle after, 60 s)──▶ idle ──(sleepy after − 3.2 s)─�
   on time. If *Sleepy after* is within 3.2 s of *Idle after*, the stretch
   gets only the time in between.
 - **sleepy:** reached after *Sleepy after*, counted from the last activity,
-  not from the start of idle. She shows `sleepy` at 0.8, and her blinks come
+  not from the start of idle. She shows `sleepy` at 0.8 (see
+  [Sleepy face](#sleepy-face)), and her blinks come
   twice as far apart and close and open 2.5 times as slowly.
 - **waking:** only from sleepy. `surprised` at 0.6 for 0.6 s, then `happy` at
   0.8 for 1.6 s, then her resting mood: the last agent mood, or neutral.
@@ -79,6 +80,24 @@ once and hands her face back. The renderer only restores the resting mood
 when her face still shows the mood the idle controller set and no speech is
 running, so it never overwrites a mood that speech, thinking or an agent has
 just applied.
+
+## Sleepy face
+
+`sleepy` is half-lidded eyes (`じと目` 1, `下` 0.4) with an open, drowsy mouth:
+`あ` 1 + `お` 0.4, chosen by the user from rendered comparison grids on
+11 November 2026. At the idle weight of 0.8 that is `あ` 0.8 + `お` 0.32.
+
+- **A slow, yawn-like ease.** The preset sets `"ease": 3`, so the whole face
+  drifts in over about 1.6 s on a critically damped spring, instead of the
+  usual 0.34 s. The largest change in one 60 fps frame is under 0.03, and the
+  curve is the same at 15 and 60 fps. Waking uses `surprised`'s own (normal)
+  rate, so she still wakes up quickly.
+- **Lip sync.** `あ` and `お` are speech morphs. While she speaks, speech holds
+  them, so visemes replace the open mouth rather than stacking on it, and
+  the open mouth comes back when she stops.
+- **Grids.** Candidates (`あ`, `お`, `え`, mixes at 0.15–0.35), the user's pick
+  at 0.25 / 0.5 / 0.7 / 0.8 / 1, and mid-speech captures are kept in
+  `assets/private/71/` (private model).
 
 ## Idle motions
 

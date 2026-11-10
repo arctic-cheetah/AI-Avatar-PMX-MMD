@@ -1,7 +1,8 @@
 # Shared expression catalog
 
 [expressions.json](../renderer/expressions.json) is the source of truth for 50
-presets. Each entry contains `description` and `morphs`, plus optional `aliases`;
+presets. Each entry contains `description` and `morphs`, plus optional `aliases`
+and `ease`;
 neutral has an empty map. Original weights were preserved from the recovered
 catalog. Descriptions were restored from the conversation and describe intended
 use, not visual proof.
@@ -10,8 +11,12 @@ use, not visual proof.
 the JSON before renderer startup. Names are lowercase kebab-case, descriptions
 are nonempty, and morph weights must be finite numbers in 0–1. `aliases`, when
 present, is a list of lowercase kebab-case names; no alias may repeat or match a
-preset name. Load failures appear in the page status; hover over a preset for
-its description.
+preset name. `ease`, when present, is the preset's own spring rate in 1/s
+(above 0, at most 60). The renderer uses it while that preset is shown, instead
+of the usual mood rate of 14, so a face can drift in slowly. The next preset
+uses its own rate, so leaving a slow face is not slow. Only `sleepy` sets one
+(3, about 1.6 s, like a yawn, #71). The bridge ignores it. Load failures appear
+in the page status; hover over a preset for its description.
 
 The test bench's **Copy as catalog JSON** exports a JSON object. Fill in the TODO
 usage descriptions and merge its entries into the existing catalog; do not

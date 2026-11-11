@@ -199,3 +199,29 @@ test("no yawn while active, idle, sleepy or waking, and a block mid-yawn closes 
   assert.ok(back[0].yawn > 0.3, "eases, not snaps");
   assert.ok(back.at(-1).yawn < 0.01);
 });
+
+test("while sleepy she stretches and yawns again on every interval", () => {
+  const motion = new IdleMotion({ random: seeded() });
+  const at = (from, seconds) => {
+    const poses = [];
+    for (let i = 1; i <= Math.round(seconds * 60); i += 1) poses.push(motion.update(1 / 60, "sleepy", from + i / 60, 30));
+    return poses;
+  };
+  assert.ok(at(0, 29.9).every((p) => p.back === 0 && p.yawn === 0), "nothing before the first interval");
+  const first = at(29.9, IDLE_TIMING.stretch + 1.6);
+  assert.ok(Math.max(...first.map((p) => p.back)) > IDLE_MOTION.stretch.back * 0.7, "stretches at 30 s");
+  assert.ok(Math.max(...first.map((p) => p.yawn)) > 0.9, "and yawns");
+  assert.ok(first.at(-1).back < 0.05 * DEG && first.at(-1).yawn < 0.01, "then settles");
+  const quiet = at(29.9 + IDLE_TIMING.stretch + 1.6, 30 - IDLE_TIMING.stretch - 1.7);
+  assert.ok(quiet.every((p) => p.yawn < 0.01), "quiet in between");
+  const second = at(59.9, IDLE_TIMING.stretch);
+  assert.ok(Math.max(...second.map((p) => p.yawn)) > 0.9, "again at 60 s");
+});
+
+test("an interval of 0 keeps the single stretch before sleepy only", () => {
+  const motion = new IdleMotion({ random: seeded() });
+  for (let i = 1; i <= 300 * 10; i += 1) {
+    const pose = motion.update(0.1, "sleepy", i / 10, 0);
+    assert.ok(pose.back === 0 && pose.yawn === 0);
+  }
+});

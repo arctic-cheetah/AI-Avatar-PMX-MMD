@@ -257,7 +257,8 @@ test("a new sleepy period starts its interval count again", () => {
   sleepy(motion, 29.9, 1, 30);
   motion.update(1 / 60, "waking", 0, 30);
   assert.equal(motion.sleepAction, null);
-  assert.ok(sleepy(motion, 0, 29.9, 30).every((p) => p.yawn < 0.01 && p.back < 0.05 * DEG), "waits a full interval again");
+  const again = sleepy(motion, 0, 29.9, 30).slice(90); // the interrupted yawn eases shut in the first 1.5 s
+  assert.ok(again.every((p) => p.yawn < 0.01 && p.back < 0.05 * DEG), "waits a full interval again");
 });
 
 test("an interval of 0 means no sleep actions, only the stretch before sleepy", () => {

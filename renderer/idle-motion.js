@@ -1,5 +1,5 @@
 // Idle motions for issue #71: glances, head tilts and sighs while idle, and a
-// stretch with a slow yawn just before sleepy. No DOM or Three.js imports, so node --test
+// stretch with a slow yawn just before sleepy, then random sleep actions while sleepy. No DOM or Three.js imports, so node --test
 // covers it (tests/renderer/idle-motion.test.mjs). main.js turns the pose into
 // a gaze target and small bone rotations on top of the rest pose.
 // See docs/idle-behaviours.md#idle-motions.
@@ -72,6 +72,32 @@ function yawnCurve(t) {
   return 1 - smoothstep((t - open - hold) / close);
 }
 
+/** The stretch with its yawn; also the step into sleepy. */
+function stretchYawn(t, target) {
+  const { rise, back, headPitch, shoulders } = IDLE_MOTION.stretch;
+  const weight = bump(t, IDLE_TIMING.stretch, rise);
+  target.back = weight * back;
+  target.headPitch = weight * headPitch;
+  target.shoulders = weight * shoulders;
+  target.yawn = yawnCurve(t);
+}
+
+/** A slow sleepy head tilt; positive leans toward the left of the screen. */
+const sleepyTilt = (sign) => (t, target) => {
+  target.tilt = sign * IDLE_MOTION.tilt.angle * bump(t, SLEEPY_TILT, 0.8);
+};
+const SLEEPY_TILT = 3.2;
+
+/**
+ * What she may do on each sleepy interval, picked at random with equal chances.
+ * To add one: a duration in seconds and apply(t, target) writing pose targets.
+ */
+export const SLEEP_ACTIONS = Object.freeze({
+  "stretch-yawn": Object.freeze({ duration: IDLE_TIMING.stretch, apply: stretchYawn }),
+  "tilt-left": Object.freeze({ duration: SLEEPY_TILT, apply: sleepyTilt(1) }),
+  "tilt-right": Object.freeze({ duration: SLEEPY_TILT, apply: sleepyTilt(-1) }),
+});
+
 /**
  * Turns the idle state into one small motion at a time.
  * update() returns `{ glance, tilt, chest, shoulders, back, headPitch, yawn }`:
@@ -85,6 +111,9 @@ export class IdleMotion {
     /** @type {null | { kind: "glance"|"tilt"|"sigh", t: number, duration: number, dir: number, x?: number, y?: number }} */
     this.current = null;
     this.gapLeft = null;
+    /** Current sleep action's name, and the sleepy interval it belongs to. */
+    this.sleepAction = null;
+    this.sleepCycle = null;
     this.springs = Object.fromEntries(ANGLES.map((key) => [key, new Spring(0)]));
   }
 
@@ -92,10 +121,10 @@ export class IdleMotion {
    * @param {number} delta Seconds since the previous frame; invalid values count as 0.
    * @param {string} state IdleController state.
    * @param {number} stateTime Seconds in that state.
-   * @param {number} [stretchEvery=0] While sleepy, stretch and yawn again this often (s); 0 = never.
+   * @param {number} [sleepActionEvery=0] While sleepy, do a random sleep action this often (s); 0 = never.
    * @returns {{glance:{x:number,y:number}|null,tilt:number,chest:number,shoulders:number,back:number,headPitch:number,yawn:number}}
    */
-  update(delta, state, stateTime, stretchEvery = 0) {
+  update(delta, state, stateTime, sleepActionEvery = 0) {
     const dt = Number.isFinite(delta) && delta > 0 ? delta : 0;
     const target = { tilt: 0, chest: 0, shoulders: 0, back: 0, headPitch: 0, yawn: 0 };
     let glance = null;
@@ -115,19 +144,20 @@ export class IdleMotion {
     } else {
       this.current = null;
       this.gapLeft = null;
-      // The stretch before sleepy, then again every stretchEvery seconds while sleepy.
-      let t = null;
-      if (state === "stretching") t = stateTime;
-      else if (state === "sleepy" && stretchEvery > 0 && stateTime >= stretchEvery) {
-        t = stateTime - Math.floor(stateTime / stretchEvery) * stretchEvery;
-      }
-      if (t !== null) {
-        const { rise, back, headPitch, shoulders } = IDLE_MOTION.stretch;
-        const weight = bump(t, IDLE_TIMING.stretch, rise);
-        target.back = weight * back;
-        target.headPitch = weight * headPitch;
-        target.shoulders = weight * shoulders;
-        target.yawn = yawnCurve(t);
+      if (state === "stretching") stretchYawn(stateTime, target);
+      if (state === "sleepy" && sleepActionEvery > 0 && stateTime >= sleepActionEvery) {
+        // A random sleep action at the start of every interval while sleepy.
+        const cycle = Math.floor(stateTime / sleepActionEvery);
+        if (cycle !== this.sleepCycle) {
+          this.sleepCycle = cycle;
+          this.sleepAction = this.#pickSleepAction();
+        }
+        const action = SLEEP_ACTIONS[this.sleepAction];
+        const t = stateTime - cycle * sleepActionEvery;
+        if (t < action.duration) action.apply(t, target);
+      } else if (state !== "sleepy") {
+        this.sleepAction = null;
+        this.sleepCycle = null;
       }
     }
     const pose = { glance };
@@ -138,6 +168,11 @@ export class IdleMotion {
       pose[key] = spring.settle(target[key], 1e-6);
     }
     return pose;
+  }
+
+  #pickSleepAction() {
+    const names = Object.keys(SLEEP_ACTIONS);
+    return names[Math.min(names.length - 1, Math.floor(this.random() * names.length))];
   }
 
   #gap() {

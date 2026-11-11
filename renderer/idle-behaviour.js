@@ -20,14 +20,14 @@ export const IDLE_TIMING = Object.freeze({
   wakeHappy: 1.6,
   /** The stretch fills the last seconds before sleepy, so sleepy starts on time. */
   stretch: 3.2,
-  /** While sleepy, stretch and yawn again this often; 0 keeps only the first. */
-  stretchEvery: 120,
+  /** While sleepy, do a random sleep action this often; 0 = none. */
+  sleepActionEvery: 120,
 });
 
 const LIMITS = Object.freeze({
   idleAfter: [5, 3600],
   sleepAfter: [5, 86400],
-  stretchEvery: [10, 3600],
+  sleepActionEvery: [10, 3600],
 });
 
 /** Moods the idle controller asks for; every name exists in expressions.json. */
@@ -55,13 +55,13 @@ const finiteOr = (value, fallback) =>
   typeof value === "number" && Number.isFinite(value) ? value : fallback;
 
 /** 0 or less turns the sleepy repeat off; anything else is clamped. */
-const repeatEvery = (seconds) => (seconds <= 0 ? 0 : clamp(seconds, LIMITS.stretchEvery));
+const repeatEvery = (seconds) => (seconds <= 0 ? 0 : clamp(seconds, LIMITS.sleepActionEvery));
 
 /**
  * Fill in and clamp idle timings. Unreadable values fall back to the
  * defaults, and sleepy never starts before idle.
  * @param {unknown} raw Partial timings in seconds.
- * @returns {{idleAfter:number,sleepAfter:number,wakeSurprised:number,wakeHappy:number,stretch:number,stretchEvery:number}}
+ * @returns {{idleAfter:number,sleepAfter:number,wakeSurprised:number,wakeHappy:number,stretch:number,sleepActionEvery:number}}
  */
 export function normaliseIdleTiming(raw) {
   const source = raw && typeof raw === "object" ? raw : {};
@@ -76,7 +76,7 @@ export function normaliseIdleTiming(raw) {
     wakeSurprised: IDLE_TIMING.wakeSurprised,
     wakeHappy: IDLE_TIMING.wakeHappy,
     stretch: IDLE_TIMING.stretch,
-    stretchEvery: repeatEvery(finiteOr(source.stretchEvery, IDLE_TIMING.stretchEvery)),
+    sleepActionEvery: repeatEvery(finiteOr(source.sleepActionEvery, IDLE_TIMING.sleepActionEvery)),
   };
 }
 
@@ -201,10 +201,10 @@ export class IdleController {
  * Bind the panel's idle controls: the on/off checkbox, Idle after (seconds)
  * and Sleepy after (minutes). Timings are saved in seconds when storage allows.
  * @param {IdleController} idle
- * @param {{ toggle?: object|null, idleAfterInput?: object|null, sleepAfterInput?: object|null, stretchEveryInput?: object|null, local?: Storage }} controls
+ * @param {{ toggle?: object|null, idleAfterInput?: object|null, sleepAfterInput?: object|null, sleepActionEveryInput?: object|null, local?: Storage }} controls
  * @returns {void}
  */
-export function bindIdleSettings(idle, { toggle, idleAfterInput, sleepAfterInput, stretchEveryInput, local } = {}) {
+export function bindIdleSettings(idle, { toggle, idleAfterInput, sleepAfterInput, sleepActionEveryInput, local } = {}) {
   try {
     local ??= globalThis.localStorage;
   } catch { /* Storage access itself can throw. */ }
@@ -219,12 +219,12 @@ export function bindIdleSettings(idle, { toggle, idleAfterInput, sleepAfterInput
   const show = () => {
     if (idleAfterInput) idleAfterInput.value = String(idle.timing.idleAfter);
     if (sleepAfterInput) sleepAfterInput.value = String(Number((idle.timing.sleepAfter / 60).toFixed(2)));
-    if (stretchEveryInput) stretchEveryInput.value = String(Number((idle.timing.stretchEvery / 60).toFixed(2)));
+    if (sleepActionEveryInput) sleepActionEveryInput.value = String(Number((idle.timing.sleepActionEvery / 60).toFixed(2)));
   };
   const save = () => {
-    const { idleAfter, sleepAfter, stretchEvery } = idle.timing;
+    const { idleAfter, sleepAfter, sleepActionEvery } = idle.timing;
     try {
-      local?.setItem(IDLE_TIMING_KEY, JSON.stringify({ idleAfter, sleepAfter, stretchEvery }));
+      local?.setItem(IDLE_TIMING_KEY, JSON.stringify({ idleAfter, sleepAfter, sleepActionEvery }));
     } catch { /* Session-only. */ }
   };
   const onInput = (input, key, scale) => () => {
@@ -238,6 +238,6 @@ export function bindIdleSettings(idle, { toggle, idleAfterInput, sleepAfterInput
   };
   idleAfterInput?.addEventListener("change", onInput(idleAfterInput, "idleAfter", 1));
   sleepAfterInput?.addEventListener("change", onInput(sleepAfterInput, "sleepAfter", 60));
-  stretchEveryInput?.addEventListener("change", onInput(stretchEveryInput, "stretchEvery", 60));
+  sleepActionEveryInput?.addEventListener("change", onInput(sleepActionEveryInput, "sleepActionEvery", 60));
   show();
 }

@@ -154,6 +154,14 @@ entry, keep the weights summing to 1, and add a test.
 | Shrug right | 5 % | 1.6–2.2 s | The shoulder on the right of the screen (`左肩`) | 6° |
 | Shrug both | 5 % | 1.6–2.2 s | Both `肩` together | 6° |
 | Sigh | 20 % | 1.1 s in, 1.7 s out | Chest (`上半身2` pitch) and both `肩` lift, then fall | 2° chest, 2.5° shoulders |
+
+**Choosing idle actions:** the panel's **Idle actions · 仕草** group has a
+checkbox for each one (Glance, Tilt head, Shrug left, Shrug right, Shrug
+both, Sigh), all ticked by default. Only ticked actions are picked, and they
+keep their relative chances. For example, with only glance, tilt and sigh
+ticked, the chances become 40 : 25 : 20 out of 85. With none ticked she stays
+still while idle. The choice is saved as `yidhari.idle-actions`, separately
+from the sleep actions. Requested on 12 November 2026 (#149).
 | Stretch | Before sleepy, and a sleep action | 3.2 s | Back arches (`上半身` pitch), head tips back (`首`/`頭`), shoulders lift, and she yawns | 5° back, 7° head, 6° shoulders, yawn 1 |
 
 - The glance is a gaze source. For its 1–2 s it outranks the cursor, which

@@ -50,7 +50,9 @@ import { addSeeThroughBrows, bindSeeThroughBrowsToggle } from "./see-through-bro
 import { installCollapsiblePanel } from "./collapsible-panel.js";
 import { FrameLoop, PopOut, popupWindow } from "./pop-out.js";
 import { IDLE_STATE_LABELS, IdleController, bindIdleSettings, idleBlocked } from "./idle-behaviour.js";
-import { IDLE_MOTION, IdleMotion, SLEEP_ACTION_LABELS, bindSleepActionSettings } from "./idle-motion.js";
+import {
+  IDLE_ACTION_LABELS, IDLE_MOTION, IdleMotion, SLEEP_ACTION_LABELS, bindIdleActionSettings, bindSleepActionSettings,
+} from "./idle-motion.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
 const MODEL_URL = "/yidhari-mmd/伊德海莉.pmx";
@@ -236,19 +238,29 @@ let shownIdleState = null;
 /** Glances, tilts, sighs and the stretch (#71), as a pose for this frame. */
 const idleMotion = new IdleMotion();
 let idlePose = idleMotion.update(0, "active", 0);
-// One checkbox per sleep action (#149), built from the registry so new actions appear by themselves.
-const sleepActionBoxes = {};
-for (const [name, label] of Object.entries(SLEEP_ACTION_LABELS)) {
-  const row = document.createElement("label");
-  row.className = "check";
-  const box = document.createElement("input");
-  box.type = "checkbox";
-  box.id = `sleep-action-${name}`;
-  row.append(box, label);
-  document.querySelector("#sleep-actions").append(row);
-  sleepActionBoxes[name] = box;
+/**
+ * One checkbox per action (#149), built from a registry so new actions appear by themselves.
+ * @param {Record<string, string>} labels Label per action name.
+ * @param {string} container Selector of the fieldset to fill.
+ * @param {string} prefix Checkbox id prefix.
+ * @returns {Record<string, HTMLInputElement>}
+ */
+function actionCheckboxes(labels, container, prefix) {
+  const boxes = {};
+  for (const [name, label] of Object.entries(labels)) {
+    const row = document.createElement("label");
+    row.className = "check";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.id = `${prefix}-${name}`;
+    row.append(box, label);
+    document.querySelector(container).append(row);
+    boxes[name] = box;
+  }
+  return boxes;
 }
-bindSleepActionSettings(idleMotion, sleepActionBoxes);
+bindIdleActionSettings(idleMotion, actionCheckboxes(IDLE_ACTION_LABELS, "#idle-actions", "idle-action"));
+bindSleepActionSettings(idleMotion, actionCheckboxes(SLEEP_ACTION_LABELS, "#sleep-actions", "sleep-action"));
 /**
  * Idle motion bones: which angle of the pose each one takes, and its sign
  * (checked on the model: negative pitch leans back, see docs/idle-behaviours.md).

@@ -118,6 +118,7 @@ export const SLEEP_ACTION_LABELS = Object.freeze({
 });
 
 export const SLEEP_ACTIONS_KEY = "yidhari.sleep-actions";
+export const IDLE_ACTIONS_KEY = "yidhari.idle-actions";
 
 /** One or both shoulders (left/right of the screen) lift and drop. */
 const shrug = (left, right) => Object.freeze({
@@ -190,6 +191,8 @@ export class IdleMotion {
     this.sleepCycle = null;
     /** Sleep actions that may be picked, in SLEEP_ACTIONS order. */
     this.sleepActions = Object.keys(SLEEP_ACTIONS);
+    /** Awake idle actions that may be picked, in IDLE_ACTIONS order. */
+    this.idleActions = Object.keys(IDLE_ACTIONS);
     this.springs = Object.fromEntries(ANGLES.map((key) => [key, new Spring(0)]));
   }
 
@@ -214,7 +217,10 @@ export class IdleMotion {
         }
       } else {
         this.gapLeft -= dt;
-        if (this.gapLeft <= 0) this.current = this.#pick();
+        if (this.gapLeft <= 0) {
+          this.current = this.#pick();
+          if (!this.current) this.gapLeft = this.#gap(); // nothing ticked: stay still
+        }
       }
       glance = this.#apply(target);
     } else {
@@ -256,6 +262,16 @@ export class IdleMotion {
     this.sleepActions = Object.keys(SLEEP_ACTIONS).filter((name) => chosen.has(name));
   }
 
+  /**
+   * Choose which awake idle actions may be picked; unknown names are ignored.
+   * @param {Iterable<string>} names
+   * @returns {void}
+   */
+  setIdleActions(names) {
+    const chosen = new Set(names);
+    this.idleActions = Object.keys(IDLE_ACTIONS).filter((name) => chosen.has(name));
+  }
+
   #pickSleepAction() {
     const names = this.sleepActions;
     if (names.length === 0) return null;
@@ -267,8 +283,11 @@ export class IdleMotion {
   }
 
   #pick() {
-    const roll = this.random();
-    const names = Object.keys(IDLE_ACTIONS);
+    const names = this.idleActions;
+    if (names.length === 0) return null;
+    // Ticked actions keep their relative chances.
+    const total = names.reduce((sum, name) => sum + IDLE_ACTIONS[name].weight, 0);
+    const roll = this.random() * total;
     let kind = names.at(-1);
     let reach = 0;
     for (const name of names) {
@@ -288,34 +307,62 @@ export class IdleMotion {
   }
 }
 
+/** Panel labels for the idle action checkboxes (#149). */
+export const IDLE_ACTION_LABELS = Object.freeze({
+  glance: "Glance",
+  tilt: "Tilt head",
+  "shrug-left": "Shrug left",
+  "shrug-right": "Shrug right",
+  "shrug-both": "Shrug both",
+  sigh: "Sigh",
+});
+
 /**
- * Bind the panel's sleep action checkboxes (#149). All are ticked by default;
- * the choice is saved as a JSON list of names when storage allows.
+ * Bind one group of action checkboxes: all ticked by default, the choice
+ * saved as a JSON list of names under `key` when storage allows.
+ */
+function bindChoices(names, key, current, apply, boxes, local) {
+  try {
+    local ??= globalThis.localStorage;
+  } catch { /* Storage access itself can throw. */ }
+  let chosen = names;
+  try {
+    const saved = JSON.parse(local?.getItem(key) ?? "null");
+    if (Array.isArray(saved)) chosen = saved;
+  } catch { /* Missing, blocked or corrupt: all of them. */ }
+  apply(chosen);
+  for (const [name, box] of Object.entries(boxes)) {
+    if (!box) continue;
+    box.checked = current().includes(name);
+    box.addEventListener("change", () => {
+      apply(names.filter((action) => (boxes[action] ? boxes[action].checked : current().includes(action))));
+      try {
+        local?.setItem(key, JSON.stringify(current()));
+      } catch { /* Session-only. */ }
+    });
+  }
+}
+
+/**
+ * Bind the panel's sleep action checkboxes (#149).
  * @param {IdleMotion} motion
  * @param {Record<string, { checked: boolean, addEventListener(type: string, fn: () => void): void }>} boxes By action name.
  * @param {{ local?: Storage }} [options]
  * @returns {void}
  */
 export function bindSleepActionSettings(motion, boxes, { local } = {}) {
-  try {
-    local ??= globalThis.localStorage;
-  } catch { /* Storage access itself can throw. */ }
-  let chosen = Object.keys(SLEEP_ACTIONS);
-  try {
-    const saved = JSON.parse(local?.getItem(SLEEP_ACTIONS_KEY) ?? "null");
-    if (Array.isArray(saved)) chosen = saved;
-  } catch { /* Missing, blocked or corrupt: all of them. */ }
-  motion.setSleepActions(chosen);
-  for (const [name, box] of Object.entries(boxes)) {
-    if (!box) continue;
-    box.checked = motion.sleepActions.includes(name);
-    box.addEventListener("change", () => {
-      const ticked = Object.keys(SLEEP_ACTIONS).filter((action) =>
-        (boxes[action] ? boxes[action].checked : motion.sleepActions.includes(action)));
-      motion.setSleepActions(ticked);
-      try {
-        local?.setItem(SLEEP_ACTIONS_KEY, JSON.stringify(motion.sleepActions));
-      } catch { /* Session-only. */ }
-    });
-  }
+  bindChoices(Object.keys(SLEEP_ACTIONS), SLEEP_ACTIONS_KEY, () => motion.sleepActions,
+    (names) => motion.setSleepActions(names), boxes, local);
+}
+
+/**
+ * Bind the panel's idle action checkboxes (#149): glance, tilt, each shrug, sigh.
+ * @param {IdleMotion} motion
+ * @param {Record<string, { checked: boolean, addEventListener(type: string, fn: () => void): void }>} boxes By action name.
+ * @param {{ local?: Storage }} [options]
+ * @returns {void}
+ */
+export function bindIdleActionSettings(motion, boxes, { local } = {}) {
+  bindChoices(Object.keys(IDLE_ACTIONS), IDLE_ACTIONS_KEY, () => motion.idleActions,
+    (names) => motion.setIdleActions(names), boxes, local);
 }

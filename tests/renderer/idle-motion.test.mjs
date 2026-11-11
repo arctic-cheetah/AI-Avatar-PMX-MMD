@@ -3,8 +3,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  IDLE_ACTIONS, IDLE_MOTION, IdleMotion, SLEEP_ACTIONS, SLEEP_ACTIONS_KEY, SLEEP_ACTION_LABELS,
-  bindSleepActionSettings, bump,
+  IDLE_ACTIONS, IDLE_ACTIONS_KEY, IDLE_ACTION_LABELS, IDLE_MOTION, IdleMotion, SLEEP_ACTIONS, SLEEP_ACTIONS_KEY,
+  SLEEP_ACTION_LABELS, bindIdleActionSettings, bindSleepActionSettings, bump,
 } from "../../renderer/idle-motion.js";
 import { IDLE_TIMING } from "../../renderer/idle-behaviour.js";
 
@@ -408,4 +408,85 @@ test("corrupt or blocked storage keeps every sleep action", () => {
     bindSleepActionSettings(motion, {}, { local });
     assert.deepEqual(motion.sleepActions, Object.keys(SLEEP_ACTIONS));
   }
+});
+
+// ---- #149: choosing awake idle actions (shrugs and the rest) ----
+
+/** The kinds an idle motion picks over a long seeded run. */
+function kindsPicked(motion, seconds = 3600) {
+  const kinds = new Set();
+  for (let i = 1; i <= seconds * 10; i += 1) {
+    motion.update(0.1, "idle", i / 10);
+    if (motion.current) kinds.add(motion.current.kind);
+  }
+  return kinds;
+}
+
+test("only the chosen idle actions are picked, e.g. a single shrug", () => {
+  const motion = new IdleMotion({ random: seeded(4) });
+  motion.setIdleActions(["shrug-left", "made-up"]);
+  assert.deepEqual(motion.idleActions, ["shrug-left"], "unknown names are ignored");
+  assert.deepEqual([...kindsPicked(motion, 600)], ["shrug-left"]);
+});
+
+test("unticked shrugs never play, and the rest keep their relative chances", () => {
+  const motion = new IdleMotion({ random: seeded(4) });
+  motion.setIdleActions(["glance", "tilt", "sigh"]);
+  assert.deepEqual([...kindsPicked(motion)].sort(), ["glance", "sigh", "tilt"]);
+  // glance 0.4 : tilt 0.25 : sigh 0.2, rescaled over 0.85
+  const pick = (roll) => {
+    const one = new IdleMotion({ random: scripted(0, roll, 0.9, 0) });
+    one.setIdleActions(["glance", "tilt", "sigh"]);
+    one.update(IDLE_MOTION.gap[0] + 0.01, "idle", 0);
+    return one.current?.kind;
+  };
+  assert.equal(pick(0.4 / 0.85 - 0.01), "glance");
+  assert.equal(pick(0.4 / 0.85 + 0.01), "tilt");
+  assert.equal(pick(0.65 / 0.85 + 0.01), "sigh");
+});
+
+test("with no idle actions ticked she stays still while idle", () => {
+  const motion = new IdleMotion({ random: seeded(4) });
+  motion.setIdleActions([]);
+  for (let i = 1; i <= 600 * 10; i += 1) {
+    const pose = motion.update(0.1, "idle", i / 10);
+    assert.ok(isRest(pose));
+  }
+  assert.equal(motion.current, null);
+});
+
+test("the panel lists every idle action with a label, all ticked by default", () => {
+  assert.deepEqual(Object.keys(IDLE_ACTION_LABELS), Object.keys(IDLE_ACTIONS));
+  const motion = new IdleMotion();
+  const boxes = Object.fromEntries(Object.keys(IDLE_ACTIONS).map((name) => [name, checkbox(false)]));
+  bindIdleActionSettings(motion, boxes, { local: storage() });
+  assert.ok(Object.values(boxes).every((box) => box.checked));
+  assert.deepEqual(motion.idleActions, Object.keys(IDLE_ACTIONS));
+});
+
+test("unticking shrugs saves the choice and restores it after a reload", () => {
+  const local = storage();
+  const motion = new IdleMotion();
+  const boxes = Object.fromEntries(Object.keys(IDLE_ACTIONS).map((name) => [name, checkbox(true)]));
+  bindIdleActionSettings(motion, boxes, { local });
+  boxes["shrug-both"].set(false);
+  boxes["shrug-right"].set(false);
+  const kept = ["glance", "tilt", "shrug-left", "sigh"];
+  assert.deepEqual(motion.idleActions, kept);
+  assert.deepEqual(JSON.parse(local.map.get(IDLE_ACTIONS_KEY)), kept);
+
+  const next = new IdleMotion();
+  const again = Object.fromEntries(Object.keys(IDLE_ACTIONS).map((name) => [name, checkbox(true)]));
+  bindIdleActionSettings(next, again, { local });
+  assert.deepEqual(next.idleActions, kept);
+  assert.equal(again["shrug-both"].checked, false);
+  assert.equal(again["shrug-left"].checked, true);
+});
+
+test("idle and sleep action choices are saved separately", () => {
+  assert.notEqual(IDLE_ACTIONS_KEY, SLEEP_ACTIONS_KEY);
+  const local = storage({ [SLEEP_ACTIONS_KEY]: JSON.stringify(["nod"]) });
+  const motion = new IdleMotion();
+  bindIdleActionSettings(motion, {}, { local });
+  assert.deepEqual(motion.idleActions, Object.keys(IDLE_ACTIONS));
 });

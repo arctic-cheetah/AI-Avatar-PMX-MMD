@@ -120,7 +120,8 @@ export const SLEEP_ACTION_LABELS = Object.freeze({
 export const SLEEP_ACTIONS_KEY = "yidhari.sleep-actions";
 
 /** One or both shoulders (left/right of the screen) lift and drop. */
-const shrug = (left, right) => ({
+const shrug = (left, right) => Object.freeze({
+  weight: 0.05,
   create: (random) => ({ duration: within(IDLE_MOTION.shrug.duration, random()) }),
   apply: (motion, target) => {
     const lift = IDLE_MOTION.shrug.angle * bump(motion.t, motion.duration, IDLE_MOTION.shrug.rise);
@@ -131,21 +132,22 @@ const shrug = (left, right) => ({
 });
 
 /**
- * Awake idle actions (#149), all equally likely: each gets weight 1 / count,
- * so adding one rebalances the rest. create(random) draws the action's own
- * parameters (it needs a duration); apply(motion, target) writes pose targets
- * and returns a glance target or null.
+ * Awake idle actions (#149), picked by weight; the weights sum to 1.
+ * create(random) draws the action's own parameters (it needs a duration);
+ * apply(motion, target) writes pose targets and returns a glance target or null.
  */
-const AWAKE_ACTIONS = {
-  glance: {
+export const IDLE_ACTIONS = Object.freeze({
+  glance: Object.freeze({
+    weight: 0.4,
     create: (random) => {
       const dir = random() < 0.5 ? -1 : 1;
       const duration = within(IDLE_MOTION.glance.duration, random());
       return { dir, duration, x: dir * within(IDLE_MOTION.glance.x, random()), y: within(IDLE_MOTION.glance.y, random()) };
     },
     apply: (motion) => ({ x: motion.x, y: motion.y }),
-  },
-  tilt: {
+  }),
+  tilt: Object.freeze({
+    weight: 0.25,
     create: (random) => {
       const dir = random() < 0.5 ? -1 : 1;
       return { dir, duration: within(IDLE_MOTION.tilt.duration, random()) };
@@ -154,11 +156,12 @@ const AWAKE_ACTIONS = {
       target.tilt = motion.dir * IDLE_MOTION.tilt.angle * bump(motion.t, motion.duration, IDLE_MOTION.tilt.rise);
       return null;
     },
-  },
+  }),
   "shrug-left": shrug(true, false),
   "shrug-right": shrug(false, true),
   "shrug-both": shrug(true, true),
-  sigh: {
+  sigh: Object.freeze({
+    weight: 0.2,
     create: () => ({ dir: 1, duration: IDLE_MOTION.sigh.inhale + IDLE_MOTION.sigh.exhale }),
     apply: (motion, target) => {
       const breath = sighCurve(motion.t);
@@ -166,11 +169,8 @@ const AWAKE_ACTIONS = {
       target.shoulders = breath * IDLE_MOTION.sigh.shoulders;
       return null;
     },
-  },
-};
-const AWAKE_COUNT = Object.keys(AWAKE_ACTIONS).length;
-export const IDLE_ACTIONS = Object.freeze(Object.fromEntries(Object.entries(AWAKE_ACTIONS)
-  .map(([name, action]) => [name, Object.freeze({ ...action, weight: 1 / AWAKE_COUNT })])));
+  }),
+});
 
 /**
  * Turns the idle state into one small motion at a time.

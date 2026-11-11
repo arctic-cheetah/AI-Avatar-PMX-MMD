@@ -88,7 +88,12 @@ Its `"ease": 3` lets the eyelids droop over about 1.6 s instead of the usual
 0.34 s. Waking uses `surprised`'s own (normal) rate, so she still wakes
 quickly.
 
-She **yawns once during the stretch**, just before sleepy:
+**While sleepy she keeps stretching and yawning**, every *Stretch & yawn
+every* minutes (2 by default), counted from when sleepy began. Each repeat is
+the same 3.2 s stretch with its yawn, and her sleepy face stays. Set it to 0 to
+keep only the first stretch. The user asked for this on 12 November 2026.
+
+She **yawns during each stretch**, starting just before sleepy:
 
 - **Mouth:** `あ` 1 + `お` 0.4, chosen by the user from rendered comparison
   grids on 11 November 2026.
@@ -146,6 +151,7 @@ In **Independent channels**:
 | **Idle behaviours · 待機動作** | on | on / off | `yidhari.idle-enabled` (`0` = off) |
 | **Idle after (s)** | 60 | 5 s to 1 h | `yidhari.idle-timing` (JSON, seconds) |
 | **Sleepy after (min)** | 10 | 5 s to 24 h, never before *Idle after* | `yidhari.idle-timing` |
+| **Stretch & yawn every (min)** | 2 | 0 (only the first) or 10 s to 1 h | `yidhari.idle-timing` (`stretchEvery`) |
 
 A status line under the controls shows the current idle state. Settings are
 saved in this browser only. If storage is blocked, changes last for the

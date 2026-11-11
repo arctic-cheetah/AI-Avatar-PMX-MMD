@@ -90,20 +90,27 @@ quickly.
 
 **Sleep actions.** While she is sleepy, she does a *sleep action* every
 *Sleep action every* minutes (2 by default), counted from when sleepy began.
-Each time, one is picked at random, with equal chances, from
-`SLEEP_ACTIONS` in `renderer/idle-motion.js`:
+Each time, one of the sleep actions ticked in the panel is picked at random,
+with equal chances, from `SLEEP_ACTIONS` in `renderer/idle-motion.js`:
 
 | Sleep action | Length | What moves |
 | --- | --- | --- |
 | `stretch-yawn` | 3.2 s | The stretch with its yawn, as before sleepy |
 | `tilt-left` | 3.2 s | `頭` rolls 5° toward the left of the screen, then back |
 | `tilt-right` | 3.2 s | `頭` rolls 5° toward the right of the screen, then back |
+| `nod` | 3.2 s | A dozing nod: `首`/`頭` dip 6° forward slowly, then lift (#149) |
 
 - **Her sleepy face stays** during every action. Set the interval to 0 for no
   sleep actions: she then only stretches once, before sleepy.
+- **Choosing sleep actions:** the panel lists each one with a checkbox, all
+  ticked by default. Only ticked actions are picked, and with none ticked she
+  does none. The choice is saved in this browser as `yidhari.sleep-actions`
+  (a JSON list of names). Unknown names are ignored, and an unreadable value
+  means all of them. Requested on 12 November 2026 (#149).
 - **Adding an action:** add an entry with a `duration` and an
   `apply(t, target)` that writes pose targets (`tilt`, `back`, `headPitch`,
-  `shoulders`, `chest`, `yawn`). The picker includes it automatically.
+  `shoulders`, `shoulderLeft`, `shoulderRight`, `chest`, `yawn`), plus a
+  `SLEEP_ACTION_LABELS` entry. The picker and the panel include it automatically.
 - **History:** the user asked for the repeat on 12 November 2026, then for
   random sleep actions including the head tilts.
 
@@ -131,12 +138,20 @@ authored curve (`bump`: smoothstep in, hold, smoothstep out), and the output
 goes through a critically damped spring (rate 8, about 0.6 s to settle). So
 when she leaves idle mid-motion, the pose eases back instead of snapping.
 
+Awake idle actions come from one weighted registry, `IDLE_ACTIONS` (#149).
+Each entry has a `weight` (its chance), `create(random)` for its random
+parameters, and `apply(motion, target)` for its pose. To add one, add an
+entry, keep the weights summing to 1, and add a test.
+
 | Motion | Chance | Length | What moves | Size |
 | --- | --- | --- | --- | --- |
 | Glance | 40 % | 1.2–2.2 s | Eyes, head following at 45 %, to one side | 0.45–0.75 of the gaze range sideways, ±0.15 up/down |
-| Head tilt | 30 % | 2–3.5 s | `頭` roll to one side | 5° |
-| Sigh | 30 % | 1.1 s in, 1.7 s out | Chest (`上半身2` pitch) and both `肩` lift, then fall | 2° chest, 2.5° shoulders |
-| Stretch | Before sleepy | 3.2 s | Back arches (`上半身` pitch), head tips back (`首`/`頭`), shoulders lift, and she yawns | 5° back, 7° head, 6° shoulders, yawn 1 |
+| Head tilt | 25 % | 2–3.5 s | `頭` roll to one side | 5° |
+| Shrug left | 5 % | 1.6–2.2 s | The shoulder on the left of the screen (`右肩`) lifts, then drops | 6° |
+| Shrug right | 5 % | 1.6–2.2 s | The shoulder on the right of the screen (`左肩`) | 6° |
+| Shrug both | 5 % | 1.6–2.2 s | Both `肩` together | 6° |
+| Sigh | 20 % | 1.1 s in, 1.7 s out | Chest (`上半身2` pitch) and both `肩` lift, then fall | 2° chest, 2.5° shoulders |
+| Stretch | Before sleepy, and a sleep action | 3.2 s | Back arches (`上半身` pitch), head tips back (`首`/`頭`), shoulders lift, and she yawns | 5° back, 7° head, 6° shoulders, yawn 1 |
 
 - The glance is a gaze source. For its 1–2 s it outranks the cursor, which
   may still be moving because the mouse is not activity, but a face tracked

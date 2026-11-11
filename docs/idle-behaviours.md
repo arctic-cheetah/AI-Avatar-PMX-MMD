@@ -143,17 +143,18 @@ when she leaves idle mid-motion, the pose eases back instead of snapping.
 
 Awake idle actions come from one weighted registry, `IDLE_ACTIONS` (#149).
 Each entry has a `weight` (its chance), `create(random)` for its random
-parameters, and `apply(motion, target)` for its pose. To add one, add an
-entry, keep the weights summing to 1, and add a test.
+parameters, and `apply(motion, target)` for its pose. Every action is equally
+likely: the weight is `1 / number of actions`, so adding an entry rebalances
+the rest by itself. The user asked for equal chances on 12 November 2026.
 
 | Motion | Chance | Length | What moves | Size |
 | --- | --- | --- | --- | --- |
-| Glance | 40 % | 1.2–2.2 s | Eyes, head following at 45 %, to one side | 0.45–0.75 of the gaze range sideways, ±0.15 up/down |
-| Head tilt | 25 % | 2–3.5 s | `頭` roll to one side | 5° |
-| Shrug left | 5 % | 1.6–2.2 s | The shoulder on the left of the screen (`右肩`) lifts, then drops | 6° |
-| Shrug right | 5 % | 1.6–2.2 s | The shoulder on the right of the screen (`左肩`) | 6° |
-| Shrug both | 5 % | 1.6–2.2 s | Both `肩` together | 6° |
-| Sigh | 20 % | 1.1 s in, 1.7 s out | Chest (`上半身2` pitch) and both `肩` lift, then fall | 2° chest, 2.5° shoulders |
+| Glance | 1 in 6 | 1.2–2.2 s | Eyes, head following at 45 %, to one side | 0.45–0.75 of the gaze range sideways, ±0.15 up/down |
+| Head tilt | 1 in 6 | 2–3.5 s | `頭` roll to one side | 5° |
+| Shrug left | 1 in 6 | 1.6–2.2 s | The shoulder on the left of the screen (`右肩`) lifts, then drops | 6° |
+| Shrug right | 1 in 6 | 1.6–2.2 s | The shoulder on the right of the screen (`左肩`) | 6° |
+| Shrug both | 1 in 6 | 1.6–2.2 s | Both `肩` together | 6° |
+| Sigh | 1 in 6 | 1.1 s in, 1.7 s out | Chest (`上半身2` pitch) and both `肩` lift, then fall | 2° chest, 2.5° shoulders |
 | Stretch | Before sleepy, and a sleep action | 3.2 s | Back arches (`上半身` pitch), head tips back (`首`/`頭`), shoulders lift, and she yawns | 5° back, 7° head, 6° shoulders, yawn 1 |
 
 - The glance is a gaze source. For its 1–2 s it outranks the cursor, which

@@ -284,12 +284,13 @@ test("an interval of 0 means no sleep actions, only the stretch before sleepy", 
 
 // ---- #149: idle action library ----
 
-test("awake idle actions live in one registry, all equally likely, chances adding up to 1", () => {
+test("awake idle actions live in one registry with rare shrugs, chances adding up to 1", () => {
   assert.deepEqual(Object.keys(IDLE_ACTIONS), ["glance", "tilt", "shrug-left", "shrug-right", "shrug-both", "sigh"]);
   const total = Object.values(IDLE_ACTIONS).reduce((sum, action) => sum + action.weight, 0);
-  const share = 1 / Object.keys(IDLE_ACTIONS).length;
+  // The user's mix: shrugs stay rare (equal chances made them too common).
+  const mix = { glance: 0.4, tilt: 0.25, "shrug-left": 0.05, "shrug-right": 0.05, "shrug-both": 0.05, sigh: 0.2 };
   for (const [name, action] of Object.entries(IDLE_ACTIONS)) {
-    assert.ok(Math.abs(action.weight - share) < 1e-9, `${name} is as likely as every other action`);
+    assert.ok(Math.abs(action.weight - mix[name]) < 1e-9, `${name} has its ${mix[name] * 100} % chance`);
   }
   assert.ok(Math.abs(total - 1) < 1e-9);
   for (const [name, action] of Object.entries(IDLE_ACTIONS)) {

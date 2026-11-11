@@ -296,7 +296,7 @@ test("timing inputs are saved in seconds and restored on the next page load", ()
   inputs.sleepAfterInput.change({ value: "2.5" });
   assert.equal(idle.timing.idleAfter, 30);
   assert.equal(idle.timing.sleepAfter, 150);
-  assert.deepEqual(JSON.parse(local.map.get(IDLE_TIMING_KEY)), { idleAfter: 30, sleepAfter: 150, stretchEvery: IDLE_TIMING.stretchEvery });
+  assert.deepEqual(JSON.parse(local.map.get(IDLE_TIMING_KEY)), { idleAfter: 30, sleepAfter: 150, sleepActionEvery: IDLE_TIMING.sleepActionEvery });
 
   const next = new IdleController();
   const again = { toggle: control({ checked: true }), idleAfterInput: control({ value: "" }), sleepAfterInput: control({ value: "" }) };
@@ -332,26 +332,26 @@ test("corrupt or blocked storage falls back to the defaults", () => {
   assert.deepEqual(corrupt.timing, { ...IDLE_TIMING });
 });
 
-test("she stretches and yawns again every two minutes while sleepy by default; 0 means only once", () => {
-  assert.equal(IDLE_TIMING.stretchEvery, 120);
-  assert.equal(normaliseIdleTiming({ stretchEvery: 0 }).stretchEvery, 0, "0 turns the repeat off");
-  assert.equal(normaliseIdleTiming({ stretchEvery: 3 }).stretchEvery, 10, "at least 10 s apart");
-  assert.equal(normaliseIdleTiming({ stretchEvery: 1e9 }).stretchEvery, 3600);
-  assert.equal(normaliseIdleTiming({ stretchEvery: Number.NaN }).stretchEvery, 120);
-  assert.equal(normaliseIdleTiming({ stretchEvery: -5 }).stretchEvery, 0, "negative reads as off");
+test("while sleepy she does a sleep action every two minutes by default; 0 means none", () => {
+  assert.equal(IDLE_TIMING.sleepActionEvery, 120);
+  assert.equal(normaliseIdleTiming({ sleepActionEvery: 0 }).sleepActionEvery, 0, "0 turns the repeat off");
+  assert.equal(normaliseIdleTiming({ sleepActionEvery: 3 }).sleepActionEvery, 10, "at least 10 s apart");
+  assert.equal(normaliseIdleTiming({ sleepActionEvery: 1e9 }).sleepActionEvery, 3600);
+  assert.equal(normaliseIdleTiming({ sleepActionEvery: Number.NaN }).sleepActionEvery, 120);
+  assert.equal(normaliseIdleTiming({ sleepActionEvery: -5 }).sleepActionEvery, 0, "negative reads as off");
 });
 
-test("the stretch-and-yawn interval is a panel setting in minutes, saved in seconds", () => {
+test("the sleep action interval is a panel setting in minutes, saved in seconds", () => {
   const local = storage();
   const idle = new IdleController();
-  const stretchEveryInput = control({ value: "" });
+  const sleepActionEveryInput = control({ value: "" });
   bindIdleSettings(idle, { toggle: control({ checked: true }), idleAfterInput: control({ value: "" }),
-    sleepAfterInput: control({ value: "" }), stretchEveryInput, local });
-  assert.equal(stretchEveryInput.value, "2");
-  stretchEveryInput.change({ value: "0.5" });
-  assert.equal(idle.timing.stretchEvery, 30);
-  assert.equal(JSON.parse(local.map.get(IDLE_TIMING_KEY)).stretchEvery, 30);
-  stretchEveryInput.change({ value: "0" });
-  assert.equal(idle.timing.stretchEvery, 0);
-  assert.equal(stretchEveryInput.value, "0");
+    sleepAfterInput: control({ value: "" }), sleepActionEveryInput, local });
+  assert.equal(sleepActionEveryInput.value, "2");
+  sleepActionEveryInput.change({ value: "0.5" });
+  assert.equal(idle.timing.sleepActionEvery, 30);
+  assert.equal(JSON.parse(local.map.get(IDLE_TIMING_KEY)).sleepActionEvery, 30);
+  sleepActionEveryInput.change({ value: "0" });
+  assert.equal(idle.timing.sleepActionEvery, 0);
+  assert.equal(sleepActionEveryInput.value, "0");
 });

@@ -10,6 +10,7 @@ import {
   IdleController,
   SLEEPY_BLINK,
   bindIdleSettings,
+  idleBlocked,
   normaliseIdleTiming,
 } from "../../renderer/idle-behaviour.js";
 
@@ -354,4 +355,18 @@ test("the sleep action interval is a panel setting in minutes, saved in seconds"
   sleepActionEveryInput.change({ value: "0" });
   assert.equal(idle.timing.sleepActionEvery, 0);
   assert.equal(sleepActionEveryInput.value, "0");
+});
+
+const QUIET = Object.freeze({ speaking: false, chatResponding: false, askOpen: false, previewing: false, mood: "calm", looping: false });
+
+test("idle waits for speech, a reply, an open ask, a preview or real thinking", () => {
+  assert.equal(idleBlocked(QUIET), false);
+  for (const key of ["speaking", "chatResponding", "askOpen", "previewing"]) {
+    assert.equal(idleBlocked({ ...QUIET, [key]: true }), true, key);
+  }
+  assert.equal(idleBlocked({ ...QUIET, mood: "thinking" }), true, "real thinking blocks");
+});
+
+test("the mood preview loop passing through thinking does not reset the idle timer", () => {
+  assert.equal(idleBlocked({ ...QUIET, mood: "thinking", looping: true }), false);
 });

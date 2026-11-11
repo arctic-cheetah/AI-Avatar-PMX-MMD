@@ -105,6 +105,7 @@ const gazeStatus = document.querySelector("#gaze-status");
 const idleToggle = document.querySelector("#idle-toggle");
 const idleAfterInput = document.querySelector("#idle-after");
 const sleepAfterInput = document.querySelector("#sleep-after");
+const stretchEveryInput = document.querySelector("#stretch-every");
 const idleStatus = document.querySelector("#idle-status");
 const frameButtons = {
   face: document.querySelector("#frame-face-button"),
@@ -226,7 +227,7 @@ const swayQuat = new THREE.Quaternion();
 const sway = new SwayController();
 /** Idle-state timer (#71): sleepy after a long quiet, waking on activity. */
 const idle = new IdleController();
-bindIdleSettings(idle, { toggle: idleToggle, idleAfterInput, sleepAfterInput });
+bindIdleSettings(idle, { toggle: idleToggle, idleAfterInput, sleepAfterInput, stretchEveryInput });
 /** Whether an agent ask is waiting for an answer; idle waits too. */
 let askOpen = false;
 /** The mood the idle controller last applied, so rest never overwrites someone else's. */
@@ -933,7 +934,7 @@ function updateIdle(delta) {
   // A held pose lets previews and comparison grids show one motion on demand.
   idlePose = globalThis.__yidhariIdlePose
     ? { glance: null, tilt: 0, chest: 0, shoulders: 0, back: 0, headPitch: 0, yawn: 0, ...globalThis.__yidhariIdlePose }
-    : idleMotion.update(delta.eased, idle.state, idle.stateTime);
+    : idleMotion.update(delta.eased, idle.state, idle.stateTime, idle.timing.stretchEvery);
   gaze.setIdle(idlePose.glance);
   if (idle.state !== shownIdleState) {
     shownIdleState = idle.state;

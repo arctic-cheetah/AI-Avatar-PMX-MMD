@@ -92,9 +92,10 @@ export class IdleMotion {
    * @param {number} delta Seconds since the previous frame; invalid values count as 0.
    * @param {string} state IdleController state.
    * @param {number} stateTime Seconds in that state.
+   * @param {number} [stretchEvery=0] While sleepy, stretch and yawn again this often (s); 0 = never.
    * @returns {{glance:{x:number,y:number}|null,tilt:number,chest:number,shoulders:number,back:number,headPitch:number,yawn:number}}
    */
-  update(delta, state, stateTime) {
+  update(delta, state, stateTime, stretchEvery = 0) {
     const dt = Number.isFinite(delta) && delta > 0 ? delta : 0;
     const target = { tilt: 0, chest: 0, shoulders: 0, back: 0, headPitch: 0, yawn: 0 };
     let glance = null;
@@ -114,13 +115,19 @@ export class IdleMotion {
     } else {
       this.current = null;
       this.gapLeft = null;
-      if (state === "stretching") {
+      // The stretch before sleepy, then again every stretchEvery seconds while sleepy.
+      let t = null;
+      if (state === "stretching") t = stateTime;
+      else if (state === "sleepy" && stretchEvery > 0 && stateTime >= stretchEvery) {
+        t = stateTime - Math.floor(stateTime / stretchEvery) * stretchEvery;
+      }
+      if (t !== null) {
         const { rise, back, headPitch, shoulders } = IDLE_MOTION.stretch;
-        const weight = bump(stateTime, IDLE_TIMING.stretch, rise);
+        const weight = bump(t, IDLE_TIMING.stretch, rise);
         target.back = weight * back;
         target.headPitch = weight * headPitch;
         target.shoulders = weight * shoulders;
-        target.yawn = yawnCurve(stateTime);
+        target.yawn = yawnCurve(t);
       }
     }
     const pose = { glance };

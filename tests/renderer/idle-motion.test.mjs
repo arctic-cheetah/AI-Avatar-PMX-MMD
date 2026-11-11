@@ -111,7 +111,7 @@ test("a sigh lifts the chest and shoulders, then lets them fall", () => {
 test("one motion at a time, and every angle stays within its limit", () => {
   const motion = new IdleMotion({ random: seeded(11) });
   const kinds = new Set();
-  for (let i = 1; i <= 600 * 30; i += 1) {
+  for (let i = 1; i <= 3600 * 30; i += 1) { // an hour, so 5 % shrugs come up too
     const pose = motion.update(1 / 30, "idle", i / 30);
     if (motion.current) kinds.add(motion.current.kind);
     assert.ok(Math.abs(pose.tilt) <= IDLE_MOTION.tilt.angle + 1e-9);

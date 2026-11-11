@@ -34,6 +34,16 @@ function play(motion, state, seconds, { fps = 60, from = 0 } = {}) {
   return poses;
 }
 
+/** A random roll that picks the named awake idle action, whatever the weights are. */
+function rollFor(name) {
+  let start = 0;
+  for (const [key, action] of Object.entries(IDLE_ACTIONS)) {
+    if (key === name) return start + action.weight / 2;
+    start += action.weight;
+  }
+  throw new Error(`No idle action ${name}`);
+}
+
 const isRest = (pose) => pose.glance === null && pose.yawn === 0 && ANGLES.every((k) => Math.abs(pose[k]) < 1e-9);
 
 test("bump eases in, holds and eases out within its duration", () => {
@@ -84,7 +94,7 @@ test("glances go both ways", () => {
 
 test("a head tilt leans to one side within its angle and comes back", () => {
   // gap, then kind 0.5 = tilt.
-  const motion = new IdleMotion({ random: scripted(0, 0.5, 0.9, 0) });
+  const motion = new IdleMotion({ random: scripted(0, rollFor("tilt"), 0.9, 0) });
   play(motion, "idle", IDLE_MOTION.gap[0] + 0.05);
   assert.equal(motion.current?.kind, "tilt");
   const poses = play(motion, "idle", IDLE_MOTION.tilt.duration[0] + 1.5);
@@ -96,7 +106,7 @@ test("a head tilt leans to one side within its angle and comes back", () => {
 
 test("a sigh lifts the chest and shoulders, then lets them fall", () => {
   // gap, then kind 0.9 = sigh.
-  const motion = new IdleMotion({ random: scripted(0, 0.9) });
+  const motion = new IdleMotion({ random: scripted(0, rollFor("sigh")) });
   play(motion, "idle", IDLE_MOTION.gap[0] + 0.05);
   assert.equal(motion.current?.kind, "sigh");
   const { inhale, exhale } = IDLE_MOTION.sigh;
@@ -147,7 +157,7 @@ test("the stretch arches back, lifts the head and shoulders, then settles", () =
 });
 
 test("leaving idle mid-motion drops the glance at once and eases the rest back", () => {
-  const motion = new IdleMotion({ random: scripted(0, 0.5, 0.9, 0) });
+  const motion = new IdleMotion({ random: scripted(0, rollFor("tilt"), 0.9, 0) });
   play(motion, "idle", IDLE_MOTION.gap[0] + 1);
   assert.ok(Math.abs(motion.update(0, "idle", 9).tilt) > 0);
   const back = play(motion, "active", 1);
@@ -274,9 +284,13 @@ test("an interval of 0 means no sleep actions, only the stretch before sleepy", 
 
 // ---- #149: idle action library ----
 
-test("awake idle actions live in one registry whose chances add up to 1", () => {
+test("awake idle actions live in one registry, all equally likely, chances adding up to 1", () => {
   assert.deepEqual(Object.keys(IDLE_ACTIONS), ["glance", "tilt", "shrug-left", "shrug-right", "shrug-both", "sigh"]);
   const total = Object.values(IDLE_ACTIONS).reduce((sum, action) => sum + action.weight, 0);
+  const share = 1 / Object.keys(IDLE_ACTIONS).length;
+  for (const [name, action] of Object.entries(IDLE_ACTIONS)) {
+    assert.ok(Math.abs(action.weight - share) < 1e-9, `${name} is as likely as every other action`);
+  }
   assert.ok(Math.abs(total - 1) < 1e-9);
   for (const [name, action] of Object.entries(IDLE_ACTIONS)) {
     assert.ok(action.weight > 0, name);
@@ -295,7 +309,7 @@ function idleAction(roll) {
 }
 
 test("a left or right shrug lifts only that shoulder, then lets it down", () => {
-  for (const [roll, kind, side, other] of [[0.67, "shrug-left", "shoulderLeft", "shoulderRight"], [0.72, "shrug-right", "shoulderRight", "shoulderLeft"]]) {
+  for (const [roll, kind, side, other] of [[rollFor("shrug-left"), "shrug-left", "shoulderLeft", "shoulderRight"], [rollFor("shrug-right"), "shrug-right", "shoulderRight", "shoulderLeft"]]) {
     const { kind: picked, poses } = idleAction(roll);
     assert.equal(picked, kind);
     const lift = Math.max(...poses.map((p) => p[side]));
@@ -307,7 +321,7 @@ test("a left or right shrug lifts only that shoulder, then lets it down", () => 
 });
 
 test("a both-shoulder shrug lifts both shoulders evenly", () => {
-  const { kind, poses } = idleAction(0.77);
+  const { kind, poses } = idleAction(rollFor("shrug-both"));
   assert.equal(kind, "shrug-both");
   const peakAt = poses.reduce((best, p, i) => (p.shoulderLeft > poses[best].shoulderLeft ? i : best), 0);
   assert.ok(poses[peakAt].shoulderLeft > IDLE_MOTION.shrug.angle * 0.8);

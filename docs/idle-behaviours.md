@@ -65,7 +65,7 @@ sleepy when nobody talks to her, not when nobody touches the page.
 The timer is frozen at zero, and no idle state is entered, while:
 
 - speech is playing, loading or queued;
-- the mood is `thinking`;
+- the mood is `thinking`, unless the mood preview loop is only passing through it;
 - an agent `ask` is waiting for an answer;
 - a chat reply is streaming;
 - a morph audition sweep or held preview is running (developer tools).
@@ -73,7 +73,10 @@ The timer is frozen at zero, and no idle state is entered, while:
 The mood preview loop that starts when the page loads does not block idle.
 It cycles moods until something stops it, so blocking on it would keep her
 awake forever without a bridge. Turning sleepy stops the loop, like any
-other mood selection.
+other mood selection. The loop's own `thinking` step does not block either. Before this fix it
+reset the timer every ~150 s, so sleepy (10 min) was never reached without a
+bridge. The user found this while trying #151. The rule is the pure
+`idleBlocked()` in `renderer/idle-behaviour.js`.
 
 If one of these starts while she is sleepy or waking, the idle state ends at
 once and hands her face back. The renderer only restores the resting mood

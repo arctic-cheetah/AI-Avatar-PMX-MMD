@@ -88,10 +88,24 @@ Its `"ease": 3` lets the eyelids droop over about 1.6 s instead of the usual
 0.34 s. Waking uses `surprised`'s own (normal) rate, so she still wakes
 quickly.
 
-**While sleepy she keeps stretching and yawning**, every *Stretch & yawn
-every* minutes (2 by default), counted from when sleepy began. Each repeat is
-the same 3.2 s stretch with its yawn, and her sleepy face stays. Set it to 0 to
-keep only the first stretch. The user asked for this on 12 November 2026.
+**Sleep actions.** While she is sleepy, she does a *sleep action* every
+*Sleep action every* minutes (2 by default), counted from when sleepy began.
+Each time, one is picked at random, with equal chances, from
+`SLEEP_ACTIONS` in `renderer/idle-motion.js`:
+
+| Sleep action | Length | What moves |
+| --- | --- | --- |
+| `stretch-yawn` | 3.2 s | The stretch with its yawn, as before sleepy |
+| `tilt-left` | 3.2 s | `頭` rolls 5° toward the left of the screen, then back |
+| `tilt-right` | 3.2 s | `頭` rolls 5° toward the right of the screen, then back |
+
+- **Her sleepy face stays** during every action. Set the interval to 0 for no
+  sleep actions: she then only stretches once, before sleepy.
+- **Adding an action:** add an entry with a `duration` and an
+  `apply(t, target)` that writes pose targets (`tilt`, `back`, `headPitch`,
+  `shoulders`, `chest`, `yawn`). The picker includes it automatically.
+- **History:** the user asked for the repeat on 12 November 2026, then for
+  random sleep actions including the head tilts.
 
 She **yawns during each stretch**, starting just before sleepy:
 
@@ -151,7 +165,7 @@ In **Independent channels**:
 | **Idle behaviours · 待機動作** | on | on / off | `yidhari.idle-enabled` (`0` = off) |
 | **Idle after (s)** | 60 | 5 s to 1 h | `yidhari.idle-timing` (JSON, seconds) |
 | **Sleepy after (min)** | 10 | 5 s to 24 h, never before *Idle after* | `yidhari.idle-timing` |
-| **Stretch & yawn every (min)** | 2 | 0 (only the first) or 10 s to 1 h | `yidhari.idle-timing` (`stretchEvery`) |
+| **Sleep action every (min)** | 2 | 0 (none) or 10 s to 1 h | `yidhari.idle-timing` (`sleepActionEvery`) |
 
 A status line under the controls shows the current idle state. Settings are
 saved in this browser only. If storage is blocked, changes last for the

@@ -50,7 +50,7 @@ import { addSeeThroughBrows, bindSeeThroughBrowsToggle } from "./see-through-bro
 import { installCollapsiblePanel } from "./collapsible-panel.js";
 import { FrameLoop, PopOut, popupWindow } from "./pop-out.js";
 import { IDLE_STATE_LABELS, IdleController, bindIdleSettings } from "./idle-behaviour.js";
-import { IDLE_MOTION, IdleMotion } from "./idle-motion.js";
+import { IDLE_MOTION, IdleMotion, SLEEP_ACTION_LABELS, bindSleepActionSettings } from "./idle-motion.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
 const MODEL_URL = "/yidhari-mmd/伊德海莉.pmx";
@@ -236,6 +236,19 @@ let shownIdleState = null;
 /** Glances, tilts, sighs and the stretch (#71), as a pose for this frame. */
 const idleMotion = new IdleMotion();
 let idlePose = idleMotion.update(0, "active", 0);
+// One checkbox per sleep action (#149), built from the registry so new actions appear by themselves.
+const sleepActionBoxes = {};
+for (const [name, label] of Object.entries(SLEEP_ACTION_LABELS)) {
+  const row = document.createElement("label");
+  row.className = "check";
+  const box = document.createElement("input");
+  box.type = "checkbox";
+  box.id = `sleep-action-${name}`;
+  row.append(box, label);
+  document.querySelector("#sleep-actions").append(row);
+  sleepActionBoxes[name] = box;
+}
+bindSleepActionSettings(idleMotion, sleepActionBoxes);
 /**
  * Idle motion bones: which angle of the pose each one takes, and its sign
  * (checked on the model: negative pitch leans back, see docs/idle-behaviours.md).
@@ -243,14 +256,15 @@ let idlePose = idleMotion.update(0, "active", 0);
  * the shoulders have no other writer, so they keep their own rest.
  */
 const IDLE_BONES = Object.freeze([
-  { name: "上半身", pitch: ["back", -1] },
-  { name: "上半身2", pitch: ["chest", -1] },
-  { name: "首", pitch: ["headPitch", -0.4] },
-  { name: "頭", pitch: ["headPitch", -0.6], roll: ["tilt", 1] },
-  { name: "左肩", roll: ["shoulders", -1], own: true },
-  { name: "右肩", roll: ["shoulders", 1], own: true },
+  { name: "上半身", pitch: [["back", -1]] },
+  { name: "上半身2", pitch: [["chest", -1]] },
+  { name: "首", pitch: [["headPitch", -0.4]] },
+  { name: "頭", pitch: [["headPitch", -0.6]], roll: [["tilt", 1]] },
+  // Her left shoulder is on the right of the screen (#149 shrugs are named by screen side).
+  { name: "左肩", roll: [["shoulders", -1], ["shoulderRight", -1]], own: true },
+  { name: "右肩", roll: [["shoulders", 1], ["shoulderLeft", 1]], own: true },
 ]);
-/** @type {{ bone: THREE.Bone, rest: THREE.Quaternion | null, pitch?: [string, number], roll?: [string, number] }[]} */
+/** @type {{ bone: THREE.Bone, rest: THREE.Quaternion | null, pitch?: [string, number][], roll?: [string, number][] }[]} */
 let idleBones = [];
 const idleEuler = new THREE.Euler();
 const idleQuat = new THREE.Quaternion();
@@ -410,9 +424,10 @@ function applyYawn() {
  * @returns {void}
  */
 function applyIdleMotion() {
+  const sum = (parts = []) => parts.reduce((total, [key, sign]) => total + (idlePose[key] ?? 0) * sign, 0);
   for (const { bone, rest, pitch, roll } of idleBones) {
-    const x = pitch ? idlePose[pitch[0]] * pitch[1] : 0;
-    const z = roll ? idlePose[roll[0]] * roll[1] : 0;
+    const x = sum(pitch);
+    const z = sum(roll);
     if (rest) bone.quaternion.copy(rest);
     if (x === 0 && z === 0) continue;
     idleEuler.set(x, 0, z, "YXZ");
@@ -933,7 +948,8 @@ function updateIdle(delta) {
   }
   // A held pose lets previews and comparison grids show one motion on demand.
   idlePose = globalThis.__yidhariIdlePose
-    ? { glance: null, tilt: 0, chest: 0, shoulders: 0, back: 0, headPitch: 0, yawn: 0, ...globalThis.__yidhariIdlePose }
+    ? { glance: null, tilt: 0, chest: 0, shoulders: 0, shoulderLeft: 0, shoulderRight: 0, back: 0, headPitch: 0, yawn: 0,
+      ...globalThis.__yidhariIdlePose }
     : idleMotion.update(delta.eased, idle.state, idle.stateTime, idle.timing.sleepActionEvery);
   gaze.setIdle(idlePose.glance);
   if (idle.state !== shownIdleState) {

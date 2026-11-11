@@ -2,7 +2,7 @@
 // Idle motions for #71: glance, head tilt, sigh and the stretch before sleepy.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { IDLE_MOTION, IdleMotion, bump } from "../../renderer/idle-motion.js";
+import { IDLE_MOTION, IdleMotion, SLEEP_ACTIONS, bump } from "../../renderer/idle-motion.js";
 import { IDLE_TIMING } from "../../renderer/idle-behaviour.js";
 
 const DEG = Math.PI / 180;
@@ -198,4 +198,73 @@ test("no yawn while active, idle, sleepy or waking, and a block mid-yawn closes 
   const back = play(motion, "active", 1.5);
   assert.ok(back[0].yawn > 0.3, "eases, not snaps");
   assert.ok(back.at(-1).yawn < 0.01);
+});
+
+/** Step a sleepy motion from `from` for `seconds`, with sleep actions every `every` s. */
+function sleepy(motion, from, seconds, every) {
+  const poses = [];
+  for (let i = 1; i <= Math.round(seconds * 60); i += 1) poses.push(motion.update(1 / 60, "sleepy", from + i / 60, every));
+  return poses;
+}
+const peak = (poses, key) => Math.max(...poses.map((p) => Math.abs(p[key])));
+
+test("sleep actions are stretch-and-yawn and head tilts left and right, ready for more", () => {
+  assert.deepEqual(Object.keys(SLEEP_ACTIONS), ["stretch-yawn", "tilt-left", "tilt-right"]);
+  for (const [name, action] of Object.entries(SLEEP_ACTIONS)) {
+    assert.ok(action.duration > 0 && action.duration < 30, name);
+    assert.equal(typeof action.apply, "function", name);
+  }
+});
+
+test("a sleep action plays on every interval while sleepy, then she settles", () => {
+  const motion = new IdleMotion({ random: scripted(0.1) }); // stretch-yawn every time
+  assert.ok(sleepy(motion, 0, 29.9, 30).every((p) => p.back === 0 && p.yawn === 0 && p.tilt === 0), "nothing before the first interval");
+  const first = sleepy(motion, 29.9, IDLE_TIMING.stretch + 1.6, 30);
+  assert.equal(motion.sleepAction, "stretch-yawn");
+  assert.ok(peak(first, "back") > IDLE_MOTION.stretch.back * 0.7, "stretches at 30 s");
+  assert.ok(peak(first, "yawn") > 0.9, "and yawns");
+  assert.ok(first.at(-1).back < 0.05 * DEG && first.at(-1).yawn < 0.01, "then settles");
+  const quiet = sleepy(motion, 29.9 + IDLE_TIMING.stretch + 1.6, 30 - IDLE_TIMING.stretch - 1.7, 30);
+  assert.ok(quiet.every((p) => p.yawn < 0.01), "quiet in between");
+  assert.ok(peak(sleepy(motion, 59.9, IDLE_TIMING.stretch, 30), "yawn") > 0.9, "again at 60 s");
+});
+
+test("a sleepy head tilt leans to one side, without stretching or yawning, and comes back", () => {
+  for (const [roll, name, sign] of [[0.5, "tilt-left", 1], [0.9, "tilt-right", -1]]) {
+    const motion = new IdleMotion({ random: scripted(roll) });
+    const poses = sleepy(motion, 29.9, SLEEP_ACTIONS[name].duration + 1.6, 30);
+    assert.equal(motion.sleepAction, name);
+    const lean = poses.reduce((best, p) => (Math.abs(p.tilt) > Math.abs(best) ? p.tilt : best), 0);
+    assert.equal(Math.sign(lean), sign, `${name} leans ${sign > 0 ? "to screen left" : "to screen right"}`);
+    assert.ok(Math.abs(lean) > IDLE_MOTION.tilt.angle * 0.8, `${name} leans clearly`);
+    assert.ok(peak(poses, "back") === 0 && peak(poses, "yawn") === 0, `${name} alone`);
+    assert.ok(Math.abs(poses.at(-1).tilt) < 0.05 * DEG, `${name} comes back upright`);
+  }
+});
+
+test("each interval picks its sleep action at random", () => {
+  const motion = new IdleMotion({ random: seeded(5) });
+  const seen = new Set();
+  for (let k = 1; k <= 30; k += 1) {
+    sleepy(motion, k * 20 - 0.05, 0.1, 20);
+    seen.add(motion.sleepAction);
+  }
+  assert.deepEqual([...seen].sort(), ["stretch-yawn", "tilt-left", "tilt-right"]);
+});
+
+test("a new sleepy period starts its interval count again", () => {
+  const motion = new IdleMotion({ random: scripted(0.1) });
+  sleepy(motion, 29.9, 1, 30);
+  motion.update(1 / 60, "waking", 0, 30);
+  assert.equal(motion.sleepAction, null);
+  const again = sleepy(motion, 0, 29.9, 30).slice(90); // the interrupted yawn eases shut in the first 1.5 s
+  assert.ok(again.every((p) => p.yawn < 0.01 && p.back < 0.05 * DEG), "waits a full interval again");
+});
+
+test("an interval of 0 means no sleep actions, only the stretch before sleepy", () => {
+  const motion = new IdleMotion({ random: seeded() });
+  for (let i = 1; i <= 300 * 10; i += 1) {
+    const pose = motion.update(0.1, "sleepy", i / 10, 0);
+    assert.ok(pose.back === 0 && pose.yawn === 0 && pose.tilt === 0);
+  }
 });

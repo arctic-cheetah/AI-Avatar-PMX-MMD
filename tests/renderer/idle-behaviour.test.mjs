@@ -296,7 +296,7 @@ test("timing inputs are saved in seconds and restored on the next page load", ()
   inputs.sleepAfterInput.change({ value: "2.5" });
   assert.equal(idle.timing.idleAfter, 30);
   assert.equal(idle.timing.sleepAfter, 150);
-  assert.deepEqual(JSON.parse(local.map.get(IDLE_TIMING_KEY)), { idleAfter: 30, sleepAfter: 150 });
+  assert.deepEqual(JSON.parse(local.map.get(IDLE_TIMING_KEY)), { idleAfter: 30, sleepAfter: 150, sleepActionEvery: IDLE_TIMING.sleepActionEvery });
 
   const next = new IdleController();
   const again = { toggle: control({ checked: true }), idleAfterInput: control({ value: "" }), sleepAfterInput: control({ value: "" }) };
@@ -330,4 +330,28 @@ test("corrupt or blocked storage falls back to the defaults", () => {
   const corrupt = new IdleController();
   bindIdleSettings(corrupt, { toggle: null, idleAfterInput: null, sleepAfterInput: null, local: storage({ [IDLE_TIMING_KEY]: "{not json" }) });
   assert.deepEqual(corrupt.timing, { ...IDLE_TIMING });
+});
+
+test("while sleepy she does a sleep action every two minutes by default; 0 means none", () => {
+  assert.equal(IDLE_TIMING.sleepActionEvery, 120);
+  assert.equal(normaliseIdleTiming({ sleepActionEvery: 0 }).sleepActionEvery, 0, "0 turns the repeat off");
+  assert.equal(normaliseIdleTiming({ sleepActionEvery: 3 }).sleepActionEvery, 10, "at least 10 s apart");
+  assert.equal(normaliseIdleTiming({ sleepActionEvery: 1e9 }).sleepActionEvery, 3600);
+  assert.equal(normaliseIdleTiming({ sleepActionEvery: Number.NaN }).sleepActionEvery, 120);
+  assert.equal(normaliseIdleTiming({ sleepActionEvery: -5 }).sleepActionEvery, 0, "negative reads as off");
+});
+
+test("the sleep action interval is a panel setting in minutes, saved in seconds", () => {
+  const local = storage();
+  const idle = new IdleController();
+  const sleepActionEveryInput = control({ value: "" });
+  bindIdleSettings(idle, { toggle: control({ checked: true }), idleAfterInput: control({ value: "" }),
+    sleepAfterInput: control({ value: "" }), sleepActionEveryInput, local });
+  assert.equal(sleepActionEveryInput.value, "2");
+  sleepActionEveryInput.change({ value: "0.5" });
+  assert.equal(idle.timing.sleepActionEvery, 30);
+  assert.equal(JSON.parse(local.map.get(IDLE_TIMING_KEY)).sleepActionEvery, 30);
+  sleepActionEveryInput.change({ value: "0" });
+  assert.equal(idle.timing.sleepActionEvery, 0);
+  assert.equal(sleepActionEveryInput.value, "0");
 });

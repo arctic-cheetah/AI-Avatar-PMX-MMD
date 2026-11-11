@@ -49,7 +49,7 @@ import { bindRestingFaceToggle } from "./resting-face.js";
 import { addSeeThroughBrows, bindSeeThroughBrowsToggle } from "./see-through-brows.js";
 import { installCollapsiblePanel } from "./collapsible-panel.js";
 import { FrameLoop, PopOut, popupWindow } from "./pop-out.js";
-import { IDLE_STATE_LABELS, IdleController, bindIdleSettings } from "./idle-behaviour.js";
+import { IDLE_STATE_LABELS, IdleController, bindIdleSettings, idleBlocked } from "./idle-behaviour.js";
 import { IDLE_MOTION, IdleMotion, SLEEP_ACTION_LABELS, bindSleepActionSettings } from "./idle-motion.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
@@ -931,9 +931,14 @@ function scheduleBlink(now) {
  */
 function updateIdle(delta) {
   if (!expressions) return;
-  idle.setBlocked(!speechIdle() || chatResponding || askOpen
-    || audition?.sweeping || Boolean(globalThis.__yidhariHold)
-    || expressions.activeExpression === "thinking");
+  idle.setBlocked(idleBlocked({
+    speaking: !speechIdle(),
+    chatResponding,
+    askOpen,
+    previewing: Boolean(audition?.sweeping || globalThis.__yidhariHold),
+    mood: expressions.activeExpression,
+    looping: expressions.looping,
+  }));
   for (const action of idle.update(delta.real)) {
     if (action.type === "mood") {
       applyMood(action.name, action.weight);

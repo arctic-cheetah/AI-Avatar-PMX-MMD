@@ -240,7 +240,10 @@ class GreetingSpeechTests(unittest.IsolatedAsyncioTestCase):
 
         spoken = []
 
-        async def fake_speak(queue, send, worker, run=None):
+        turns = []
+
+        async def fake_speak(queue, send, worker, run=None, turn=None):
+            turns.append(turn)
             while (segment := await queue.get()) is not None:
                 spoken.append((segment.text.strip(), segment.expression))
             await send({"type": "spoken"})
@@ -286,6 +289,10 @@ class GreetingSpeechTests(unittest.IsolatedAsyncioTestCase):
                     with self.assertRaises(asyncio.TimeoutError):
                         await asyncio.wait_for(ws.recv(), 0.3)
         self.assertEqual([e["type"] for e in events], ["turn", "spoken"])
+        # #152: the greeting's turn is named so its bubble can be replayed.
+        self.assertRegex(events[0]["id"], r"^[0-9a-f]{16}$")
+        self.assertIs(events[0]["greeting"], True)
+        self.assertEqual(turns, [events[0]["id"]])
         # The segmenter speaks it sentence by sentence, as with a chat reply.
         self.assertEqual(" ".join(text for text, _ in spoken), greet["text"])
         self.assertEqual({mood for _, mood in spoken}, {"soft-smile"})

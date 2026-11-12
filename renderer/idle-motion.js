@@ -86,57 +86,17 @@ function stretchYawn(t, target) {
   target.yawn = yawnCurve(t);
 }
 
-/** A slow sleepy head tilt; positive leans toward the left of the screen. */
-const sleepyTilt = (sign) => (t, target) => {
-  target.tilt = sign * IDLE_MOTION.tilt.angle * bump(t, SLEEPY_TILT, 0.8);
-};
-const SLEEPY_TILT = 3.2;
-
-/** A dozing nod; negative headPitch dips the head forward. */
-function nod(t, target) {
-  target.headPitch = -IDLE_MOTION.nod.angle * bump(t, SLEEPY_TILT, IDLE_MOTION.nod.rise);
-}
-
-/** A shrug while asleep (#149): one or both shoulders, by side of the screen. */
-const SLEEP_SHRUG = 2.6;
-const sleepyShrug = (left, right) => (t, target) => {
-  const lift = IDLE_MOTION.shrug.angle * bump(t, SLEEP_SHRUG, IDLE_MOTION.shrug.rise);
-  if (left) target.shoulderLeft = lift;
-  if (right) target.shoulderRight = lift;
-};
-
-/**
- * What she may do on each sleepy interval, picked at random with equal chances
- * among the ones chosen in the panel. To add one: a duration in seconds,
- * apply(t, target) writing pose targets, and a SLEEP_ACTION_LABELS entry.
- */
-export const SLEEP_ACTIONS = Object.freeze({
-  "stretch-yawn": Object.freeze({ duration: IDLE_TIMING.stretch, apply: stretchYawn }),
-  "tilt-left": Object.freeze({ duration: SLEEPY_TILT, apply: sleepyTilt(1) }),
-  "tilt-right": Object.freeze({ duration: SLEEPY_TILT, apply: sleepyTilt(-1) }),
-  "nod": Object.freeze({ duration: SLEEPY_TILT, apply: nod }),
-  "shrug-left": Object.freeze({ duration: SLEEP_SHRUG, apply: sleepyShrug(true, false) }),
-  "shrug-right": Object.freeze({ duration: SLEEP_SHRUG, apply: sleepyShrug(false, true) }),
-  "shrug-both": Object.freeze({ duration: SLEEP_SHRUG, apply: sleepyShrug(true, true) }),
+/** A head tilt; sign 1 leans toward the left of the screen. */
+const tilt = (sign) => ({
+  create: (random) => ({ duration: within(IDLE_MOTION.tilt.duration, random()) }),
+  apply: (motion, target) => {
+    target.tilt = sign * IDLE_MOTION.tilt.angle * bump(motion.t, motion.duration, IDLE_MOTION.tilt.rise);
+    return null;
+  },
 });
-
-/** Panel labels for the sleep action checkboxes (#149). */
-export const SLEEP_ACTION_LABELS = Object.freeze({
-  "stretch-yawn": "Stretch & yawn",
-  "tilt-left": "Tilt head left",
-  "tilt-right": "Tilt head right",
-  "nod": "Dozing nod",
-  "shrug-left": "Shrug left",
-  "shrug-right": "Shrug right",
-  "shrug-both": "Shrug both",
-});
-
-export const SLEEP_ACTIONS_KEY = "yidhari.sleep-actions";
-export const IDLE_ACTIONS_KEY = "yidhari.idle-actions";
 
 /** One or both shoulders (left/right of the screen) lift and drop. */
-const shrug = (left, right) => Object.freeze({
-  weight: 0.05,
+const shrug = (left, right) => ({
   create: (random) => ({ duration: within(IDLE_MOTION.shrug.duration, random()) }),
   apply: (motion, target) => {
     const lift = IDLE_MOTION.shrug.angle * bump(motion.t, motion.duration, IDLE_MOTION.shrug.rise);
@@ -146,38 +106,34 @@ const shrug = (left, right) => Object.freeze({
   },
 });
 
+const NOD = 3.2;
+
 /**
- * Awake idle actions (#149), picked by weight; the weights sum to 1.
- * create(random) draws the action's own parameters (it needs a duration);
- * apply(motion, target) writes pose targets and returns a glance target or null.
+ * Every action she may do (#149), while awake and idle and while asleep,
+ * picked by weight among the ticked ones; the weights sum to 1. Shrugs stay
+ * rare: equal chances made them too common. create(random) draws the action's
+ * own parameters, including its duration; apply(motion, target) writes pose
+ * targets for motion.t seconds in, and returns a glance target or null.
+ * To add one: an entry here, an ACTION_LABELS entry and a test.
  */
-export const IDLE_ACTIONS = Object.freeze({
+export const ACTIONS = Object.freeze({
   glance: Object.freeze({
-    weight: 0.4,
+    weight: 0.3,
     create: (random) => {
       const dir = random() < 0.5 ? -1 : 1;
       const duration = within(IDLE_MOTION.glance.duration, random());
-      return { dir, duration, x: dir * within(IDLE_MOTION.glance.x, random()), y: within(IDLE_MOTION.glance.y, random()) };
+      return { duration, x: dir * within(IDLE_MOTION.glance.x, random()), y: within(IDLE_MOTION.glance.y, random()) };
     },
     apply: (motion) => ({ x: motion.x, y: motion.y }),
   }),
-  tilt: Object.freeze({
-    weight: 0.25,
-    create: (random) => {
-      const dir = random() < 0.5 ? -1 : 1;
-      return { dir, duration: within(IDLE_MOTION.tilt.duration, random()) };
-    },
-    apply: (motion, target) => {
-      target.tilt = motion.dir * IDLE_MOTION.tilt.angle * bump(motion.t, motion.duration, IDLE_MOTION.tilt.rise);
-      return null;
-    },
-  }),
-  "shrug-left": shrug(true, false),
-  "shrug-right": shrug(false, true),
-  "shrug-both": shrug(true, true),
+  "tilt-left": Object.freeze({ weight: 0.1, ...tilt(1) }),
+  "tilt-right": Object.freeze({ weight: 0.1, ...tilt(-1) }),
+  "shrug-left": Object.freeze({ weight: 0.05, ...shrug(true, false) }),
+  "shrug-right": Object.freeze({ weight: 0.05, ...shrug(false, true) }),
+  "shrug-both": Object.freeze({ weight: 0.05, ...shrug(true, true) }),
   sigh: Object.freeze({
-    weight: 0.2,
-    create: () => ({ dir: 1, duration: IDLE_MOTION.sigh.inhale + IDLE_MOTION.sigh.exhale }),
+    weight: 0.15,
+    create: () => ({ duration: IDLE_MOTION.sigh.inhale + IDLE_MOTION.sigh.exhale }),
     apply: (motion, target) => {
       const breath = sighCurve(motion.t);
       target.chest = breath * IDLE_MOTION.sigh.chest;
@@ -185,28 +141,59 @@ export const IDLE_ACTIONS = Object.freeze({
       return null;
     },
   }),
+  "stretch-yawn": Object.freeze({
+    weight: 0.1,
+    create: () => ({ duration: IDLE_TIMING.stretch }),
+    apply: (motion, target) => {
+      stretchYawn(motion.t, target);
+      return null;
+    },
+  }),
+  nod: Object.freeze({
+    weight: 0.1,
+    create: () => ({ duration: NOD }),
+    apply: (motion, target) => {
+      target.headPitch = -IDLE_MOTION.nod.angle * bump(motion.t, NOD, IDLE_MOTION.nod.rise);
+      return null;
+    },
+  }),
 });
 
+/** Panel labels for the action checkboxes (#149). */
+export const ACTION_LABELS = Object.freeze({
+  glance: "Glance",
+  "tilt-left": "Tilt head left",
+  "tilt-right": "Tilt head right",
+  "shrug-left": "Shrug left",
+  "shrug-right": "Shrug right",
+  "shrug-both": "Shrug both",
+  sigh: "Sigh",
+  "stretch-yawn": "Stretch & yawn",
+  nod: "Dozing nod",
+});
+
+export const ACTIONS_KEY = "yidhari.actions";
+
 /**
- * Turns the idle state into one small motion at a time.
+ * Turns the idle state into one small action at a time: every 8-20 s while
+ * idle, and on every sleep action interval while asleep.
  * update() returns `{ glance, tilt, chest, shoulders, shoulderLeft, shoulderRight, back, headPitch, yawn }`:
- * glance is a normalised gaze target or null, yawn is a 0–1 weight for
+ * glance is a normalised gaze target or null, yawn is a 0-1 weight for
  * IDLE_MOTION.yawn.morphs, and the rest are radians.
  */
 export class IdleMotion {
   /** @param {{ random?: () => number }} [options] Random source in [0, 1). */
   constructor({ random = Math.random } = {}) {
     this.random = random;
-    /** @type {null | { kind: string, t: number, duration: number }} The awake idle action playing. */
+    /** @type {null | { kind: string, t: number, duration: number }} The action playing while idle. */
     this.current = null;
     this.gapLeft = null;
-    /** Current sleep action's name, and the sleepy interval it belongs to. */
+    /** The action picked for the current sleepy interval, its name, and the interval. */
+    this.sleepMotion = null;
     this.sleepAction = null;
     this.sleepCycle = null;
-    /** Sleep actions that may be picked, in SLEEP_ACTIONS order. */
-    this.sleepActions = Object.keys(SLEEP_ACTIONS);
-    /** Awake idle actions that may be picked, in IDLE_ACTIONS order. */
-    this.idleActions = Object.keys(IDLE_ACTIONS);
+    /** Actions that may be picked, in ACTIONS order. */
+    this.actions = Object.keys(ACTIONS);
     this.springs = Object.fromEntries(ANGLES.map((key) => [key, new Spring(0)]));
   }
 
@@ -214,7 +201,7 @@ export class IdleMotion {
    * @param {number} delta Seconds since the previous frame; invalid values count as 0.
    * @param {string} state IdleController state.
    * @param {number} stateTime Seconds in that state.
-   * @param {number} [sleepActionEvery=0] While sleepy, do a random sleep action this often (s); 0 = never.
+   * @param {number} [sleepActionEvery=0] While sleepy, do a random action this often (s); 0 = never.
    * @returns {{glance:{x:number,y:number}|null,tilt:number,chest:number,shoulders:number,shoulderLeft:number,shoulderRight:number,back:number,headPitch:number,yawn:number}}
    */
   update(delta, state, stateTime, sleepActionEvery = 0) {
@@ -236,22 +223,26 @@ export class IdleMotion {
           if (!this.current) this.gapLeft = this.#gap(); // nothing ticked: stay still
         }
       }
-      glance = this.#apply(target);
+      if (this.current) glance = ACTIONS[this.current.kind].apply(this.current, target);
     } else {
       this.current = null;
       this.gapLeft = null;
       if (state === "stretching") stretchYawn(stateTime, target);
       if (state === "sleepy" && sleepActionEvery > 0 && stateTime >= sleepActionEvery) {
-        // A random sleep action at the start of every interval while sleepy.
+        // A random action at the start of every interval while sleepy.
         const cycle = Math.floor(stateTime / sleepActionEvery);
         if (cycle !== this.sleepCycle) {
           this.sleepCycle = cycle;
-          this.sleepAction = this.#pickSleepAction();
+          this.sleepMotion = this.#pick();
+          this.sleepAction = this.sleepMotion?.kind ?? null;
         }
-        const action = SLEEP_ACTIONS[this.sleepAction];
-        const t = stateTime - cycle * sleepActionEvery;
-        if (action && t < action.duration) action.apply(t, target);
+        const motion = this.sleepMotion;
+        if (motion) {
+          motion.t = stateTime - cycle * sleepActionEvery;
+          if (motion.t < motion.duration) glance = ACTIONS[motion.kind].apply(motion, target);
+        }
       } else if (state !== "sleepy") {
+        this.sleepMotion = null;
         this.sleepAction = null;
         this.sleepCycle = null;
       }
@@ -267,116 +258,66 @@ export class IdleMotion {
   }
 
   /**
-   * Choose which sleep actions may be picked; unknown names are ignored.
+   * Choose which actions may be picked, awake or asleep; unknown names are ignored.
    * @param {Iterable<string>} names
    * @returns {void}
    */
-  setSleepActions(names) {
+  setActions(names) {
     const chosen = new Set(names);
-    this.sleepActions = Object.keys(SLEEP_ACTIONS).filter((name) => chosen.has(name));
-  }
-
-  /**
-   * Choose which awake idle actions may be picked; unknown names are ignored.
-   * @param {Iterable<string>} names
-   * @returns {void}
-   */
-  setIdleActions(names) {
-    const chosen = new Set(names);
-    this.idleActions = Object.keys(IDLE_ACTIONS).filter((name) => chosen.has(name));
-  }
-
-  #pickSleepAction() {
-    const names = this.sleepActions;
-    if (names.length === 0) return null;
-    return names[Math.min(names.length - 1, Math.floor(this.random() * names.length))];
+    this.actions = Object.keys(ACTIONS).filter((name) => chosen.has(name));
   }
 
   #gap() {
     return within(IDLE_MOTION.gap, this.random());
   }
 
+  /** A new instance of a ticked action, by weight; null when nothing is ticked. */
   #pick() {
-    const names = this.idleActions;
+    const names = this.actions;
     if (names.length === 0) return null;
     // Ticked actions keep their relative chances.
-    const total = names.reduce((sum, name) => sum + IDLE_ACTIONS[name].weight, 0);
+    const total = names.reduce((sum, name) => sum + ACTIONS[name].weight, 0);
     const roll = this.random() * total;
     let kind = names.at(-1);
     let reach = 0;
     for (const name of names) {
-      reach += IDLE_ACTIONS[name].weight;
+      reach += ACTIONS[name].weight;
       if (roll < reach) {
         kind = name;
         break;
       }
     }
-    return { kind, t: 0, ...IDLE_ACTIONS[kind].create(this.random) };
-  }
-
-  /** Write the current motion's targets; returns the glance target, if any. */
-  #apply(target) {
-    const motion = this.current;
-    return motion ? IDLE_ACTIONS[motion.kind].apply(motion, target) : null;
+    return { kind, t: 0, ...ACTIONS[kind].create(this.random) };
   }
 }
 
-/** Panel labels for the idle action checkboxes (#149). */
-export const IDLE_ACTION_LABELS = Object.freeze({
-  glance: "Glance",
-  tilt: "Tilt head",
-  "shrug-left": "Shrug left",
-  "shrug-right": "Shrug right",
-  "shrug-both": "Shrug both",
-  sigh: "Sigh",
-});
-
 /**
- * Bind one group of action checkboxes: all ticked by default, the choice
- * saved as a JSON list of names under `key` when storage allows.
+ * Bind the panel's action checkboxes (#149): all ticked by default, the
+ * choice saved as a JSON list of names when storage allows.
+ * @param {IdleMotion} motion
+ * @param {Record<string, { checked: boolean, addEventListener(type: string, fn: () => void): void }>} boxes By action name.
+ * @param {{ local?: Storage }} [options]
+ * @returns {void}
  */
-function bindChoices(names, key, current, apply, boxes, local) {
+export function bindActionSettings(motion, boxes, { local } = {}) {
   try {
     local ??= globalThis.localStorage;
   } catch { /* Storage access itself can throw. */ }
+  const names = Object.keys(ACTIONS);
   let chosen = names;
   try {
-    const saved = JSON.parse(local?.getItem(key) ?? "null");
+    const saved = JSON.parse(local?.getItem(ACTIONS_KEY) ?? "null");
     if (Array.isArray(saved)) chosen = saved;
   } catch { /* Missing, blocked or corrupt: all of them. */ }
-  apply(chosen);
+  motion.setActions(chosen);
   for (const [name, box] of Object.entries(boxes)) {
     if (!box) continue;
-    box.checked = current().includes(name);
+    box.checked = motion.actions.includes(name);
     box.addEventListener("change", () => {
-      apply(names.filter((action) => (boxes[action] ? boxes[action].checked : current().includes(action))));
+      motion.setActions(names.filter((action) => (boxes[action] ? boxes[action].checked : motion.actions.includes(action))));
       try {
-        local?.setItem(key, JSON.stringify(current()));
+        local?.setItem(ACTIONS_KEY, JSON.stringify(motion.actions));
       } catch { /* Session-only. */ }
     });
   }
-}
-
-/**
- * Bind the panel's sleep action checkboxes (#149).
- * @param {IdleMotion} motion
- * @param {Record<string, { checked: boolean, addEventListener(type: string, fn: () => void): void }>} boxes By action name.
- * @param {{ local?: Storage }} [options]
- * @returns {void}
- */
-export function bindSleepActionSettings(motion, boxes, { local } = {}) {
-  bindChoices(Object.keys(SLEEP_ACTIONS), SLEEP_ACTIONS_KEY, () => motion.sleepActions,
-    (names) => motion.setSleepActions(names), boxes, local);
-}
-
-/**
- * Bind the panel's idle action checkboxes (#149): glance, tilt, each shrug, sigh.
- * @param {IdleMotion} motion
- * @param {Record<string, { checked: boolean, addEventListener(type: string, fn: () => void): void }>} boxes By action name.
- * @param {{ local?: Storage }} [options]
- * @returns {void}
- */
-export function bindIdleActionSettings(motion, boxes, { local } = {}) {
-  bindChoices(Object.keys(IDLE_ACTIONS), IDLE_ACTIONS_KEY, () => motion.idleActions,
-    (names) => motion.setIdleActions(names), boxes, local);
 }

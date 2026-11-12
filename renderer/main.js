@@ -50,9 +50,7 @@ import { addSeeThroughBrows, bindSeeThroughBrowsToggle } from "./see-through-bro
 import { installCollapsiblePanel } from "./collapsible-panel.js";
 import { FrameLoop, PopOut, popupWindow } from "./pop-out.js";
 import { IDLE_STATE_LABELS, IdleController, bindIdleSettings, idleBlocked } from "./idle-behaviour.js";
-import {
-  IDLE_ACTION_LABELS, IDLE_MOTION, IdleMotion, SLEEP_ACTION_LABELS, bindIdleActionSettings, bindSleepActionSettings,
-} from "./idle-motion.js";
+import { ACTION_LABELS, IDLE_MOTION, IdleMotion, bindActionSettings } from "./idle-motion.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
 const MODEL_URL = "/yidhari-mmd/伊德海莉.pmx";
@@ -259,8 +257,7 @@ function actionCheckboxes(labels, container, prefix) {
   }
   return boxes;
 }
-bindIdleActionSettings(idleMotion, actionCheckboxes(IDLE_ACTION_LABELS, "#idle-actions", "idle-action"));
-bindSleepActionSettings(idleMotion, actionCheckboxes(SLEEP_ACTION_LABELS, "#sleep-actions", "sleep-action"));
+bindActionSettings(idleMotion, actionCheckboxes(ACTION_LABELS, "#actions", "action"));
 /**
  * Idle motion bones: which angle of the pose each one takes, and its sign
  * (checked on the model: negative pitch leans back, see docs/idle-behaviours.md).

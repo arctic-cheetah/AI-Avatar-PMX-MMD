@@ -81,6 +81,11 @@ to download.
 - **It loads once**, and the download **starts with the PMX load**, so it is
   usually ready before the model is. The download only starts when physics
   is on.
+- **On a cold start the model stays hidden** until physics has settled, has
+  failed or is switched off, for at most 5 s. Otherwise the tails would
+  visibly drop from the bind pose when Ammo arrives (about 1.7 s after the
+  model on a first visit; with Ammo cached, physics is ready within one
+  frame of the model).
 - A failed load rejects with the URL, and the next enable retries. While
   physics is unavailable, the toggle shows the error and the rest of the
   avatar keeps working.

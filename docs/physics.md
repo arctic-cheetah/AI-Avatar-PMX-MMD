@@ -7,8 +7,8 @@ splits the work into tickets, one PR each:
 | Ticket | Part | Status |
 |---|---|---|
 | #113 | What drives the "coat"? | Done: there is no coat. The coat-like parts are the 尾 tails, which are 98% physics-driven ([evidence on #37](https://github.com/arctic-cheetah/AI-Avatar-PMX-MMD/issues/37#issuecomment-6838454936)) |
-| #117 | Body-group filter | This document |
-| #114 | Load Ammo, run `MMDPhysics`, physics toggle | Planned |
+| #117 | Body-group filter | Done (#160) |
+| #114 | Load Ammo, run `MMDPhysics`, physics toggles | This document |
 | #156–#159 | Puffy-sleeve physics as a load-time rig overlay | Planned |
 | #116 | Profile on Strix Halo, fix jitter, check `delta` | Planned |
 | #115 | Raise the sway amplitudes | Planned, last |
@@ -68,6 +68,74 @@ switched on alone (decided on 13 November 2026).
 A dropped bone that had a type-1 body simply follows its parent bone, the
 same as with physics off.
 
+## Running physics (#114)
+
+### Loading Ammo
+
+`MMDPhysics` needs a global `Ammo`. `renderer/ammo-loader.js` loads
+`examples/jsm/libs/ammo.wasm.js` from the same three@0.170.0 CDN path as the
+import map (it finds `ammo.wasm.wasm` next to itself), calls the `Ammo()`
+factory and publishes the result as `globalThis.Ammo`. That's about 1 MB more
+to download.
+
+- **It loads once**, and the download **starts with the PMX load**, so it is
+  usually ready before the model is. The download only starts when physics
+  is on.
+- A failed load rejects with the URL, and the next enable retries. While
+  physics is unavailable, the toggle shows the error and the rest of the
+  avatar keeps working.
+
+### The physics layer
+
+`renderer/physics-layer.js` owns the lifecycle. It is a pure module, so Node
+tests cover it with a fake build.
+
+| Event | What happens |
+|---|---|
+| Enable (first time) | build from the filtered groups → `reset()` → `warmup()` → per-frame updates |
+| Disable | per-frame updates stop, and every physics-driven bone goes **back to its rest pose** |
+| Enable again | reuses the build: `reset()` → `warmup()` |
+| Group change while on | restore bones → dispose the old build → rebuild → `reset()` → `warmup()` |
+| Group change while off | the old build is dropped; the next enable rebuilds |
+| Overlapping changes | only the newest build runs; older ones are disposed when they finish |
+| Build fails | status `error`, no updates; the next enable retries |
+
+- **No second accumulator.** `update(delta)` passes the frame's clamped
+  `delta` (`frameDelta()` in `smoothing.js`) straight to `MMDPhysics`, which
+  already uses a fixed step (`unitStep` 1/65, `maxStepNum` 3). #116 checks
+  large deltas, such as a tab coming back from the background.
+- **Warm-up.** `warmup(PHYSICS_WARMUP_CYCLES)` runs after `restArms()` and
+  the gaze, sway and idle setup, so the chest and hair don't snap when the
+  arms lower. It also hides the tails' drop: in the bind pose they stick
+  straight out behind her (#113), and the warm-up lets them settle under
+  gravity before the first simulated frame is drawn.
+- **Rebuilds share one Ammo world.** `MMDPhysics` has no `dispose()`, so
+  disposing removes the old rigid bodies and joints from the shared world.
+  Rebuilding never creates another world, so toggling doesn't leak worlds.
+
+### Frame order
+
+```
+thinking pose → gaze → sway → idle motion → mesh.updateMatrixWorld() → physics.update(delta) → render
+```
+
+Physics runs **after idle motion** (decided on 13 November 2026), so the
+hair and tails react to the stretch, the shrugs and sleep as well as to the
+sway. The morph layers (expressions, speech, audition) don't touch bones,
+so their place in the frame doesn't matter to physics.
+
+### Toggles
+
+| Toggle | Key | Default |
+|---|---|---|
+| Physics · 物理 | `yidhari.physics` | on |
+| Chest physics · 胸 | `yidhari.physics.chest` | off |
+| Hip physics · 腰 | `yidhari.physics.hips` | off |
+
+The main toggle is the kill-switch. The chest and hip toggles change their
+groups independently (a change rebuilds), and they keep their choice while
+physics is off. `bindStoredToggle` takes `defaultOn: false` for these.
+
 ## Tests
 
 `tests/renderer/physics-groups.test.mjs` covers classification, the
@@ -76,3 +144,7 @@ and hip groups, and non-mutation. A real-model test parses
 `yidhari-mmd/伊德海莉.pmx` with three's `MMDParser`, checks every dynamic
 body's group count, and checks that the defaults leave no orphans. It is
 skipped when the PMX or `node_modules/three` is absent.
+
+`tests/renderer/physics-layer.test.mjs` covers the lifecycle table above with
+a fake build, `ammo-loader.test.mjs` covers the one-time script load and its
+errors, and `stored-toggle.test.mjs` covers default-off toggles.

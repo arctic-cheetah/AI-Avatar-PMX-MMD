@@ -33,8 +33,9 @@ expression loop and the ~2–6 s blink timer.
 
 ## Caveats
 
-- Hair and tails have no physics running yet (see [physics.md](./physics.md);
-  #113 found there is no coat): keep amplitudes to a few degrees at
+- Hair and tails run on physics after #114 (see [physics.md](./physics.md);
+  #113 found there is no coat), but #115 raises the sway only after #116
+  measures the headroom: until then keep amplitudes to a few degrees at
   most or the stiff cloth/hair will betray the motion.
 - Rotation order for the composed delta is YXZ (yaw, pitch, roll) so the
   breathing pitch reads naturally against the roll.

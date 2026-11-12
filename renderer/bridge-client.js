@@ -4,6 +4,9 @@ import { renderMarkdown, plainText } from './markdown.js';
 import { ChatHistory } from './chat-history.js';
 
 const CLIP_ID = /^[0-9a-f]{16}$/;
+const TURN_ID = /^[0-9a-f]{16}$/;
+const MAX_RESET_TURNS = 1000;
+const REPLAY_LABEL = '▶ Replay';
 const MAX_PROMPT = 2000;
 const MAX_REPLY = 50000;
 const MAX_SOURCE = 40;
@@ -23,9 +26,18 @@ export function answerFrame(id, text) {
   return JSON.stringify({ type: 'answer', id, text });
 }
 
-/** New chat: the bridge stops any reply, forgets the conversation and answers with a reset event. */
-export function resetFrame() {
-  return JSON.stringify({ type: 'reset' });
+/**
+ * New chat: the bridge stops any reply, forgets the conversation and answers with a reset event.
+ * turns names the cleared bubbles' spoken turns, whose audio the bridge then deletes (#152).
+ */
+export function resetFrame(turns = []) {
+  const valid = [...new Set(turns.filter((turn) => typeof turn === 'string' && TURN_ID.test(turn)))].slice(-MAX_RESET_TURNS);
+  return JSON.stringify(valid.length ? { type: 'reset', turns: valid } : { type: 'reset' });
+}
+
+/** The bubble's spoken turn (#152), if the event names a valid one. */
+function turnOf(event) {
+  return typeof event.turn === 'string' && TURN_ID.test(event.turn) ? { turn: event.turn } : {};
 }
 
 /** Page-open greeting (#129): the bridge speaks this fixed phrase without the LLM. */
@@ -44,17 +56,17 @@ export function agentEvent(event, catalog) {
   const source = event.source.slice(0, MAX_SOURCE);
   if (event.kind === 'say') {
     if (typeof event.text !== 'string') throw new Error('Invalid agent text');
-    return { kind: 'say', source, text: event.text.slice(0, MAX_REPLY) };
+    return { kind: 'say', source, text: event.text.slice(0, MAX_REPLY), ...turnOf(event) };
   }
   if (event.kind === 'ask' || event.kind === 'ask-closed') {
     if (typeof event.id !== 'string' || !ASK_ID.test(event.id)) throw new Error('Invalid ask id');
     if (event.kind === 'ask-closed') return { kind: 'ask-closed', source, id: event.id };
     if (typeof event.text !== 'string') throw new Error('Invalid ask');
-    return { kind: 'ask', source, id: event.id, text: event.text.slice(0, MAX_REPLY) };
+    return { kind: 'ask', source, id: event.id, text: event.text.slice(0, MAX_REPLY), ...turnOf(event) };
   }
   if (event.kind === 'report') {
     if (typeof event.text !== 'string' || !REPORT_STATUS.has(event.status)) throw new Error('Invalid agent report');
-    return { kind: 'report', source, status: event.status, text: event.text.slice(0, MAX_REPLY) };
+    return { kind: 'report', source, status: event.status, text: event.text.slice(0, MAX_REPLY), ...turnOf(event) };
   }
   if (event.kind === 'mood') {
     if (!Object.hasOwn(catalog, event.name) || typeof event.weight !== 'number' || !Number.isFinite(event.weight)) {
@@ -73,7 +85,7 @@ export function agentEvent(event, catalog) {
  * feed the idle timer (#71).
  */
 export function connectBridge({ catalog, onStart, onFinish, onExpression, onText, onSpeak, onFiller, onReset, onAgentSay, onAgentMood, onTurn, greeting = null, onGreeting,
-  onActivity, onAskChange, history = new ChatHistory(), win = globalThis }) {
+  onActivity, onAskChange, onReplayTurn, history = new ChatHistory(), win = globalThis }) {
   const button = document.querySelector('#bridge-start');
   const status = document.querySelector('#bridge-status');
   const chatBar = document.querySelector('#chat-bar');
@@ -90,6 +102,16 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
   let replySource = '';
   /** A coding agent's open question; while set, the chat bar answers it. */
   let pendingAsk = null;
+  /**
+   * Spoken turns (#152): turn ID → its bubble, its saved entry and its replay button.
+   * final is set once the turn is known to have no audio left.
+   * @type {Map<string, { line: HTMLElement, entry: object | null, button: HTMLButtonElement | null, final: boolean }>}
+   */
+  const turns = new Map();
+  let replayEnabled = true;
+  /** The streaming reply's turn, and the greeting bubble awaiting its turn. */
+  let replyTurn = null;
+  let greetingLine = null;
   const chatPlaceholder = chatInput.placeholder;
 
   function setPendingAsk(ask) {
@@ -118,6 +140,55 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     return body;
   }
 
+  /** Remember which bubble a spoken turn belongs to. */
+  function bindTurn(turn, line, entry = null) {
+    if (!turns.has(turn)) turns.set(turn, { line, entry, button: null, final: false });
+  }
+
+  /** Give a bubble its replay button, once. */
+  function addReplayButton(turn) {
+    const record = turns.get(turn);
+    if (!record || record.button) return;
+    const button = document.createElement('button');
+    button.setAttribute('type', 'button');
+    button.className = 'chat-replay';
+    button.textContent = REPLAY_LABEL;
+    button.setAttribute('aria-label', 'Replay this message');
+    button.disabled = !replayEnabled;
+    button.addEventListener('click', () => {
+      if (!button.disabled) onReplayTurn?.(turn);
+    });
+    record.button = button;
+    record.line.append(button);
+  }
+
+  /** A clip of this turn arrived: show the button and save the turn with its entry. */
+  function turnSpoke(turn) {
+    const record = turns.get(turn);
+    if (!record) return;
+    addReplayButton(turn);
+    if (record.entry && record.entry.turn !== turn) {
+      record.entry.turn = turn;
+      history.save();
+    }
+  }
+
+  /** The turn has no audio to replay; its button says so and stays disabled. */
+  function finalTurn(turn, label) {
+    const record = turns.get(turn);
+    if (!record?.button) return;
+    record.final = true;
+    record.button.disabled = true;
+    record.button.textContent = label;
+    record.button.setAttribute('aria-label', label);
+    record.button.classList.add('chat-replay-gone');
+  }
+
+  /** Every turn the chat log can still replay, saved or live, oldest first. */
+  function chatTurns() {
+    return [...history.entries.map((entry) => entry.turn).filter(Boolean), ...turns.keys()];
+  }
+
   /** A report bubble: status and plain first line as the summary, the full Markdown when opened. */
   function addReport({ source, status, text }) {
     const body = addLine('agent', source);
@@ -131,6 +202,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     renderMarkdown(full, text);
     details.append(summary, full);
     body.append(details);
+    return body;
   }
 
   /** Label a reply that stopped before it finished. */
@@ -139,7 +211,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     body.parentElement.children[0].textContent += ' · interrupted';
   }
 
-  /** Draw one saved or live log entry; a restored ask is shown as no longer waiting. */
+  /** Draw one saved or live log entry and return its line; a restored ask is shown as no longer waiting. */
   function renderEntry(entry, { restored = false } = {}) {
     let body;
     if (entry.who === 'you' || entry.who === 'tool') {
@@ -149,20 +221,24 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
       body = addLine('yidhari');
       renderMarkdown(body, entry.text);
     } else if (entry.kind === 'report') {
-      addReport(entry);
-      return;
+      return addReport(entry).parentElement;
     } else {
       body = addLine('agent', entry.source);
       renderMarkdown(body, entry.kind === 'ask' ? `❓ ${entry.text}` : entry.text);
       if (entry.kind === 'ask' && restored) body.parentElement.classList.add('chat-ask-closed');
     }
     if (entry.interrupted) markInterrupted(body);
+    return body.parentElement;
   }
 
-  /** Show a live entry and save it for a refresh. */
-  function show(entry) {
-    renderEntry(entry);
-    history.add(entry);
+  /**
+   * Show a live entry and save it for a refresh. A spoken turn is bound to the
+   * bubble now, and saved with the entry once its first clip arrives (#152).
+   */
+  function show(entry, turn = null) {
+    const line = renderEntry(entry);
+    const saved = history.add(entry) ? history.last() : null;
+    if (turn) bindTurn(turn, line, saved);
   }
 
   /** A status line about restoring; shown only, never saved. */
@@ -175,10 +251,14 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
   /** Save the streamed reply once: complete on end, interrupted otherwise. */
   function finishReply({ interrupted = false } = {}) {
     if (reply && replySource) {
+      const spoken = replyTurn && turns.get(replyTurn)?.button;
       if (interrupted) markInterrupted(reply);
-      history.add({ who: 'yidhari', text: replySource, ...(interrupted ? { interrupted: true } : {}) });
+      history.add({ who: 'yidhari', text: replySource, ...(interrupted ? { interrupted: true } : {}), ...(spoken ? { turn: replyTurn } : {}) });
+      // A clip that arrives after the end still saves the turn with this entry.
+      const record = replyTurn && turns.get(replyTurn);
+      if (record) record.entry = history.last();
     }
-    reply = null; replySource = '';
+    reply = null; replySource = ''; replyTurn = null;
   }
 
   function canSend() {
@@ -269,7 +349,9 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
       // to once per page load, so reconnects below never greet again.
       if (greeting && !greeted) {
         greeted = true;
-        addLine('yidhari').textContent = greeting.text;
+        const body = addLine('yidhari');
+        body.textContent = greeting.text;
+        greetingLine = body.parentElement;
         onGreeting?.(greeting);
         socket.send(greetFrame(greeting));
       }
@@ -292,7 +374,10 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
         switch (event.type) {
           case 'start':
             busy = true; button.disabled = true; setChatEnabled(false);
-            onStart(); reply = addLine('yidhari'); replySource = ''; status.textContent = 'Receiving…'; break;
+            onStart(); reply = addLine('yidhari'); replySource = ''; status.textContent = 'Receiving…';
+            replyTurn = turnOf(event).turn ?? null;
+            if (replyTurn) bindTurn(replyTurn, reply.parentElement);
+            break;
           case 'expression':
             if (!Object.hasOwn(catalog, event.name) || typeof event.weight !== 'number' || !Number.isFinite(event.weight)) throw new Error('Invalid expression');
             onExpression(event.name, Math.max(0, Math.min(1, event.weight))); break;
@@ -312,20 +397,27 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
           case 'speak':
             // Only a generated ID crosses the socket; the renderer builds the clip URL itself.
             if (typeof event.id !== 'string' || !CLIP_ID.test(event.id) || !Object.hasOwn(catalog, event.expression) ||
-              typeof event.weight !== 'number' || !Number.isFinite(event.weight) || typeof event.text !== 'string') throw new Error('Invalid speak');
-            onSpeak({ id: event.id, expression: event.expression, weight: Math.max(0, Math.min(1, event.weight)), text: event.text }); break;
+              typeof event.weight !== 'number' || !Number.isFinite(event.weight) || typeof event.text !== 'string' ||
+              (event.turn !== undefined && (typeof event.turn !== 'string' || !TURN_ID.test(event.turn)))) throw new Error('Invalid speak');
+            onSpeak({ id: event.id, expression: event.expression, weight: Math.max(0, Math.min(1, event.weight)), text: event.text, ...turnOf(event) });
+            if (event.turn) turnSpoke(event.turn);
+            break;
           case 'turn':
+            if (event.greeting === true && greetingLine && typeof event.id === 'string' && TURN_ID.test(event.id)) {
+              bindTurn(event.id, greetingLine);
+              greetingLine = null;
+            }
             onTurn?.(); break;
           case 'agent': {
             const agent = agentEvent(event, catalog);
             if (agent.kind === 'say') {
-              show({ who: 'agent', kind: 'say', source: agent.source, text: agent.text });
+              show({ who: 'agent', kind: 'say', source: agent.source, text: agent.text }, agent.turn);
               onAgentSay?.(busy);
             } else if (agent.kind === 'report') {
-              show({ who: 'agent', kind: 'report', source: agent.source, status: agent.status, text: agent.text });
+              show({ who: 'agent', kind: 'report', source: agent.source, status: agent.status, text: agent.text }, agent.turn);
               onAgentSay?.(busy);
             } else if (agent.kind === 'ask') {
-              show({ who: 'agent', kind: 'ask', source: agent.source, text: agent.text });
+              show({ who: 'agent', kind: 'ask', source: agent.source, text: agent.text }, agent.turn);
               setPendingAsk({ id: agent.id, source: agent.source });
               status.textContent = `${agent.source} is asking · your next message answers`;
               onAgentSay?.(busy);
@@ -352,7 +444,8 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
             status.textContent = event.text; break;
           case 'reset':
             // The bridge has forgotten every turn; clear what the user sees to match.
-            busy = false; reply = null; replySource = ''; setPendingAsk(null); chatLog.replaceChildren(); history.clear(); onReset?.(); onFinish();
+            busy = false; reply = null; replySource = ''; replyTurn = null; greetingLine = null; turns.clear();
+            setPendingAsk(null); chatLog.replaceChildren(); history.clear(); onReset?.(); onFinish();
             button.disabled = false; setChatEnabled(true);
             status.textContent = 'New chat · ready'; break;
           default: throw new Error('Unknown event');
@@ -366,7 +459,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     }
   });
   chatNew.addEventListener('click', () => {
-    if (socket?.readyState === WebSocket.OPEN) socket.send(resetFrame());
+    if (socket?.readyState === WebSocket.OPEN) socket.send(resetFrame(chatTurns()));
   });
   chatBar.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -411,9 +504,28 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
   // #105: rebuild the log saved before a refresh. Display only: no speech,
   // moods, tools or open questions, and the bridge's memory starts fresh.
   const saved = history.load();
-  for (const entry of saved.entries) renderEntry(entry, { restored: true });
+  saved.entries.forEach((entry, index) => {
+    const line = renderEntry(entry, { restored: true });
+    if (entry.turn) {
+      bindTurn(entry.turn, line, history.entries[index] ?? null);
+      addReplayButton(entry.turn);
+    }
+  });
   if (saved.damaged) addNote(DAMAGED_NOTE);
   if (saved.entries.length) addNote(RESTORED_NOTE);
   win?.addEventListener?.('pagehide', () => finishReply({ interrupted: true }));
   connect();
+  return {
+    /** Enable the replay buttons only while speech is idle and no reply is streaming. */
+    setReplayEnabled(enabled) {
+      replayEnabled = Boolean(enabled);
+      for (const record of turns.values()) {
+        if (record.button && !record.final) record.button.disabled = !replayEnabled;
+      }
+    },
+    /** The bridge pruned this turn's audio. */
+    turnGone: (turn) => finalTurn(turn, 'Too old to replay'),
+    /** This turn's folder holds no clips. */
+    turnEmpty: (turn) => finalTurn(turn, 'No audio to replay'),
+  };
 }

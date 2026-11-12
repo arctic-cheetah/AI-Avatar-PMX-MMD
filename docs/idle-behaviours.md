@@ -28,7 +28,7 @@ active ──(idle after, 60 s)──▶ idle ──(sleepy after − 3.2 s)─�
 
 - **active:** the timer counts seconds since the last activity.
 - **idle:** reached after *Idle after*. Her face does not change. She plays
-  one small motion at a time, 8–20 s apart (see [Idle motions](#idle-motions)).
+  one action at a time, 8–20 s apart (see [Actions](#actions)).
 - **stretching:** the last 3.2 s before *Sleepy after*, so sleepy still starts
   on time. If *Sleepy after* is within 3.2 s of *Idle after*, the stretch
   gets only the time in between.
@@ -91,41 +91,12 @@ Its `"ease": 3` lets the eyelids droop over about 1.6 s instead of the usual
 0.34 s. Waking uses `surprised`'s own (normal) rate, so she still wakes
 quickly.
 
-**Sleep actions.** While she is sleepy, she does a *sleep action* every
-*Sleep action every* minutes (2 by default), counted from when sleepy began.
-Each time, one of the sleep actions ticked in the panel is picked at random,
-with equal chances, from `SLEEP_ACTIONS` in `renderer/idle-motion.js`:
+**Actions while asleep.** While she is sleepy, she does one of the ticked
+[actions](#actions) every *Sleep action every* minutes (2 by default), counted
+from when sleepy began. Her sleepy face stays during each one. Set the
+interval to 0 for none: she then only stretches once, before sleepy.
 
-| Sleep action | Length | What moves |
-| --- | --- | --- |
-| `stretch-yawn` | 3.2 s | The stretch with its yawn, as before sleepy |
-| `tilt-left` | 3.2 s | `頭` rolls 5° toward the left of the screen, then back |
-| `tilt-right` | 3.2 s | `頭` rolls 5° toward the right of the screen, then back |
-| `nod` | 3.2 s | A dozing nod: `首`/`頭` dip 6° forward slowly, then lift (#149) |
-| `shrug-left` | 2.6 s | The shoulder on the left of the screen lifts 12° and drops (#149) |
-| `shrug-right` | 2.6 s | The shoulder on the right of the screen, the same way |
-| `shrug-both` | 2.6 s | Both shoulders together |
-
-Idle actions (glance, tilt, shrugs, sigh) only play while she is awake and
-idle. Once she is sleepy, only sleep actions play. That is why the shrugs are
-sleep actions too: the user didn't see any shrugs after she fell asleep
-(12 November 2026).
-
-- **Her sleepy face stays** during every action. Set the interval to 0 for no
-  sleep actions: she then only stretches once, before sleepy.
-- **Choosing sleep actions:** the panel lists each one with a checkbox, all
-  ticked by default. Only ticked actions are picked, and with none ticked she
-  does none. The choice is saved in this browser as `yidhari.sleep-actions`
-  (a JSON list of names). Unknown names are ignored, and an unreadable value
-  means all of them. Requested on 12 November 2026 (#149).
-- **Adding an action:** add an entry with a `duration` and an
-  `apply(t, target)` that writes pose targets (`tilt`, `back`, `headPitch`,
-  `shoulders`, `shoulderLeft`, `shoulderRight`, `chest`, `yawn`), plus a
-  `SLEEP_ACTION_LABELS` entry. The picker and the panel include it automatically.
-- **History:** the user asked for the repeat on 12 November 2026, then for
-  random sleep actions including the head tilts.
-
-She **yawns during each stretch**, starting just before sleepy:
+She **yawns during each stretch**: on the way into sleepy, and whenever the stretch-and-yawn action plays:
 
 - **Mouth:** `あ` 1 + `お` 0.4, chosen by the user from rendered comparison
   grids on 11 November 2026.
@@ -142,41 +113,46 @@ She **yawns during each stretch**, starting just before sleepy:
   strengths, the yawn through its curve, and mid-speech captures are kept in
   `assets/private/71/` (private model).
 
-## Idle motions
+## Actions
 
-Pure logic in `renderer/idle-motion.js` (`IdleMotion`). Each motion follows an
+Pure logic in `renderer/idle-motion.js` (`IdleMotion`). Each action follows an
 authored curve (`bump`: smoothstep in, hold, smoothstep out), and the output
 goes through a critically damped spring (rate 8, about 0.6 s to settle). So
-when she leaves idle mid-motion, the pose eases back instead of snapping.
+when she is interrupted mid-action, the pose eases back instead of snapping.
 
-Awake idle actions come from one weighted registry, `IDLE_ACTIONS` (#149).
-Each entry has a `weight` (its chance), `create(random)` for its random
-parameters, and `apply(motion, target)` for its pose. To add one, add an
-entry, keep the weights summing to 1, and add a test.
+**One set of actions for idle and sleep** (#149). Since 12 November 2026, at
+the user's request, every action can play both while she is awake and idle
+(one every 8–20 s) and while she is asleep (one per *Sleep action every*
+interval). They come from one weighted registry, `ACTIONS`. Each entry has a
+`weight` (its chance), `create(random)` for its random parameters and length,
+and `apply(motion, target)` for its pose. To add an action, add an entry
+(keeping the weights summing to 1), an `ACTION_LABELS` entry and a test. The
+panel picks it up by itself.
 
-| Motion | Chance | Length | What moves | Size |
+| Action | Chance | Length | What moves | Size |
 | --- | --- | --- | --- | --- |
-| Glance | 40 % | 1.2–2.2 s | Eyes, head following at 45 %, to one side | 0.45–0.75 of the gaze range sideways, ±0.15 up/down |
-| Head tilt | 25 % | 2–3.5 s | `頭` roll to one side | 5° |
-| Shrug left | 5 % | 2.4–3.0 s | The shoulder on the left of the screen (`右肩`) lifts, then drops | 12° |
-| Shrug right | 5 % | 2.4–3.0 s | The shoulder on the right of the screen (`左肩`) | 12° |
-| Shrug both | 5 % | 2.4–3.0 s | Both `肩` together | 12° |
+| `glance` | 30 % | 1.2–2.2 s | Eyes, head following at 45 %, to one side | 0.45–0.75 of the gaze range sideways, ±0.15 up/down |
+| `tilt-left` | 10 % | 2–3.5 s | `頭` rolls toward the left of the screen | 5° |
+| `tilt-right` | 10 % | 2–3.5 s | `頭` rolls toward the right of the screen | 5° |
+| `shrug-left` | 5 % | 2.4–3.0 s | The shoulder on the left of the screen (`右肩`) lifts, then drops | 12° |
+| `shrug-right` | 5 % | 2.4–3.0 s | The shoulder on the right of the screen (`左肩`) | 12° |
+| `shrug-both` | 5 % | 2.4–3.0 s | Both `肩` together | 12° |
+| `sigh` | 15 % | 1.1 s in, 1.7 s out | Chest (`上半身2` pitch) and both `肩` lift, then fall | 2° chest, 2.5° shoulders |
+| `stretch-yawn` | 10 % | 3.2 s | Back arches (`上半身`), head tips back (`首`/`頭`), shoulders lift, and she yawns | 5° back, 7° head, 6° shoulders, yawn 1 |
+| `nod` | 10 % | 3.2 s | A dozing nod: `首`/`頭` dip forward slowly, then lift | 6° |
 
-Shrugs were 6° at first, but that hid behind the always-on body sway. The
-user picked 12° from a 6/12/18/24° comparison on 12 November 2026. To keep
-every 60 fps frame under 0.25°, the bigger shrug lasts 2.4–3.0 s with 1.2 s
-ramps (0.23° per frame at most).
-| Sigh | 20 % | 1.1 s in, 1.7 s out | Chest (`上半身2` pitch) and both `肩` lift, then fall | 2° chest, 2.5° shoulders |
-
-**Choosing idle actions:** the panel's **Idle actions · 仕草** group has a
-checkbox for each one (Glance, Tilt head, Shrug left, Shrug right, Shrug
-both, Sigh), all ticked by default. Only ticked actions are picked, and they
-keep their relative chances. For example, with only glance, tilt and sigh
-ticked, the chances become 40 : 25 : 20 out of 85. With none ticked she stays
-still while idle. The choice is saved as `yidhari.idle-actions`, separately
-from the sleep actions. Requested on 12 November 2026 (#149).
-| Stretch | Before sleepy, and a sleep action | 3.2 s | Back arches (`上半身` pitch), head tips back (`首`/`頭`), shoulders lift, and she yawns | 5° back, 7° head, 6° shoulders, yawn 1 |
-
+- **Shrug size:** shrugs were 6° at first, but that hid behind the always-on
+  body sway. The user picked 12° from a 6/12/18/24° comparison. To keep every
+  60 fps frame under 0.25°, a 12° shrug lasts 2.4–3.0 s with 1.2 s ramps
+  (0.23° per frame at most).
+- **Chances:** an equal 1-in-9 mix was not used. When every action had equal
+  chances, the user found the shrugs too common, so shrugs stay at 5 % each.
+- **Choosing actions:** the panel's **Actions · 仕草** group has a checkbox
+  for each one, all ticked by default. Only ticked actions play, awake or
+  asleep, and they keep their relative chances. For example, with only
+  glance, tilt-left and sigh ticked, the chances are 30 : 10 : 15 out of 55.
+  With nothing ticked she stays still. The choice is saved as
+  `yidhari.actions`.
 - The glance is a gaze source. For its 1–2 s it outranks the cursor, which
   may still be moving because the mouse is not activity, but a face tracked
   by the camera still wins. When the glance ends, gaze returns to the cursor or the centre,

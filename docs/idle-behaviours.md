@@ -131,28 +131,33 @@ panel picks it up by itself.
 
 | Action | Chance | Length | What moves | Size |
 | --- | --- | --- | --- | --- |
-| `glance` | 30 % | 1.2–2.2 s | Eyes, head following at 45 %, to one side | 0.45–0.75 of the gaze range sideways, ±0.15 up/down |
+| `glance` | 10 % | 2.2–3.2 s | Eyes, head following at 45 %, drift to one side and back, eased in and out over 0.9 s | 0.45–0.75 of the gaze range sideways, ±0.15 up/down |
 | `tilt-left` | 10 % | 2–3.5 s | `頭` rolls toward the left of the screen | 5° |
 | `tilt-right` | 10 % | 2–3.5 s | `頭` rolls toward the right of the screen | 5° |
 | `shrug-left` | 5 % | 2.4–3.0 s | The shoulder on the left of the screen (`右肩`) lifts, then drops | 12° |
 | `shrug-right` | 5 % | 2.4–3.0 s | The shoulder on the right of the screen (`左肩`) | 12° |
 | `shrug-both` | 5 % | 2.4–3.0 s | Both `肩` together | 12° |
 | `sigh` | 15 % | 1.1 s in, 1.7 s out | Chest (`上半身2` pitch) and both `肩` lift, then fall | 2° chest, 2.5° shoulders |
-| `stretch-yawn` | 10 % | 3.2 s | Back arches (`上半身`), head tips back (`首`/`頭`), shoulders lift, and she yawns | 5° back, 7° head, 6° shoulders, yawn 1 |
+| `stretch-yawn` | 30 % | 3.2 s | Back arches (`上半身`), head tips back (`首`/`頭`), shoulders lift, and she yawns | 5° back, 7° head, 6° shoulders, yawn 1 |
 | `nod` | 10 % | 3.2 s | A dozing nod: `首`/`頭` dip forward slowly, then lift | 6° |
 
 - **Shrug size:** shrugs were 6° at first, but that hid behind the always-on
   body sway. The user picked 12° from a 6/12/18/24° comparison. To keep every
   60 fps frame under 0.25°, a 12° shrug lasts 2.4–3.0 s with 1.2 s ramps
   (0.23° per frame at most).
-- **Chances:** an equal 1-in-9 mix was not used. When every action had equal
+- **Chances:** glances 10 % and stretch-and-yawn 30 % are the user's picks
+  (12 November 2026). An equal 1-in-9 mix was not used. When every action had equal
   chances, the user found the shrugs too common, so shrugs stay at 5 % each.
 - **Choosing actions:** the panel's **Actions · 仕草** group has a checkbox
   for each one, all ticked by default. Only ticked actions play, awake or
   asleep, and they keep their relative chances. For example, with only
-  glance, tilt-left and sigh ticked, the chances are 30 : 10 : 15 out of 55.
+  glance, tilt-left and sigh ticked, the chances are 10 : 10 : 15 out of 35.
   With nothing ticked she stays still. The choice is saved as
   `yidhari.actions`.
+- **Slower glances:** a glance used to jump to its target at the gaze
+  spring's speed (about 0.3 s), which the user found too fast. Now its weight
+  eases in and out (`bump`, 0.9 s ramps), and the gaze blends from the
+  cursor, or the centre, toward the glance by that weight.
 - The glance is a gaze source. For its 1–2 s it outranks the cursor, which
   may still be moving because the mouse is not activity, but a face tracked
   by the camera still wins. When the glance ends, gaze returns to the cursor or the centre,

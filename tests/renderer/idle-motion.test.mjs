@@ -309,6 +309,10 @@ function idleAction(roll) {
   return { kind, poses };
 }
 
+test("a shrug is 12°, the size the user picked from rendered comparisons", () => {
+  assert.ok(Math.abs(IDLE_MOTION.shrug.angle - 12 * DEG) < 1e-12);
+});
+
 test("a left or right shrug lifts only that shoulder, then lets it down", () => {
   for (const [roll, kind, side, other] of [[rollFor("shrug-left"), "shrug-left", "shoulderLeft", "shoulderRight"], [rollFor("shrug-right"), "shrug-right", "shoulderRight", "shoulderLeft"]]) {
     const { kind: picked, poses } = idleAction(roll);

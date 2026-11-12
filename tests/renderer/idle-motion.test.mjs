@@ -79,8 +79,9 @@ test("bump eases in, holds and eases out within its duration", () => {
 
 test("one set of actions serves both idle and sleep, with the user's mix: shrugs stay rare", () => {
   assert.deepEqual(NAMES, ["glance", "tilt-left", "tilt-right", "shrug-left", "shrug-right", "shrug-both", "sigh", "stretch-yawn", "nod"]);
-  const mix = { glance: 0.3, "tilt-left": 0.1, "tilt-right": 0.1, "shrug-left": 0.05, "shrug-right": 0.05,
-    "shrug-both": 0.05, sigh: 0.15, "stretch-yawn": 0.1, nod: 0.1 };
+  // The user's mix (12 Nov 2026): glances 10 %, stretch-and-yawn 30 %, shrugs rare.
+  const mix = { glance: 0.1, "tilt-left": 0.1, "tilt-right": 0.1, "shrug-left": 0.05, "shrug-right": 0.05,
+    "shrug-both": 0.05, sigh: 0.15, "stretch-yawn": 0.3, nod: 0.1 };
   for (const [name, action] of Object.entries(ACTIONS)) {
     assert.ok(Math.abs(action.weight - mix[name]) < 1e-9, `${name} has its ${mix[name] * 100} % chance`);
     assert.equal(typeof action.create, "function", name);
@@ -107,6 +108,19 @@ test("the first idle action waits for the gap", () => {
   assert.ok(play(motion, "idle", IDLE_MOTION.gap[0] - 0.1).every(isRest));
   play(motion, "idle", 0.2);
   assert.equal(motion.current?.kind, "glance");
+});
+
+test("a glance drifts slowly to one side and back: eased in and out, over 2-3 s", () => {
+  const { glance } = IDLE_MOTION;
+  assert.ok(glance.duration[0] >= 2 && glance.duration[1] <= 3.5, "slow enough not to look darting");
+  assert.ok(glance.rise >= 0.8, "eases in and out over most of a second");
+  const motion = new IdleMotion({ random: scripted(0) });
+  play(motion, "idle", IDLE_MOTION.gap[0] + 0.02);
+  const weights = play(motion, "idle", glance.duration[0]).map((p) => p.glance?.weight ?? 0);
+  assert.ok(weights[Math.round(0.2 * 60)] < 0.15, `starts gently (${weights[12].toFixed(2)} after 0.2 s)`);
+  assert.ok(Math.max(...weights) > 0.99, "reaches the full glance");
+  for (let i = 1; i < weights.length; i += 1) assert.ok(Math.abs(weights[i] - weights[i - 1]) < 0.05, `smooth at frame ${i}`);
+  assert.ok(weights.at(-1) < 0.15, "eases back before letting go");
 });
 
 test("a glance looks to one side, then lets go of the gaze", () => {
@@ -349,10 +363,10 @@ test("ticked actions keep their relative chances", () => {
     motion.update(IDLE_MOTION.gap[0] + 0.01, "idle", 0);
     return motion.current?.kind;
   };
-  // glance 0.3 : tilt-left 0.1 : sigh 0.15, rescaled over 0.55
-  assert.equal(pick(0.3 / 0.55 - 0.01), "glance");
-  assert.equal(pick(0.3 / 0.55 + 0.01), "tilt-left");
-  assert.equal(pick(0.4 / 0.55 + 0.01), "sigh");
+  // glance 0.1 : tilt-left 0.1 : sigh 0.15, rescaled over 0.35
+  assert.equal(pick(0.1 / 0.35 - 0.01), "glance");
+  assert.equal(pick(0.1 / 0.35 + 0.01), "tilt-left");
+  assert.equal(pick(0.2 / 0.35 + 0.01), "sigh");
 });
 
 test("with nothing ticked she stays still, awake and asleep", () => {

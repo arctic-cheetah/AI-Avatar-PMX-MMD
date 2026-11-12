@@ -401,13 +401,14 @@ test("unticking a sleep action saves the choice and restores it after a reload",
   bindSleepActionSettings(first, boxes, { local });
   boxes["stretch-yawn"].set(false);
   boxes.nod.set(false);
-  assert.deepEqual(first.sleepActions, ["tilt-left", "tilt-right"]);
-  assert.deepEqual(JSON.parse(local.map.get(SLEEP_ACTIONS_KEY)), ["tilt-left", "tilt-right"]);
+  const kept = Object.keys(SLEEP_ACTIONS).filter((name) => name !== "stretch-yawn" && name !== "nod");
+  assert.deepEqual(first.sleepActions, kept);
+  assert.deepEqual(JSON.parse(local.map.get(SLEEP_ACTIONS_KEY)), kept);
 
   const next = new IdleMotion();
   const again = Object.fromEntries(Object.keys(SLEEP_ACTIONS).map((name) => [name, checkbox(true)]));
   bindSleepActionSettings(next, again, { local });
-  assert.deepEqual(next.sleepActions, ["tilt-left", "tilt-right"]);
+  assert.deepEqual(next.sleepActions, kept);
   assert.equal(again["stretch-yawn"].checked, false);
   assert.equal(again["tilt-left"].checked, true);
 });

@@ -129,3 +129,14 @@ test("an idle glance works with cursor tracking off and is clamped", () => {
   gaze.setIdle(null);
   assert.equal(gaze.update(0.1).eyeYaw, 0);
 });
+
+test("an eased idle glance blends from the cursor toward the glance by its weight", () => {
+  const gaze = new GazeController({ rate: 1000 });
+  gaze.setCursor({ x: -1, y: 0 }, true);
+  gaze.setIdle({ x: 0.6, y: 0, weight: 0.5 });
+  assert.ok(Math.abs(gaze.update(0.1).eyeYaw - -0.2 * LIMITS.eyeYaw) < 1e-9, "halfway between cursor and glance");
+  gaze.setIdle({ x: 0.6, y: 0, weight: 0 });
+  assert.ok(Math.abs(gaze.update(0.1).eyeYaw - -1 * LIMITS.eyeYaw) < 1e-9, "weight 0 leaves the cursor");
+  gaze.setIdle({ x: 0.6, y: 0, weight: 7 });
+  assert.ok(Math.abs(gaze.update(0.1).eyeYaw - 0.6 * LIMITS.eyeYaw) < 1e-9, "weight is clamped to 1");
+});

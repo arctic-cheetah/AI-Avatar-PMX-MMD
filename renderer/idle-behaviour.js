@@ -198,6 +198,17 @@ export class IdleController {
 }
 
 /**
+ * Whether idle must wait this frame: speech, a streaming reply, an open ask,
+ * a morph preview, or real thinking. The mood preview loop only passes
+ * through thinking, so it does not count.
+ * @param {{ speaking: boolean, chatResponding: boolean, askOpen: boolean, previewing: boolean, mood: string, looping: boolean }} state
+ * @returns {boolean}
+ */
+export function idleBlocked({ speaking, chatResponding, askOpen, previewing, mood, looping }) {
+  return Boolean(speaking || chatResponding || askOpen || previewing || (mood === "thinking" && !looping));
+}
+
+/**
  * Bind the panel's idle controls: the on/off checkbox, Idle after (seconds)
  * and Sleepy after (minutes). Timings are saved in seconds when storage allows.
  * @param {IdleController} idle

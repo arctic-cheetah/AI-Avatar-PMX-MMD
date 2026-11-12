@@ -102,6 +102,14 @@ with equal chances, from `SLEEP_ACTIONS` in `renderer/idle-motion.js`:
 | `tilt-left` | 3.2 s | `頭` rolls 5° toward the left of the screen, then back |
 | `tilt-right` | 3.2 s | `頭` rolls 5° toward the right of the screen, then back |
 | `nod` | 3.2 s | A dozing nod: `首`/`頭` dip 6° forward slowly, then lift (#149) |
+| `shrug-left` | 2.6 s | The shoulder on the left of the screen lifts 12° and drops (#149) |
+| `shrug-right` | 2.6 s | The shoulder on the right of the screen, the same way |
+| `shrug-both` | 2.6 s | Both shoulders together |
+
+Idle actions (glance, tilt, shrugs, sigh) only play while she is awake and
+idle. Once she is sleepy, only sleep actions play. That is why the shrugs are
+sleep actions too: the user didn't see any shrugs after she fell asleep
+(12 November 2026).
 
 - **Her sleepy face stays** during every action. Set the interval to 0 for no
   sleep actions: she then only stretches once, before sleepy.

@@ -112,8 +112,8 @@ test("a group change while off disposes a stale build, so enable rebuilds", asyn
   const { layer, log, builds } = harness();
   await layer.setEnabled(true);
   await layer.setEnabled(false);
-  await layer.setGroup("chest", true);
   log.length = 0;
+  await layer.setGroup("chest", true);
   await layer.setEnabled(true);
   assert.equal(builds.length, 2);
   assert.deepEqual(log, [["dispose", 0], ["build", 1], ["reset", 1], ["warmup", 1, PHYSICS_WARMUP_CYCLES]]);

@@ -150,9 +150,12 @@ entry, keep the weights summing to 1, and add a test.
 | --- | --- | --- | --- | --- |
 | Glance | 40 % | 1.2–2.2 s | Eyes, head following at 45 %, to one side | 0.45–0.75 of the gaze range sideways, ±0.15 up/down |
 | Head tilt | 25 % | 2–3.5 s | `頭` roll to one side | 5° |
-| Shrug left | 5 % | 1.6–2.2 s | The shoulder on the left of the screen (`右肩`) lifts, then drops | 6° |
-| Shrug right | 5 % | 1.6–2.2 s | The shoulder on the right of the screen (`左肩`) | 6° |
-| Shrug both | 5 % | 1.6–2.2 s | Both `肩` together | 6° |
+| Shrug left | 5 % | 1.6–2.2 s | The shoulder on the left of the screen (`右肩`) lifts, then drops | 12° |
+| Shrug right | 5 % | 1.6–2.2 s | The shoulder on the right of the screen (`左肩`) | 12° |
+| Shrug both | 5 % | 1.6–2.2 s | Both `肩` together | 12° |
+
+Shrugs were 6° at first, but that hid behind the always-on body sway. The
+user picked 12° from a 6/12/18/24° comparison on 12 November 2026.
 | Sigh | 20 % | 1.1 s in, 1.7 s out | Chest (`上半身2` pitch) and both `肩` lift, then fall | 2° chest, 2.5° shoulders |
 
 **Choosing idle actions:** the panel's **Idle actions · 仕草** group has a

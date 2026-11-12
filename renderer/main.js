@@ -26,6 +26,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { MMDLoader } from "three/addons/loaders/MMDLoader.js";
+import { MMDPhysics } from "three/addons/animation/MMDPhysics.js";
 import { OutlineEffect } from "three/addons/effects/OutlineEffect.js";
 import { loadExpressionCatalog } from "./expression-catalog.js";
 import { ExpressionController } from "./expression-controller.js";
@@ -52,6 +53,10 @@ import { FrameLoop, PopOut, popupWindow } from "./pop-out.js";
 import { IDLE_STATE_LABELS, IdleController, bindIdleSettings, idleBlocked } from "./idle-behaviour.js";
 import { ACTION_LABELS, IDLE_MOTION, IdleMotion, bindActionSettings } from "./idle-motion.js";
 import { fetchTurn, turnFile } from "./turn-replay.js";
+import { createAmmoLoader } from "./ammo-loader.js";
+import { filterPhysics } from "./physics-groups.js";
+import { PhysicsLayer } from "./physics-layer.js";
+import { bindStoredToggle } from "./stored-toggle.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
 const MODEL_URL = "/yidhari-mmd/伊德海莉.pmx";
@@ -102,6 +107,10 @@ const cursorGazeToggle = document.querySelector("#cursor-gaze-toggle");
 const cameraGazeToggle = document.querySelector("#camera-gaze-toggle");
 const restingFaceToggle = document.querySelector("#resting-face-toggle");
 const seeThroughBrowsToggle = document.querySelector("#see-through-brows-toggle");
+const physicsToggle = document.querySelector("#physics-toggle");
+const chestPhysicsToggle = document.querySelector("#chest-physics-toggle");
+const hipPhysicsToggle = document.querySelector("#hip-physics-toggle");
+const physicsStatus = document.querySelector("#physics-status");
 const gazeStatus = document.querySelector("#gaze-status");
 const idleToggle = document.querySelector("#idle-toggle");
 const idleAfterInput = document.querySelector("#idle-after");
@@ -1498,6 +1507,7 @@ function onModelLoaded(loaded, data) {
     audition,
     speech,
     speak: enqueueSpeech,
+    physics,
     /** Simulate the bridge ending a response (end, error or disconnect). */
     finish() {
       liveSpeech.responseFinished();
@@ -1529,6 +1539,7 @@ function onModelLoaded(loaded, data) {
   setupThinkingPose(mesh);
   setupSway(mesh);
   setupIdleMotion(mesh);
+  setupPhysics(mesh, data);
 
   const morphCount = mesh.morphTargetInfluences?.length ?? 0;
   const unavailable = [];
@@ -1618,6 +1629,124 @@ function onModelError(error) {
   setStatus("Could not load the PMX. Is serve.py running?");
 }
 
+// Hair, hat, tail and accessory physics (#114). See docs/physics.md.
+const loadAmmo = createAmmoLoader({ url: import.meta.resolve("three/addons/libs/ammo.wasm.js") });
+let resolvePhysicsModel;
+/** Resolves with the mesh and parsed PMX once the rest pose is captured. */
+const physicsModel = new Promise((resolve) => { resolvePhysicsModel = resolve; });
+/** One Ammo world shared by every rebuild, since MMDPhysics has no dispose(). */
+let physicsWorld = null;
+/** Bones driven by dynamic bodies, with their rest pose. */
+let physicsBones = [];
+
+/**
+ * Build MMDPhysics for the enabled groups. Waits for Ammo and the model, so
+ * the Ammo download runs alongside the PMX load.
+ * @param {Set<string>} groups Enabled physics group ids.
+ * @returns {Promise<import("./physics-layer.js").PhysicsRun>}
+ */
+async function buildPhysics(groups) {
+  const [, { object, data }] = await Promise.all([loadAmmo(), physicsModel]);
+  const filtered = filterPhysics(data.rigidBodies, data.constraints, groups);
+  if (filtered.orphaned.length > 0) {
+    console.warn(`Physics: dropped ${filtered.orphaned.length} bodies with no anchor left`, filtered.orphaned);
+  }
+  const physics = new MMDPhysics(object, filtered.rigidBodies, filtered.constraints,
+    physicsWorld ? { world: physicsWorld } : {});
+  physicsWorld = physics.world;
+  return {
+    update: (delta) => physics.update(delta),
+    reset: () => physics.reset(),
+    warmup: (cycles) => physics.warmup(cycles),
+    dispose() {
+      for (const constraint of physics.constraints) physicsWorld.removeConstraint(constraint.constraint);
+      for (const body of physics.bodies) physicsWorld.removeRigidBody(body.body);
+    },
+  };
+}
+
+/**
+ * Put every physics-driven bone back at its rest pose, for when physics stops.
+ * @returns {void}
+ */
+function restorePhysicsBones() {
+  for (const { bone, quaternion, position } of physicsBones) {
+    bone.quaternion.copy(quaternion);
+    bone.position.copy(position);
+  }
+}
+
+const physics = new PhysicsLayer({ build: buildPhysics, restoreBones: restorePhysicsBones });
+
+/** @returns {void} */
+function showPhysicsStatus() {
+  const text = {
+    off: "",
+    loading: "Loading physics…",
+    on: "",
+    error: `Physics unavailable: ${physics.error?.message ?? "unknown error"}`,
+  };
+  physicsStatus.textContent = text[physics.status] ?? "";
+}
+/** Longest the model stays hidden while physics loads on a cold start. */
+const PHYSICS_REVEAL_TIMEOUT_MS = 5000;
+let physicsRevealTimer = 0;
+
+/**
+ * Show the model once physics has settled (or failed, or been switched off),
+ * so the tails' drop from the bind pose never shows on screen.
+ * @returns {void}
+ */
+function revealModel() {
+  clearTimeout(physicsRevealTimer);
+  if (mesh) mesh.visible = true;
+}
+
+physics.onStatus = () => {
+  showPhysicsStatus();
+  if (physics.status !== "loading") revealModel();
+};
+
+bindStoredToggle(physicsToggle, "yidhari.physics", (on) => physics.setEnabled(on));
+bindStoredToggle(chestPhysicsToggle, "yidhari.physics.chest", (on) => physics.setGroup("chest", on),
+  { defaultOn: false });
+bindStoredToggle(hipPhysicsToggle, "yidhari.physics.hips", (on) => physics.setGroup("hips", on),
+  { defaultOn: false });
+
+/**
+ * Capture the rest pose of every bone a dynamic body drives, then let physics
+ * build. Runs after restArms() and the other setups, so the warm-up starts
+ * from the lowered-arm pose.
+ * @param {THREE.SkinnedMesh} object Loaded PMX mesh.
+ * @param {object} data Parsed PMX.
+ * @returns {void}
+ */
+function setupPhysics(object, data) {
+  const bones = object.skeleton?.bones ?? [];
+  const driven = new Set(data.rigidBodies.filter((body) => body.type !== 0).map((body) => body.boneIndex));
+  physicsBones = [...driven].filter((index) => bones[index]).map((index) => ({
+    bone: bones[index],
+    quaternion: bones[index].quaternion.clone(),
+    position: bones[index].position.clone(),
+  }));
+  if (physics.status === "loading") {
+    object.visible = false;
+    physicsRevealTimer = setTimeout(revealModel, PHYSICS_REVEAL_TIMEOUT_MS);
+  }
+  resolvePhysicsModel({ object, data });
+}
+
+/**
+ * Step physics last, after every bone layer has posed the body.
+ * @param {number} delta Seconds since the previous frame.
+ * @returns {void}
+ */
+function applyPhysics(delta) {
+  if (!mesh || physics.status !== "on") return;
+  mesh.updateMatrixWorld(true);
+  physics.update(delta);
+}
+
 /**
  * Start loading the local PMX and register its completion callbacks.
  * This is MMDLoader.load split in two, so the parsed PMX (morph panels and
@@ -1667,6 +1796,7 @@ function animate() {
   applyGaze(delta);
   applySway(now / 1000, delta);
   applyIdleMotion();
+  applyPhysics(delta);
   audition?.update(delta);
   audition?.apply();
   // A held preview wins the frame so a visual check is not overwritten by the mood loop.

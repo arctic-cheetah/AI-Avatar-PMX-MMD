@@ -118,6 +118,60 @@ class ApplioSettingsTests(unittest.TestCase):
 
 
 class SpeechBridgeTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.turns = Path(tmp.name) / "turns"
+
+    async def test_new_chat_deletes_the_listed_turns_audio(self):
+        """#152: New chat removes its bubbles' audio; bad IDs are ignored."""
+        from websockets.asyncio.server import serve
+        from websockets.asyncio.client import connect
+        from controller.replay_store import open_turn
+
+        keep, gone = "b" * 16, "a" * 16
+        for turn in (keep, gone):
+            open_turn(turn, cap_bytes=10**9, root=self.turns)
+        args = Namespace(mode="demo", speech_worker=None)
+
+        async def handler(ws):
+            await handle_connection(ws, args, load_catalog())
+
+        with patch("controller.replay_store.TURNS_DIR", self.turns):
+            async with serve(handler, "127.0.0.1", 0, origins=[ORIGIN]) as server:
+                async with connect(
+                    f"ws://127.0.0.1:{server.sockets[0].getsockname()[1]}",
+                    origin=ORIGIN,
+                ) as ws:
+                    await ws.send(json.dumps({"type": "reset", "turns": [gone, "../x", 7]}))
+                    event = json.loads(await asyncio.wait_for(ws.recv(), 3))
+        self.assertEqual(event["type"], "reset")
+        self.assertEqual(sorted(p.name for p in self.turns.iterdir()), [keep])
+
+    async def test_text_only_reply_names_no_turn(self):
+        from websockets.asyncio.server import serve
+        from websockets.asyncio.client import connect
+
+        async def fast_demo():
+            yield "Hello there."
+
+        args = Namespace(mode="demo", speech_worker=None)
+
+        async def handler(ws):
+            await handle_connection(ws, args, load_catalog())
+
+        with patch("controller.bridge.demo_chunks", fast_demo):
+            async with serve(handler, "127.0.0.1", 0, origins=[ORIGIN]) as server:
+                async with connect(
+                    f"ws://127.0.0.1:{server.sockets[0].getsockname()[1]}",
+                    origin=ORIGIN,
+                ) as ws:
+                    await ws.send('{"type":"start"}')
+                    events = []
+                    while not events or events[-1]["type"] != "end":
+                        events.append(json.loads(await asyncio.wait_for(ws.recv(), 3)))
+        self.assertNotIn("turn", events[0])
+
     async def test_speak_events_in_order_without_early_moods(self):
         from websockets.asyncio.server import serve
         from websockets.asyncio.client import connect
@@ -128,7 +182,7 @@ class SpeechBridgeTests(unittest.IsolatedAsyncioTestCase):
 
         spoken = []
 
-        async def fake_synthesise(segment, worker, run=None):
+        async def fake_synthesise(segment, worker, run=None, directory=None):
             spoken.append(segment.text)
             return f"{len(spoken):016x}", {}
 
@@ -139,7 +193,9 @@ class SpeechBridgeTests(unittest.IsolatedAsyncioTestCase):
 
         with patch("controller.bridge.demo_chunks", fast_demo), patch(
             "controller.speech.synthesise", fake_synthesise
-        ), patch("controller.speech.clear_live_clips"):
+        ), patch("controller.speech.clear_live_clips"), patch(
+            "controller.replay_store.TURNS_DIR", self.turns
+        ):
             async with serve(handler, "127.0.0.1", 0, origins=[ORIGIN]) as server:
                 async with connect(
                     f"ws://127.0.0.1:{server.sockets[0].getsockname()[1]}",
@@ -150,6 +206,11 @@ class SpeechBridgeTests(unittest.IsolatedAsyncioTestCase):
                     while not events or events[-1]["type"] != "end":
                         events.append(json.loads(await asyncio.wait_for(ws.recv(), 3)))
         speaks = [e for e in events if e["type"] == "speak"]
+        # #152: the reply bubble, its turn and every clip share one turn ID.
+        turn = events[0]["turn"]
+        self.assertRegex(turn, r"^[0-9a-f]{16}$")
+        self.assertEqual([e.get("id") for e in events if e["type"] == "turn"], [turn])
+        self.assertEqual({e["turn"] for e in speaks}, {turn})
         self.assertEqual(
             [(e["id"], e["expression"], e["text"]) for e in speaks],
             [
@@ -175,7 +236,7 @@ async def run_llm(worker, chunks_with_reasoning, filler_id=None):
             else:
                 yield text
 
-    async def fake_synthesise(segment, worker, run=None):
+    async def fake_synthesise(segment, worker, run=None, directory=None):
         return "0123456789abcdef", {}
 
     args = Namespace(
@@ -191,9 +252,11 @@ async def run_llm(worker, chunks_with_reasoning, filler_id=None):
     async def handler(ws):
         await handle_connection(ws, args, load_catalog())
 
-    with patch("controller.bridge.llama_chunks", fake_llama), patch(
-        "controller.speech.synthesise", fake_synthesise
-    ), patch("controller.speech.clear_live_clips"):
+    with tempfile.TemporaryDirectory() as turns, patch(
+        "controller.bridge.llama_chunks", fake_llama
+    ), patch("controller.speech.synthesise", fake_synthesise), patch(
+        "controller.speech.clear_live_clips"
+    ), patch("controller.replay_store.TURNS_DIR", Path(turns)):
         async with serve(handler, "127.0.0.1", 0, origins=[ORIGIN]) as server:
             async with connect(
                 f"ws://127.0.0.1:{server.sockets[0].getsockname()[1]}", origin=ORIGIN

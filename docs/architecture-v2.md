@@ -454,11 +454,12 @@ Verified on 2026-10-17: Applio's `core.py tts` CLI takes text, Edge voice, rate,
 sentences, each carrying the mood active at its start; a mood tag also closes the
 current fragment. A single worker synthesises sentences in order while the LLM is
 still streaming, then the bridge sends
-`{"type":"speak","id":"<16 hex>","expression":…,"weight":…,"text":…}`. In speech
+`{"type":"speak","id":"<16 hex>","turn":"<16 hex>","expression":…,"weight":…,"text":…}`. In speech
 mode, mood tags are not sent on arrival; each mood travels with its clip and is
 applied when that clip starts. `{"type":"notice"}` reports a failed sentence
-without ending the run. The renderer validates the ID, builds
-`/assets/private/speech/live/<id>.wav` and `.visemes.json`, starts loading each
+without ending the run. The renderer validates both IDs, builds
+`/assets/private/speech/turns/<turn>/<id>.wav` and `.visemes.json` (#152; it was
+`speech/live/` before), starts loading each
 clip on arrival, and plays the queue in order. Text-only mode is unchanged.
 
 First run (qwen3.8-27b, prompt asking for three sentences):
@@ -500,7 +501,7 @@ between them until the cold start is removed.
 - [x] **CPU-only RVC.** Resolved 2026-10-23 (#19): the original Applio's PyTorch is `2.11.0+cu128` (CUDA build, CPU fallback on this AMD laptop), but `--applio-dir ../Applio-rocm` now selects a ROCm PyTorch build (`2.11.0+rocm7.2`) running RVC on the Radeon 8060S. See "Kokoro source TTS and ROCm RVC — 2026-10-23" below.
 - [X] **Alignment latency.** Live speech uses `--recognizer phonetic` (0.45–0.72 s per sentence). PocketSphinx (~9 s per 10 s) stays for offline samples.
 - [X] **Sentence streaming.** Sentences are synthesised as soon as they are complete, while the LLM is still generating. Synthesis itself is still one sentence at a time.
-- [X] **Clip delivery.** Clips live under `assets/private/speech/live/`; only a 16-hex-character ID crosses the WebSocket, checked on both sides.
+- [X] **Clip delivery.** Clips live under `assets/private/speech/turns/<turn>/` (#152; `live/` before); only 16-hex-character IDs cross the WebSocket, checked on both sides.
 - [ ] **Clip cleanup.** Clips from the previous run are deleted when a new run starts; the last run's clips stay on disk. Consider deleting after playback.
 - [X] **Text for TTS.** Mood tags, Markdown symbols, emoji and control characters are stripped; fragments without letters or digits are skipped. Text goes to Applio through a file. Not done: merging very short fragments.
 - [ ] **Edge TTS dependency.** HTTP 429 is retried twice with backoff; any other failure skips that sentence with a `notice`. An offline fallback now exists (`--tts kokoro`, local CPU ONNX); whether Kokoro becomes the default is the open call in #18.

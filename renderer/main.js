@@ -51,6 +51,7 @@ import { installCollapsiblePanel } from "./collapsible-panel.js";
 import { FrameLoop, PopOut, popupWindow } from "./pop-out.js";
 import { IDLE_STATE_LABELS, IdleController, bindIdleSettings, idleBlocked } from "./idle-behaviour.js";
 import { ACTION_LABELS, IDLE_MOTION, IdleMotion, bindActionSettings } from "./idle-motion.js";
+import { fetchTurn, turnFile } from "./turn-replay.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
 const MODEL_URL = "/yidhari-mmd/伊德海莉.pmx";
@@ -59,7 +60,7 @@ const SPEECH_SAMPLE = {
   audio: "/assets/private/speech/sample-01.wav",
   track: "/assets/private/speech/sample-01.visemes.json",
 };
-// Live clips written by the bridge in --speech mode; only IDs arrive over the socket.
+// Clips without a turn (the local preview hook). Bridge clips live per turn (#152).
 const LIVE_CLIP_DIR = "/assets/private/speech/live/";
 const FILLER_DIR = "/assets/private/speech/filler/";
 const BLINK_MORPH = "まばたき";
@@ -202,6 +203,8 @@ let sampleStarting = false;
 let replayStarting = false;
 let chatResponding = false;
 const lastSpeech = new LastSpeechReplay();
+/** The chat log's replay buttons (#152), once the bridge client is connected. */
+let bridgeControls = null;
 const liveSpeech = new LiveSpeechSession();
 const fillerSpeech = new FillerSession();
 // Linger on the last mood briefly after the final word, then ease to neutral.
@@ -1228,10 +1231,62 @@ function replayLastSpeech() {
 
 replayButton.addEventListener("click", replayLastSpeech);
 
+/**
+ * Replay one chat bubble's turn from disk (#152). Like replayLastSpeech it never
+ * contacts the bridge, changes chat history, or answers a pending ask. Clips are
+ * loaded now and dropped after playback, so memory holds only this turn.
+ * @param {string} turn Validated turn ID from the chat log.
+ * @returns {Promise<void>}
+ */
+async function replayTurn(turn) {
+  if (!speech || chatResponding || !speechIdle()) return;
+  const run = liveRun;
+  replayStarting = true;
+  syncReplayControls();
+  speechStatus.textContent = "Loading replay…";
+  try {
+    const { status, clips } = await fetchTurn(turn, { catalog: EXPRESSION_CATALOG });
+    if (status === "gone") {
+      bridgeControls?.turnGone(turn);
+      speechStatus.textContent = "That message is too old to replay.";
+      return;
+    }
+    if (status === "empty") {
+      bridgeControls?.turnEmpty(turn);
+      speechStatus.textContent = "That message has no audio to replay.";
+      return;
+    }
+    // Live speech or a new reply took the lane while the manifest loaded.
+    if (run !== liveRun || chatResponding || speech.playing || speechStarting || speechQueue.length > 0) {
+      speechStatus.textContent = "";
+      return;
+    }
+    expressions.stopLoop();
+    audition.stopSweep();
+    globalThis.__yidhariHold = null;
+    for (const item of clips) {
+      const clip = speech.load(turnFile(turn, `${item.id}.wav`), turnFile(turn, `${item.id}.visemes.json`));
+      clip.catch(() => {}); // Reported when its turn comes.
+      speechQueue.push({ clip, expression: item.expression, weight: item.weight, text: item.text, replay: true });
+    }
+    liveSpeech.clipQueued();
+    liveSpeech.responseFinished();
+  } catch (error) {
+    console.error(error);
+    speechStatus.textContent = "Could not load that replay.";
+    return;
+  } finally {
+    replayStarting = false;
+    syncReplayControls();
+  }
+  playNextSpeech();
+}
+
 /** Keep replay out of the shared speech lane while playback or a chat reply is busy. */
 function syncReplayControls() {
   const retained = lastSpeech.entries.length > 0;
   replayButton.disabled = !speech || !retained || chatResponding || !speechIdle();
+  bridgeControls?.setReplayEnabled(Boolean(speech) && !chatResponding && speechIdle());
   replayStatus.textContent = retained
     ? (replayButton.disabled
       ? "Replay available when speech is idle."
@@ -1280,10 +1335,10 @@ function applyMood(name, weight) {
 /**
  * Queue a live clip announced by the bridge. Loading starts now so decoding
  * overlaps the clip before it; the mood changes when this clip starts.
- * @param {{ id: string, expression: string, weight: number, text: string }} event Validated speak event.
+ * @param {{ id: string, expression: string, weight: number, text: string, turn?: string }} event Validated speak event.
  * @returns {void}
  */
-function enqueueSpeech({ id, expression, weight, text }) {
+function enqueueSpeech({ id, expression, weight, text, turn: diskTurn }) {
   const kept = dropQueuedReplay(speechQueue);
   speechQueue.length = 0;
   speechQueue.push(...kept);
@@ -1296,7 +1351,9 @@ function enqueueSpeech({ id, expression, weight, text }) {
     filler.catch(() => {}); // Reported when its turn comes.
     speechQueue.push({ clip: filler, expression: "thinking", weight: 0.6, text: "Hmm…", filler: true });
   }
-  const clip = speech.load(`${LIVE_CLIP_DIR}${id}.wav`, `${LIVE_CLIP_DIR}${id}.visemes.json`);
+  const clip = diskTurn
+    ? speech.load(turnFile(diskTurn, `${id}.wav`), turnFile(diskTurn, `${id}.visemes.json`))
+    : speech.load(`${LIVE_CLIP_DIR}${id}.wav`, `${LIVE_CLIP_DIR}${id}.visemes.json`);
   clip.catch(() => {}); // Reported when its turn comes.
   speechQueue.push({ clip, expression, weight, text, turn: speechTurn });
   if (interruptReplay) speech.stop();
@@ -1489,8 +1546,9 @@ function onModelLoaded(loaded, data) {
   const transcript = document.querySelector('#bridge-transcript');
   // Page-open greeting (#72): claimed once per page load here, shown on first connect.
   const greetingGate = bindGreetingToggle(new GreetingGate(), document.querySelector('#greeting-toggle'));
-  connectBridge({
+  bridgeControls = connectBridge({
     catalog: EXPRESSION_CATALOG,
+    onReplayTurn: replayTurn,
     greeting: greetingGate.claim(new Date()),
     onGreeting: ({ mood, weight }) => { expressions.stopLoop(); applyMood(mood, weight); },
     onStart: () => {

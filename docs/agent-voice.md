@@ -361,9 +361,10 @@ kept and the status says the rest was too long. Later clips of that turn are
 not appended, so replay does not skip a sentence in the middle. If the first
 clip of a new turn does not fit, the previous turn is discarded and a later
 fragment does not become the start. Replay does not regenerate expired
-audio. **New chat**, a page reload or closing the tab clears replay.
+audio. **New chat**, a page reload or closing the tab clears this in-memory
+turn; the bubble's own **▶ Replay** (below) still works after a reload.
 Disconnecting/reconnecting the bridge preserves it, and deleting bridge clip
-files does not affect it because no files are fetched during replay. Each tab's
+files does not affect it because no files are fetched during this replay. Each tab's
 replay is local to that tab.
 
 The bridge sends a `turn` event when a chat reply or an agent item actually
@@ -376,10 +377,86 @@ The sentence already playing from a live reply is left alone.
 This widens the latest-clip replay from [#58](https://github.com/arctic-cheetah/AI-Avatar-PMX-MMD/issues/58).
 The turn is tracked in [#97](https://github.com/arctic-cheetah/AI-Avatar-PMX-MMD/issues/97).
 
+## Replay any spoken bubble
+
+Every chat bubble that Yidhari spoke has a small **▶ Replay** button: a chat
+reply, the page-open greeting, and an agent `say`, `report` summary or `ask`.
+It plays that bubble's turn from the beginning, clip by clip, with each clip's
+own mood, intensity and lip sync, through the same speech lane as
+**↻ Replay last speech**. Your own messages, status notices, the thinking
+filler, the speech-test sample and anything shown without `--speech` get no
+button. The button appears when the turn's first clip arrives, so a bubble
+whose speech failed has none.
+
+Like the last-speech replay, the buttons are disabled while a reply is
+streaming or any speech is playing, loading or queued. A live clip interrupts a
+replay. Replay never calls the LLM or TTS, adds no chat message, and leaves a
+pending `ask` waiting for your answer.
+
+### Where the audio lives
+
+The bridge keeps each spoken turn on disk, so replay survives a page refresh
+and a bridge restart:
+
+```text
+assets/private/speech/turns/<turn id>/      # gitignored
+  turn.json                                 # ordered clips: id, mood, weight, text
+  <clip id>.wav  <clip id>.visemes.json  <clip id>.txt
+```
+
+- **One ID per turn.** The bridge picks a 16-hex-character turn ID when a turn
+  is created. It travels on the bubble's event (`start` for a chat reply,
+  `agent` for `say`/`report`/`ask`), on the `turn` event (with
+  `"greeting": true` for the page-open greeting) and on every `speak` event.
+  Text-only mode sends no turn ID.
+- **The bubble remembers it.** The saved chat log
+  ([#105](https://github.com/arctic-cheetah/AI-Avatar-PMX-MMD/issues/105))
+  stores the turn ID with each spoken entry, so a restored bubble finds its
+  audio again.
+- **Loaded on click.** The renderer fetches `turn.json` and the clips only when
+  you press **▶ Replay**, and drops them after playback. Browser memory holds at
+  most the turn being played, plus the one turn that **↻ Replay last speech**
+  keeps.
+- **Checked on both sides.** The renderer builds paths only from a valid turn ID
+  and clip ID, and drops a malformed manifest entry. The bridge deletes only
+  folders named by a turn ID inside the turns folder, and never follows a
+  symlink.
+- **No more `speech/live/`.** Clips left there by earlier versions are deleted
+  once at bridge start; nothing writes there now.
+
+### Size cap and "Too old to replay"
+
+`--replay-cap-mb` (default **500**, where 1 MB is 1,000,000 bytes) caps the
+turns folder. When a new turn opens, and once at bridge start, the bridge
+deletes **whole turns, oldest first**, until the folder fits, so no bubble is
+left half-playable. The turn being written is never deleted. 500 MB holds about
+1 h 45 min of speech (int16 WAV, 40 kHz mono, 80 KB/s). `0` keeps only the
+current turn.
+
+When a bubble's turn has been deleted, its button is disabled and reads
+**Too old to replay**. A turn folder with no clips reads **No audio to replay**.
+
+**New chat** asks the bridge to delete the audio of every bubble in the chat
+log. Once the bubbles are gone, nothing can replay those turns.
+
+> 🛡️ **Privacy.** Recordings of what Yidhari said, and the sentence text in
+> `turn.json`, now stay on disk until the cap or **New chat** removes them.
+> They are gitignored and served only by the local `serve.py`. Lower
+> `--replay-cap-mb` to keep less.
+
+Keeping the chat log after the tab is closed is
+[#141](https://github.com/arctic-cheetah/AI-Avatar-PMX-MMD/issues/141). Its
+restored bubbles will reuse these turn IDs. Per-bubble replay is
+[#152](https://github.com/arctic-cheetah/AI-Avatar-PMX-MMD/issues/152).
+
 Validation:
 
 ```bash
 node --test tests/renderer/*.test.mjs
+```
+
+```bash
+.venv/bin/python -m unittest tests.test_replay_store
 ```
 
 For a local end-to-end check with `--agent --speech`: speak a multi-sentence
@@ -387,7 +464,10 @@ For a local end-to-end check with `--agent --speech`: speak a multi-sentence
 again, in order, with its own mood. A newer turn replaces it; a saved sample
 should not. Stop a replay and press replay again. Disconnect the bridge and
 replay, then reconnect and use **New chat** to clear it. During an `ask`,
-verify that replay leaves the question waiting for your answer.
+verify that replay leaves the question waiting for your answer. For per-bubble
+replay: speak two turns, replay the first bubble, refresh the page and replay
+it again, then restart the bridge with `--replay-cap-mb 0` and check that the
+older bubble reads **Too old to replay** after the next turn.
 
 ## Security
 

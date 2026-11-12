@@ -141,9 +141,12 @@ supporting the lowered elbow, alongside a thought bubble. The hands are held
 slightly forward for face/outfit clearance; head/neck tracking, eye tracking and
 torso sway remain available during the pose. To preview the gesture
 without the bridge, pause the mood loop and select **[thinking]**; select it again
-or set intensity to zero to release both arms. Clips are written to
-`assets/private/speech/live/` and replaced on the next run. The renderer plays
-them in order and applies each mood when its clip starts.
+or set intensity to zero to release both arms. Each spoken turn's clips are
+written to their own folder under `assets/private/speech/turns/` and kept so
+any chat bubble can be replayed. `--replay-cap-mb` (default 500) caps that
+folder; the oldest whole turns are deleted first (see
+[Replay any spoken bubble](agent-voice.md#replay-any-spoken-bubble)). The
+renderer plays clips in order and applies each mood when its clip starts.
 
 ### Optional spoken thinking filler
 

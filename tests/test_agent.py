@@ -50,8 +50,10 @@ class FakeSpeech:
         self.spoken = []
         self.hold = None
         self.started = asyncio.Event()
+        self.turns = []
 
-    async def __call__(self, queue, send, worker, run=None):
+    async def __call__(self, queue, send, worker, run=None, turn=None):
+        self.turns.append(turn)
         texts = []
         while (segment := await queue.get()) is not None:
             texts.append((segment.text, segment.expression, segment.weight))
@@ -60,7 +62,7 @@ class FakeSpeech:
             await self.hold.wait()
         self.spoken.append(texts)
         for text, expression, weight in texts:
-            await send({"type": "speak", "id": "0" * 16, "expression": expression,
+            await send({"type": "speak", "id": "0" * 16, "turn": turn, "expression": expression,
                         "weight": weight, "text": text})
         return len(texts)
 
@@ -376,10 +378,10 @@ class StageTests(unittest.IsolatedAsyncioTestCase):
         self.speech.hold = asyncio.Event()
         self.stage.enqueue(self.say("First sentence. Second sentence."))
         await self.speech.started.wait()
-        self.assertEqual(self.sent, [{"type": "turn"}])
+        self.assertEqual([event["type"] for event in self.sent], ["turn"])
         self.stage.enqueue(self.say("Next item."))
         await settle()
-        self.assertEqual(self.sent, [{"type": "turn"}],
+        self.assertEqual([event["type"] for event in self.sent], ["turn"],
                          "queueing the next item must not open its turn early")
         self.speech.hold.set()
         await settle()
@@ -444,10 +446,40 @@ class RouterTests(unittest.IsolatedAsyncioTestCase):
         result = await self.router.handle(
             {"tool": "say", "source": "Claude Code", "text": "On it."})
         self.assertEqual(result, "queued")
+        turn = self.sent[0].pop("turn")
         self.assertEqual(self.sent[0], {"type": "agent", "kind": "say",
                                         "source": "Claude Code", "text": "On it."})
         await settle()
         self.assertEqual(self.speech.spoken, [[("On it.", "neutral", 1.0)]])
+        self.assertEqual(self.speech.turns, [turn])
+
+    async def test_bubble_and_turn_share_one_turn_id_for_replay(self):
+        """#152: the bubble names its turn, so its replay button finds the audio."""
+        self.router.attach(self.stage)
+        await self.router.handle({"tool": "say", "source": "Agent", "text": "First."})
+        await self.router.handle({"tool": "report", "source": "Agent", "kind": "done",
+                                  "text": "Second."})
+        await settle()
+        bubbles = [e["turn"] for e in self.sent if e["type"] == "agent"]
+        opened = [e["id"] for e in self.sent if e["type"] == "turn"]
+        self.assertEqual(len(bubbles), 2)
+        self.assertNotEqual(bubbles[0], bubbles[1])
+        for turn in bubbles:
+            self.assertRegex(turn, r"^[0-9a-f]{16}$")
+        self.assertEqual(opened, bubbles)
+        self.assertEqual(self.speech.turns, bubbles)
+
+    async def test_without_speech_a_bubble_names_no_turn(self):
+        quiet = []
+
+        async def send(event):
+            quiet.append(event)
+
+        silent = Stage(send, worker=None, catalog=CATALOG)
+        self.addAsyncCleanup(silent.close)
+        self.router.attach(silent)
+        await self.router.handle({"tool": "say", "source": "Agent", "text": "Hi."})
+        self.assertNotIn("turn", quiet[0])
 
     async def test_latest_renderer_wins(self):
         other = []
@@ -489,6 +521,7 @@ class RouterTests(unittest.IsolatedAsyncioTestCase):
         result = await self.router.handle(
             {"tool": "report", "source": "Claude Code", "text": text, "kind": "done"})
         self.assertEqual(result, "queued")
+        self.assertRegex(self.sent[0].pop("turn"), r"^[0-9a-f]{16}$")  # #152
         self.assertEqual(self.sent[0], {"type": "agent", "kind": "report", "source": "Claude Code",
                                         "status": "done", "text": text})
 
@@ -536,6 +569,17 @@ class AskTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.stage.answer("wrong-id", "no"))
         self.assertTrue(self.stage.answer(event["id"], "  Yes\x07 please  "))
         self.assertEqual(await task, "Yes please")
+
+    async def test_spoken_ask_bubble_names_its_turn(self):
+        """#152: an ask bubble can be replayed like a say."""
+        task = asyncio.create_task(self.router.handle({"tool": "ask", "question": "Push?"}))
+        event = await self.wait_for_ask()
+        await settle()
+        self.assertRegex(event["turn"], r"^[0-9a-f]{16}$")
+        self.assertNotEqual(event["turn"], event["id"])
+        self.assertEqual(self.speech.turns, [event["turn"]])
+        self.stage.answer(event["id"], "yes")
+        await task
 
     async def test_timeout_gives_no_answer_and_closes(self):
         result = await self.router.handle({"tool": "ask", "question": "Still there?", "timeout": 0.05})

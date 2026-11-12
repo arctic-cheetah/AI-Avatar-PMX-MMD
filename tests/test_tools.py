@@ -1,5 +1,7 @@
 """Issue #23: bounded tools, streamed round trips and speech continuity."""
 import asyncio
+from pathlib import Path
+import tempfile
 import copy
 import json
 import unittest
@@ -170,12 +172,12 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
             return httpx.Response(200, text=stream({"tool_calls": [call("web_search", '{"query":"anime protagonist"}')]}))
         def factory(**kwargs):
             return original_client(transport=httpx.MockTransport(handler))
-        async def synth(segment, worker, run):
+        async def synth(segment, worker, run, directory=None):
             segments.append(segment)
             return "b" * 16, {}
         args = Namespace(mode="llm", tools=True, web_search=True, search_provider="bing", llama_url="http://localhost",
                          model=None, context_tokens=65536, speech_worker=object())
-        with patch("httpx.AsyncClient", side_effect=factory), patch("controller.tools.ToolSession.search", return_value={"results": []}), patch("controller.speech.synthesise", synth), patch("controller.speech.clear_live_clips"):
+        with patch("httpx.AsyncClient", side_effect=factory), patch("controller.tools.ToolSession.search", return_value={"results": []}), patch("controller.speech.synthesise", synth), patch("controller.speech.clear_live_clips"), tempfile.TemporaryDirectory() as turns, patch("controller.replay_store.TURNS_DIR", Path(turns)):
             await handle_connection(Socket(), args, load_catalog())
         self.assertEqual(events[-1]["type"], "end")
         self.assertFalse(any(e["type"] == "error" for e in events))
@@ -250,12 +252,12 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
         original_client = httpx.AsyncClient
         def factory(**kwargs):
             return original_client(transport=httpx.MockTransport(handler))
-        async def synth(segment, worker, run):
+        async def synth(segment, worker, run, directory=None):
             segments.append(segment)
             return "a" * 16, {}
         args = Namespace(mode="llm", tools=True, web_search=False, llama_url="http://localhost", model=None,
                          context_tokens=65536, speech_worker=object())
-        with patch("httpx.AsyncClient", side_effect=factory), patch("controller.bridge.llama_chunks", llm), patch("controller.speech.synthesise", synth), patch("controller.speech.clear_live_clips"):
+        with patch("httpx.AsyncClient", side_effect=factory), patch("controller.bridge.llama_chunks", llm), patch("controller.speech.synthesise", synth), patch("controller.speech.clear_live_clips"), tempfile.TemporaryDirectory() as turns, patch("controller.replay_store.TURNS_DIR", Path(turns)):
             await handle_connection(Socket(), args, load_catalog())
         self.assertTrue(any(e["type"] == "speak" for e in events))
         self.assertEqual(segments[0].expression, "soft-smile")

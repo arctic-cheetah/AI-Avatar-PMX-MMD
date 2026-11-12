@@ -21,6 +21,16 @@ if not __package__:
     # Support `python controller/bridge.py` as well as `python -m controller.bridge`.
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from controller.replay_store import (  # noqa: E402
+    DEFAULT_CAP_MB,
+    MB,
+    delete_turns,
+    new_turn_id,
+    open_turn,
+    prune_turns,
+    record_clip,
+)
+
 CATALOG = Path(__file__).resolve().parents[1] / "renderer" / "expressions.json"
 ORIGIN = "http://127.0.0.1:8770"
 DEMO = (
@@ -29,6 +39,7 @@ DEMO = (
 TAG = re.compile(r"([a-z][a-z0-9-]*)(?::([+-]?(?:\d+(?:\.\d*)?|\.\d+)))?")
 THINKING, THINKING_WEIGHT = "thinking", 0.6
 MAX_IN_FLIGHT = 3  # sentences being synthesised or aligned at once
+MAX_RESET_TURNS = 1000  # turn IDs New chat may ask to delete (#152)
 MAX_FRAME = 65536 * 2  # TODO: largest accepted browser message (bytes)
 MAX_PROMPT = 4000  # TODO: longest accepted chat prompt (characters)
 MAX_GREETING = 500  # longest accepted page-open greeting (characters)
@@ -554,14 +565,26 @@ async def demo_chunks():
         )
 
 
-async def speak_segments(queue, send, worker, run=None):
+async def speak_segments(queue, send, worker, run=None, turn=None):
     """Synthesise queued sentences with up to MAX_IN_FLIGHT in progress; announce in order.
 
     A failed sentence is skipped with a notice and never blocks later ones. On
     cancellation the remaining work is cancelled and the worker drops the run.
+    With a ``turn`` ID (#152), clips go into that turn's folder, each announced
+    clip is added to its manifest, and older turns are pruned to the replay cap.
     Returns the number of clips announced.
     """
-    from controller.speech import synthesise
+    from controller import speech
+
+    directory = None
+    if turn is not None:
+        cap_mb = getattr(getattr(worker, "settings", None), "replay_cap_mb", DEFAULT_CAP_MB)
+        directory = await asyncio.to_thread(open_turn, turn, cap_mb * MB)
+
+    def synthesise(segment):
+        if directory is None:
+            return speech.synthesise(segment, worker, run)
+        return speech.synthesise(segment, worker, run, directory=directory)
 
     started = time.perf_counter()
     slots = asyncio.Semaphore(MAX_IN_FLIGHT)
@@ -572,7 +595,7 @@ async def speak_segments(queue, send, worker, run=None):
             while (segment := await queue.get()) is not None:
                 await slots.acquire()
                 ordered.put_nowait(
-                    (segment, asyncio.create_task(synthesise(segment, worker, run)))
+                    (segment, asyncio.create_task(synthesise(segment)))
                 )
         finally:
             # Always end the ordered stream, so a submit failure surfaces instead of hanging.
@@ -601,15 +624,17 @@ async def speak_segments(queue, send, worker, run=None):
                 timings["firstClipSeconds"] = round(time.perf_counter() - started, 2)
                 first = False
             LOG.info("Speech %s %s: %s", clip_id, timings, segment.text)
-            await send(
-                {
-                    "type": "speak",
-                    "id": clip_id,
-                    "expression": segment.expression,
-                    "weight": segment.weight,
-                    "text": segment.text,
-                }
-            )
+            event = {
+                "type": "speak",
+                "id": clip_id,
+                "expression": segment.expression,
+                "weight": segment.weight,
+                "text": segment.text,
+            }
+            if directory is not None:
+                await asyncio.to_thread(record_clip, directory, event)
+                event["turn"] = turn
+            await send(event)
             spoken += 1
         await submitter
         return spoken
@@ -766,8 +791,10 @@ async def handle_connection(socket, args, catalog):
 
         if stage is not None:
             stage.chat_started()
+        # #152: the reply bubble, its turn and its clips share one turn ID.
+        turn = new_turn_id() if worker is not None else None
         try:
-            await send({"type": "start"})
+            await send({"type": "start", **({"turn": turn} if turn else {})})
             await send({"type": "expression", "name": "neutral", "weight": 1})
             chunks = (
                 demo_chunks()
@@ -775,13 +802,14 @@ async def handle_connection(socket, args, catalog):
                 else chat_chunks(prompt, on_reasoning, reply)
             )
             if worker is not None:
-                from controller.speech import Segmenter, clear_live_clips
+                from controller.speech import Segmenter
 
-                clear_live_clips()
                 segmenter, queue = Segmenter(), asyncio.Queue()
                 run = secrets.token_hex(8)
-                await send({"type": "turn"})
-                speaker = asyncio.create_task(speak_segments(queue, send, worker, run))
+                await send({"type": "turn", "id": turn})
+                speaker = asyncio.create_task(
+                    speak_segments(queue, send, worker, run, turn=turn)
+                )
             async for chunk in chunks:
                 if thinking and worker is None:
                     # Text-only: the answer has started, so drop the thinking face.
@@ -827,16 +855,14 @@ async def handle_connection(socket, args, catalog):
                 stage.chat_finished()
 
     async def speak_greeting(segments):
-        from controller.speech import clear_live_clips
-
         try:
-            clear_live_clips()
             queue = asyncio.Queue()
             for segment in segments:
                 queue.put_nowait(segment)
             queue.put_nowait(None)
-            await send({"type": "turn"})
-            await speak_segments(queue, send, worker, secrets.token_hex(8))
+            turn = new_turn_id()
+            await send({"type": "turn", "id": turn, "greeting": True})
+            await speak_segments(queue, send, worker, secrets.token_hex(8), turn=turn)
         except (ConnectionClosed, asyncio.CancelledError):
             raise
         except Exception:
@@ -913,6 +939,10 @@ async def handle_connection(socket, args, catalog):
                     conversation.clear()
                 if tool_session is not None:
                     tool_session.clear()
+                turns = request.get("turns")
+                if isinstance(turns, list):
+                    # #152: the cleared bubbles' audio can no longer be replayed.
+                    await asyncio.to_thread(delete_turns, turns[:MAX_RESET_TURNS])
                 await send({"type": "reset"})
                 continue
             if task is not None and not task.done():
@@ -941,6 +971,13 @@ async def run(args):
         from controller.speech import ApplioWorker, ready_summary
 
         args.speech_settings.check()
+        from controller.speech import clear_live_clips
+
+        # #152: clips now live per turn; drop the old live folder, then fit the cap.
+        clear_live_clips()
+        pruned = prune_turns(None, args.speech_settings.replay_cap_mb * MB)
+        if pruned:
+            LOG.info("Replay cap: deleted %d old turn(s)", len(pruned))
         print("Starting Applio worker (loads the voice model once)…", flush=True)
         args.speech_worker = ApplioWorker(args.speech_settings)
         try:
@@ -1080,6 +1117,13 @@ def build_parser():
         "--speech",
         action="store_true",
         help="Speak each sentence with the selected TTS source, Applio RVC and lip sync.",
+    )
+    parser.add_argument(
+        "--replay-cap-mb",
+        type=int,
+        default=DEFAULT_CAP_MB,
+        help="Keep at most this many MB of spoken turns on disk for bubble replay; "
+        "the oldest whole turns are deleted first (default: %(default)s, #152).",
     )
     parser.add_argument(
         "--thinking-filler",
@@ -1320,6 +1364,7 @@ def speech_settings(args):
         emphasis_pause=args.emphasis_pause,
         rvc_threads=args.rvc_threads,
         rvc_device=args.rvc_device,
+        replay_cap_mb=getattr(args, "replay_cap_mb", DEFAULT_CAP_MB),
         **({"pth": args.pth.expanduser().resolve()} if args.pth else {}),
         **({"index": args.index.expanduser().resolve()} if args.index else {}),
     )

@@ -2,6 +2,8 @@
 
 import argparse
 import asyncio
+from pathlib import Path
+import tempfile
 import json
 import unittest
 from argparse import Namespace
@@ -473,7 +475,7 @@ class SpokenHistoryTests(unittest.IsolatedAsyncioTestCase):
             def cancel(self, run):
                 pass
 
-        async def fake_synthesise(segment, worker, run=None):
+        async def fake_synthesise(segment, worker, run=None, directory=None):
             spoken.append(segment.text.strip())
             return format(len(spoken), "016x"), {}
 
@@ -486,7 +488,9 @@ class SpokenHistoryTests(unittest.IsolatedAsyncioTestCase):
         fake = FakeLlama(["First reply here."], ["Second reply here."])
         with patch("controller.bridge.llama_chunks", fake), \
                 patch("controller.speech.synthesise", fake_synthesise), \
-                patch("controller.speech.clear_live_clips", lambda *a: None):
+                patch("controller.speech.clear_live_clips", lambda *a: None), \
+                tempfile.TemporaryDirectory() as turns, \
+                patch("controller.replay_store.TURNS_DIR", Path(turns)):
             async with serve(handler, "127.0.0.1", 0, origins=[ORIGIN]) as server:
                 url = f"ws://127.0.0.1:{server.sockets[0].getsockname()[1]}"
                 async with connect(url, origin=ORIGIN) as ws:

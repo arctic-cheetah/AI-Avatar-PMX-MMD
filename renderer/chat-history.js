@@ -11,10 +11,12 @@ export const MAX_CHARS = 1_000_000;
 const WHO = new Set(['you', 'yidhari', 'agent', 'tool']);
 const AGENT_KIND = new Set(['say', 'ask', 'report']);
 const REPORT_STATUS = new Set(['progress', 'done', 'error']);
+const TURN_ID = /^[0-9a-f]{16}$/;
 
 /**
  * @typedef {{ who: 'you'|'yidhari'|'agent'|'tool', text: string, source?: string,
- *   kind?: 'say'|'ask'|'report', status?: 'progress'|'done'|'error', interrupted?: true }} ChatEntry
+ *   kind?: 'say'|'ask'|'report', status?: 'progress'|'done'|'error', interrupted?: true,
+ *   turn?: string }} ChatEntry turn names the spoken turn kept on disk for replay (#152).
  */
 
 /** A copy of a well-formed entry with only the known fields, or null. */
@@ -29,6 +31,9 @@ function clean(entry) {
     if (entry.kind === 'report') out.status = entry.status;
   }
   if (entry.interrupted === true) out.interrupted = true;
+  if ((entry.who === 'yidhari' || entry.who === 'agent') && typeof entry.turn === 'string' && TURN_ID.test(entry.turn)) {
+    out.turn = entry.turn;
+  }
   return out;
 }
 
@@ -68,6 +73,11 @@ export class ChatHistory {
     this.entries.push(cleaned);
     this.trim();
     return this.save();
+  }
+
+  /** The saved entry just added, so a later spoken turn can be attached to it (#152). */
+  last() {
+    return this.entries.at(-1) ?? null;
   }
 
   /** Forget the saved log (New chat). */

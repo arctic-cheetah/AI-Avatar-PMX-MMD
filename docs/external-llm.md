@@ -186,7 +186,7 @@ works, the named variable is clearer when several providers are in play:
 
 > 🏠 **Same-worktree rule:** `serve.py` and `bridge.py` must run from the same
 > checkout. Speech clips are written under the bridge checkout's
-> `assets/private/speech/live/` and fetched from the server checkout's same
+> `assets/private/speech/turns/` and fetched from the server checkout's same
 > path; a mismatch serves `404`s and the page reports *“Skipped a clip that
 > could not be played.”* Relative paths such as `--applio-dir ../Applio-rocm`
 > also resolve against the checkout you start from — prefer absolute paths in

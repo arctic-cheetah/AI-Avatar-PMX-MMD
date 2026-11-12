@@ -44,6 +44,12 @@ function rollFor(name) {
   throw new Error(`No idle action ${name}`);
 }
 
+/** A random roll that picks the named sleep action when all are chosen. */
+function sleepRollFor(name) {
+  const names = Object.keys(SLEEP_ACTIONS);
+  return (names.indexOf(name) + 0.5) / names.length;
+}
+
 const isRest = (pose) => pose.glance === null && pose.yawn === 0 && ANGLES.every((k) => Math.abs(pose[k]) < 1e-9);
 
 test("bump eases in, holds and eases out within its duration", () => {
@@ -222,7 +228,8 @@ function sleepy(motion, from, seconds, every) {
 const peak = (poses, key) => Math.max(...poses.map((p) => Math.abs(p[key])));
 
 test("sleep actions are stretch-and-yawn and head tilts left and right, ready for more", () => {
-  assert.deepEqual(Object.keys(SLEEP_ACTIONS), ["stretch-yawn", "tilt-left", "tilt-right", "nod"]);
+  assert.deepEqual(Object.keys(SLEEP_ACTIONS),
+    ["stretch-yawn", "tilt-left", "tilt-right", "nod", "shrug-left", "shrug-right", "shrug-both"]);
   for (const [name, action] of Object.entries(SLEEP_ACTIONS)) {
     assert.ok(action.duration > 0 && action.duration < 30, name);
     assert.equal(typeof action.apply, "function", name);
@@ -230,7 +237,7 @@ test("sleep actions are stretch-and-yawn and head tilts left and right, ready fo
 });
 
 test("a sleep action plays on every interval while sleepy, then she settles", () => {
-  const motion = new IdleMotion({ random: scripted(0.1) }); // stretch-yawn every time
+  const motion = new IdleMotion({ random: scripted(sleepRollFor("stretch-yawn")) }); // stretch-yawn every time
   assert.ok(sleepy(motion, 0, 29.9, 30).every((p) => p.back === 0 && p.yawn === 0 && p.tilt === 0), "nothing before the first interval");
   const first = sleepy(motion, 29.9, IDLE_TIMING.stretch + 1.6, 30);
   assert.equal(motion.sleepAction, "stretch-yawn");
@@ -243,7 +250,7 @@ test("a sleep action plays on every interval while sleepy, then she settles", ()
 });
 
 test("a sleepy head tilt leans to one side, without stretching or yawning, and comes back", () => {
-  for (const [roll, name, sign] of [[0.3, "tilt-left", 1], [0.6, "tilt-right", -1]]) {
+  for (const [roll, name, sign] of [[sleepRollFor("tilt-left"), "tilt-left", 1], [sleepRollFor("tilt-right"), "tilt-right", -1]]) {
     const motion = new IdleMotion({ random: scripted(roll) });
     const poses = sleepy(motion, 29.9, SLEEP_ACTIONS[name].duration + 1.6, 30);
     assert.equal(motion.sleepAction, name);
@@ -258,15 +265,15 @@ test("a sleepy head tilt leans to one side, without stretching or yawning, and c
 test("each interval picks its sleep action at random", () => {
   const motion = new IdleMotion({ random: seeded(5) });
   const seen = new Set();
-  for (let k = 1; k <= 30; k += 1) {
+  for (let k = 1; k <= 100; k += 1) {
     sleepy(motion, k * 20 - 0.05, 0.1, 20);
     seen.add(motion.sleepAction);
   }
-  assert.deepEqual([...seen].sort(), ["nod", "stretch-yawn", "tilt-left", "tilt-right"]);
+  assert.deepEqual([...seen].sort(), Object.keys(SLEEP_ACTIONS).sort());
 });
 
 test("a new sleepy period starts its interval count again", () => {
-  const motion = new IdleMotion({ random: scripted(0.1) });
+  const motion = new IdleMotion({ random: scripted(sleepRollFor("stretch-yawn")) });
   sleepy(motion, 29.9, 1, 30);
   motion.update(1 / 60, "waking", 0, 30);
   assert.equal(motion.sleepAction, null);
@@ -334,7 +341,7 @@ test("a both-shoulder shrug lifts both shoulders evenly", () => {
 });
 
 test("the dozing nod drops the head slowly while sleepy, then lifts it again", () => {
-  const motion = new IdleMotion({ random: scripted(0.9) }); // the 4th of 4 sleep actions
+  const motion = new IdleMotion({ random: scripted(sleepRollFor("nod")) });
   const poses = [];
   for (let i = 1; i <= Math.round((SLEEP_ACTIONS.nod.duration + 1.6) * 60); i += 1) {
     poses.push(motion.update(1 / 60, "sleepy", 29.9 + i / 60, 30));
@@ -493,4 +500,35 @@ test("idle and sleep action choices are saved separately", () => {
   const motion = new IdleMotion();
   bindIdleActionSettings(motion, {}, { local });
   assert.deepEqual(motion.idleActions, Object.keys(IDLE_ACTIONS));
+});
+
+// ---- #149: shrugs while asleep ----
+
+test("she shrugs in her sleep too: left, right or both, one shoulder at a time", () => {
+  for (const [name, side, other] of [["shrug-left", "shoulderLeft", "shoulderRight"], ["shrug-right", "shoulderRight", "shoulderLeft"]]) {
+    const motion = new IdleMotion({ random: scripted(sleepRollFor(name)) });
+    const poses = [];
+    for (let i = 1; i <= Math.round((SLEEP_ACTIONS[name].duration + 1.6) * 60); i += 1) {
+      poses.push(motion.update(1 / 60, "sleepy", 29.9 + i / 60, 30));
+    }
+    assert.equal(motion.sleepAction, name);
+    const lift = Math.max(...poses.map((p) => p[side]));
+    assert.ok(lift > IDLE_MOTION.shrug.angle * 0.8 && lift <= IDLE_MOTION.shrug.angle + 1e-9, `${name} lifts 12°`);
+    assert.ok(poses.every((p) => p[other] === 0 && p.yawn === 0 && p.tilt === 0), `${name} alone`);
+    assert.ok(poses.at(-1)[side] < 0.05 * DEG, `${name} comes back down`);
+  }
+  const both = new IdleMotion({ random: scripted(sleepRollFor("shrug-both")) });
+  let peak = { shoulderLeft: 0, shoulderRight: 0 };
+  for (let i = 1; i <= 4 * 60; i += 1) {
+    const pose = both.update(1 / 60, "sleepy", 29.9 + i / 60, 30);
+    if (pose.shoulderLeft > peak.shoulderLeft) peak = pose;
+  }
+  assert.ok(peak.shoulderLeft > IDLE_MOTION.shrug.angle * 0.8);
+  assert.ok(Math.abs(peak.shoulderLeft - peak.shoulderRight) < 1e-9);
+});
+
+test("sleep shrugs have their own panel labels", () => {
+  assert.equal(SLEEP_ACTION_LABELS["shrug-left"], "Shrug left");
+  assert.equal(SLEEP_ACTION_LABELS["shrug-right"], "Shrug right");
+  assert.equal(SLEEP_ACTION_LABELS["shrug-both"], "Shrug both");
 });

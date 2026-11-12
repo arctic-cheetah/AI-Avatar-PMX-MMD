@@ -14,7 +14,9 @@ export const IDLE_MOTION = Object.freeze({
   /** Quiet seconds before each motion, picked uniformly. */
   gap: Object.freeze([8, 20]),
   glance: Object.freeze({
-    duration: Object.freeze([1.2, 2.2]),
+    /** Slow, eased glances (#149): the user found the old 1.2-2.2 s ones darting. */
+    duration: Object.freeze([2.2, 3.2]),
+    rise: 0.9,
     x: Object.freeze([0.45, 0.75]),
     y: Object.freeze([-0.15, 0.15]),
   }),
@@ -118,13 +120,14 @@ const NOD = 3.2;
  */
 export const ACTIONS = Object.freeze({
   glance: Object.freeze({
-    weight: 0.3,
+    weight: 0.1,
     create: (random) => {
       const dir = random() < 0.5 ? -1 : 1;
       const duration = within(IDLE_MOTION.glance.duration, random());
       return { duration, x: dir * within(IDLE_MOTION.glance.x, random()), y: within(IDLE_MOTION.glance.y, random()) };
     },
-    apply: (motion) => ({ x: motion.x, y: motion.y }),
+    // The gaze blends toward the glance by this weight, so it drifts out and back.
+    apply: (motion) => ({ x: motion.x, y: motion.y, weight: bump(motion.t, motion.duration, IDLE_MOTION.glance.rise) }),
   }),
   "tilt-left": Object.freeze({ weight: 0.1, ...tilt(1) }),
   "tilt-right": Object.freeze({ weight: 0.1, ...tilt(-1) }),
@@ -142,7 +145,7 @@ export const ACTIONS = Object.freeze({
     },
   }),
   "stretch-yawn": Object.freeze({
-    weight: 0.1,
+    weight: 0.3,
     create: () => ({ duration: IDLE_TIMING.stretch }),
     apply: (motion, target) => {
       stretchYawn(motion.t, target);

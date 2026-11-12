@@ -96,11 +96,17 @@ export class GazeController {
   /**
    * Idle glance (#71). It outranks the cursor, which is still while she is
    * idle, but not a tracked face.
-   * @param {{x:number,y:number}|null} target Normalised target, or null to end it.
+   * @param {{x:number,y:number,weight?:number}|null} target Normalised target and optional 0-1 blend weight, or null to end it.
    * @returns {void}
    */
   setIdle(target) {
-    this.idle = target ? clampTarget(target) : null;
+    if (!target) {
+      this.idle = null;
+      return;
+    }
+    // An eased glance (#149) carries a weight: 0 keeps the cursor, 1 is the full glance.
+    const weight = Number.isFinite(target.weight) ? Math.min(1, Math.max(0, target.weight)) : 1;
+    this.idle = { ...clampTarget(target), weight };
   }
 
   /**
@@ -110,7 +116,11 @@ export class GazeController {
    */
   #activeTarget(now) {
     if (this.camera.enabled && now - this.camera.at <= this.cameraTimeout) return this.camera.target;
-    if (this.idle) return this.idle;
+    if (this.idle) {
+      const base = this.cursor.enabled ? this.cursor.target : { x: 0, y: 0 };
+      const w = this.idle.weight;
+      return { x: base.x + (this.idle.x - base.x) * w, y: base.y + (this.idle.y - base.y) * w };
+    }
     if (this.cursor.enabled) return this.cursor.target;
     return { x: 0, y: 0 };
   }

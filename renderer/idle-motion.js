@@ -21,7 +21,7 @@ export const IDLE_MOTION = Object.freeze({
   tilt: Object.freeze({ duration: Object.freeze([2, 3.5]), angle: 5 * DEG, rise: 0.6 }),
   sigh: Object.freeze({ inhale: 1.1, exhale: 1.7, chest: 2 * DEG, shoulders: 2.5 * DEG }),
   /** One or both shoulders lift and drop (#149). */
-  shrug: Object.freeze({ duration: Object.freeze([1.6, 2.2]), angle: 6 * DEG, rise: 0.7 }),
+  shrug: Object.freeze({ duration: Object.freeze([2.4, 3.0]), angle: 12 * DEG, rise: 1.2 }),
   /** The dozing nod sleep action: head dips forward and lifts (#149). */
   nod: Object.freeze({ angle: 6 * DEG, rise: 1 }),
   stretch: Object.freeze({ rise: 1, back: 5 * DEG, headPitch: 7 * DEG, shoulders: 6 * DEG }),

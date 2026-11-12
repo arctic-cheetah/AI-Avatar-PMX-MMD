@@ -10,6 +10,7 @@ This is a companion project, kept outside `my_code_pc` so it does not compete fo
 - 🤖 **Agent voice:** start the bridge with `--agent` and a coding agent such as Claude Code, Claude Desktop or Codex can make her speak (`say`), summarise its results aloud (`report`), ask you questions you answer in the chat (`ask`) and change her face (`set_mood`) through a small MCP server — see [docs/agent-voice.md](docs/agent-voice.md).
 - 🕰️ **Time-of-day greeting:** whenever you open the page she greets you for your local time of day (morning, afternoon, evening or late night) with a matching mood, from a small fixed phrase list — no LLM, nothing leaves the machine. With speech on, the bridge says it aloud (once per connection, outside the chat history); a text-only bridge shows the bubble and mood only. Browsers may hold the audio until your first click on the page. Switch it off with the **Time-of-day greeting** tick box in the Chat panel.
 - ↻ **Replay last speech:** the Chat panel replays the latest spoken turn from the beginning, with each clip's mood and lip sync. Keeps one bounded turn in memory, without regenerating speech or changing the conversation — see [replay policy](docs/agent-voice.md#replay-last-speech).
+- ▶ **Replay any bubble:** every spoken chat bubble has its own replay button, even after a page refresh or bridge restart. Turns are kept on disk under a 500 MB cap (`--replay-cap-mb`), oldest first; deleted ones read *Too old to replay* — see [per-bubble replay](docs/agent-voice.md#replay-any-spoken-bubble).
 - 🎤 **Voice input:** click **🎤 Talk**, speak, click **■ Stop**. Local Whisper on the CPU turns it into a chat prompt; audio never leaves the machine ([docs/voice-input.md](docs/voice-input.md)).
 - 😊 **Moods:** the LLM adds tags such as `[soft-smile:0.6]`, which become facial expressions from a catalog of 50 presets.
 - 🤔 **Thinking face:** while the model reasons, she looks thoughtful, with an eyes-up gesture and a thought bubble.
@@ -347,7 +348,7 @@ avatar-yidhari/
   docs/                # 📚 architecture notes and guides
   models/kokoro/       # 🔒 gitignored: downloaded Kokoro model and voices
   models/whisper/      # 🔒 gitignored: downloaded Whisper STT models
-  assets/private/      # 🔒 gitignored: speech samples and live clips
+  assets/private/      # 🔒 gitignored: speech samples and replayable turns
   yidhari-mmd/         # 🔒 gitignored: local PMX model pack
 ```
 

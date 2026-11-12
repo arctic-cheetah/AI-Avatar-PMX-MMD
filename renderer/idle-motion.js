@@ -97,6 +97,14 @@ function nod(t, target) {
   target.headPitch = -IDLE_MOTION.nod.angle * bump(t, SLEEPY_TILT, IDLE_MOTION.nod.rise);
 }
 
+/** A shrug while asleep (#149): one or both shoulders, by side of the screen. */
+const SLEEP_SHRUG = 2.6;
+const sleepyShrug = (left, right) => (t, target) => {
+  const lift = IDLE_MOTION.shrug.angle * bump(t, SLEEP_SHRUG, IDLE_MOTION.shrug.rise);
+  if (left) target.shoulderLeft = lift;
+  if (right) target.shoulderRight = lift;
+};
+
 /**
  * What she may do on each sleepy interval, picked at random with equal chances
  * among the ones chosen in the panel. To add one: a duration in seconds,
@@ -107,6 +115,9 @@ export const SLEEP_ACTIONS = Object.freeze({
   "tilt-left": Object.freeze({ duration: SLEEPY_TILT, apply: sleepyTilt(1) }),
   "tilt-right": Object.freeze({ duration: SLEEPY_TILT, apply: sleepyTilt(-1) }),
   "nod": Object.freeze({ duration: SLEEPY_TILT, apply: nod }),
+  "shrug-left": Object.freeze({ duration: SLEEP_SHRUG, apply: sleepyShrug(true, false) }),
+  "shrug-right": Object.freeze({ duration: SLEEP_SHRUG, apply: sleepyShrug(false, true) }),
+  "shrug-both": Object.freeze({ duration: SLEEP_SHRUG, apply: sleepyShrug(true, true) }),
 });
 
 /** Panel labels for the sleep action checkboxes (#149). */
@@ -115,6 +126,9 @@ export const SLEEP_ACTION_LABELS = Object.freeze({
   "tilt-left": "Tilt head left",
   "tilt-right": "Tilt head right",
   "nod": "Dozing nod",
+  "shrug-left": "Shrug left",
+  "shrug-right": "Shrug right",
+  "shrug-both": "Shrug both",
 });
 
 export const SLEEP_ACTIONS_KEY = "yidhari.sleep-actions";

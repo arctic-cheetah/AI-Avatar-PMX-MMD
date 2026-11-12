@@ -24,6 +24,7 @@ import unicodedata
 from pathlib import Path
 
 from controller.bridge import THINKING, THINKING_WEIGHT, TagParser, resolve_mood, speak_segments
+from controller.replay_store import new_turn_id
 
 MAX_SAY = 500  # characters of spoken agent text
 MAX_REPORT = 16384  # characters of report text
@@ -383,8 +384,11 @@ class Stage:
                 queue.put_nowait(segment)
             queue.put_nowait(None)
             # The bubble was sent when this item was queued. The turn opens now.
-            await self.send({"type": "turn"})
-            await speak_segments(queue, self.send, self.worker, secrets.token_hex(8))
+            turn = item.get("turn")
+            await self.send({"type": "turn", **({"id": turn} if turn else {})})
+            await speak_segments(
+                queue, self.send, self.worker, secrets.token_hex(8), turn=turn
+            )
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -411,6 +415,11 @@ class Stage:
             LOG.exception("Report summary failed; speaking a fixed line")
             return FALLBACK[item["kind"]]
         return "".join(reply) or FALLBACK[item["kind"]]
+
+
+def _turn_for(stage):
+    """A turn ID for a spoken bubble (#152); None when speech is off."""
+    return new_turn_id() if getattr(stage, "worker", None) is not None else None
 
 
 async def _no_reasoning():
@@ -473,6 +482,11 @@ class AgentRouter:
             if call["tool"] == "report":
                 event["status"] = call["kind"]
             event["text"] = call["text"]
+            turn = _turn_for(stage)
+            if turn:
+                # #152: the bubble names the turn its audio will be kept under.
+                event["turn"] = turn
+                call = {**call, "turn": turn}
             await stage.send(event)
             stage.enqueue(call)
             return "queued"
@@ -485,6 +499,7 @@ class AgentRouter:
         if stage.asks or stage.pending >= MAX_QUEUED or self._limited("ask"):
             return "busy"
         ask_id = secrets.token_hex(8)
+        turn = _turn_for(stage)
         future = asyncio.get_running_loop().create_future()
         stage.asks[ask_id] = future
         try:
@@ -495,6 +510,7 @@ class AgentRouter:
                     "source": call["source"],
                     "id": ask_id,
                     "text": call["text"],
+                    **({"turn": turn} if turn else {}),
                 }
             )
             stage.enqueue(
@@ -504,6 +520,7 @@ class AgentRouter:
                     "text": call["text"],
                     "mood": None,
                     "weight": 1.0,
+                    **({"turn": turn} if turn else {}),
                 }
             )
             return await asyncio.wait_for(asyncio.shield(future), call["timeout"])

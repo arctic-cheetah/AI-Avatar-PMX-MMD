@@ -138,6 +138,7 @@ class ApplioSettings:
     word_lifts: bool = True  # Kokoro: lift endearments in address and the word before ! (#84)
     word_lift_bend: float = 4.0  # semitones at the lift's peak
     surprise_bend: float = 5.0  # a surprised word's rise ("whaaat"); not yet listened to (#83)
+    replay_cap_mb: int = 500  # spoken turns kept on disk for bubble replay; oldest go first (#152)
     endearment_bend: float = 8.0  # an endearment's own lift: 8 of 4/6/8 st sounded best (9 Nov 2026, #83)
     dynamic_emphasis: bool = True  # Kokoro: deeper, drawn-out "buuut"; brighter *word* (listened 9 Nov 2026, #83)
     drawl_bend: float = -2.0  # semitones at a drawl's dip (slightly deeper; listened 8 Nov 2026)
@@ -188,6 +189,8 @@ class ApplioSettings:
             validate_selection(self.kokoro_device, self.kokoro_backend)
         if self.rvc_threads < 0:
             raise ValueError("RVC threads must be nonnegative.")
+        if not isinstance(self.replay_cap_mb, int) or self.replay_cap_mb < 0:
+            raise ValueError("replay_cap_mb must be a nonnegative whole number of MB.")
         for name in ("sentence_tail", "fragment_tail", "ellipsis_tail", "exclaim_tail", "question_tail"):
             value = getattr(self, name)
             if not math.isfinite(value) or not 0.0 <= value <= MAX_TAIL_KEEP:

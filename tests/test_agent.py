@@ -521,6 +521,7 @@ class RouterTests(unittest.IsolatedAsyncioTestCase):
         result = await self.router.handle(
             {"tool": "report", "source": "Claude Code", "text": text, "kind": "done"})
         self.assertEqual(result, "queued")
+        self.assertRegex(self.sent[0].pop("turn"), r"^[0-9a-f]{16}$")  # #152
         self.assertEqual(self.sent[0], {"type": "agent", "kind": "report", "source": "Claude Code",
                                         "status": "done", "text": text})
 

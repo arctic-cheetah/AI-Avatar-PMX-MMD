@@ -16,10 +16,34 @@ const bones = [
 ];
 const dynamic = new Set([2, 3, 4]);
 
-test("the only static strand is the spiral curl", () => {
-  assert.deepEqual([...PINNED_STRANDS], [
-    "Ctr_F_Hair_012", "Ctr_F_Hair_013", "Ctr_F_Hair_014", "Ctr_F_Hair_015", "Ctr_F_Hair_016", "Ctr_F_Hair_018",
-  ]);
+test("only the curl's root (012, 013) is pinned; its tips stay on physics", () => {
+  assert.deepEqual([...PINNED_STRANDS], ["Ctr_F_Hair_012", "Ctr_F_Hair_013"]);
+});
+
+test("kinematicBodies: the named bodies follow their bones, keep their own chain, and let go of other strands", async () => {
+  const { kinematicBodies } = await import("../../renderer/weight-pins.js");
+  // bones: 0 head, 1 curl root (012), 2 curl 013, 3 tip 014, 4 fringe base 02
+  const rigBones = [
+    { name: "頭", parent: -1 }, { name: "Ctr_F_Hair_012", parent: 0 }, { name: "Ctr_F_Hair_013", parent: 1 },
+    { name: "Ctr_F_Hair_014", parent: 2 }, { name: "Ctr_F_Hair_02", parent: 0 },
+  ];
+  const body = (name, boneIndex, type) => ({ name, boneIndex, type });
+  const rigidBodies = [
+    body("頭", 0, 0), body("Ctr_F_Hair_012", 1, 2), body("Ctr_F_Hair_013", 2, 1),
+    body("Ctr_F_Hair_014", 3, 1), body("Ctr_F_Hair_02", 4, 2),
+  ];
+  const joint = (name, a, b) => ({ name, rigidBodyIndex1: a, rigidBodyIndex2: b });
+  const constraints = [
+    joint("head-012", 0, 1), joint("012-013", 1, 2), joint("013-014", 2, 3),
+    joint("012横", 1, 4), joint("head-02", 0, 4),
+  ];
+  const before = JSON.stringify({ rigidBodies, constraints });
+  const out = kinematicBodies(rigidBodies, constraints, rigBones, ["Ctr_F_Hair_012", "Ctr_F_Hair_013"]);
+  assert.deepEqual(out.rigidBodies.map((b) => b.type), [0, 0, 0, 1, 2]);
+  assert.deepEqual(out.rigidBodies.map((b) => b.boneIndex), [0, 1, 2, 3, 4], "same bones, same indices");
+  // The weld to the fringe base would hold the base still, so it goes; the tip still hangs from 013.
+  assert.deepEqual(out.constraints.map((c) => c.name), ["head-012", "012-013", "013-014", "head-02"]);
+  assert.equal(JSON.stringify({ rigidBodies, constraints }), before, "inputs not mutated");
 });
 
 test("pinned bones include every descendant, such as the strand's weight (錘) bones", () => {
@@ -86,7 +110,10 @@ test("her real rig: every stiffened strand blends towards a bone that physics do
     assert.ok(names.includes(side), side);
   }
   const targets = pinTargets(rigBones, names, (i) => driven.has(i));
-  assert.equal(targets.size, 36, "36 hair bones outside the curl");
+  assert.equal(targets.size, 40, "40 hair bones outside the curl's pinned root");
+  for (const tip of ["Ctr_F_Hair_014", "Ctr_F_Hair_015", "Ctr_F_Hair_016", "Ctr_F_Hair_018"]) {
+    assert.ok(names.includes(tip), `${tip} is blended, not pinned`);
+  }
   for (const target of targets.values()) assert.ok(!driven.has(target), `${rigBones[target].name} is still`);
 });
 
@@ -99,14 +126,14 @@ test("her real rig: the curl pins to Ctr_F_Hair_01, which has no body", { skip: 
   const targets = pinTargets(rigBones, PINNED_STRANDS, (i) => driven.has(i));
   assert.equal(targets.size, PINNED_STRANDS.length);
   for (const target of new Set(targets.values())) assert.equal(rigBones[target].name, "Ctr_F_Hair_01");
-  // The curl's bodies hang off pinned bones: 6 bones, each with its 錘. The brow strand keeps its bodies.
-  const pinned = pinnedBones(rigBones, PINNED_STRANDS);
-  const bodies = data.rigidBodies.filter((rb) => pinned.has(rb.boneIndex)).map((rb) => rb.name).sort();
-  assert.deepEqual(bodies, [
-    "Ctr_F_Hair_012", "Ctr_F_Hair_012錘", "Ctr_F_Hair_013", "Ctr_F_Hair_013錘",
-    "Ctr_F_Hair_014", "Ctr_F_Hair_014錘", "Ctr_F_Hair_015", "Ctr_F_Hair_015錘", "Ctr_F_Hair_016", "Ctr_F_Hair_016錘",
-    "Ctr_F_Hair_018", "Ctr_F_Hair_018錘",
-  ]);
+  // The root's kinematic bodies are its own two; their 錘 weights are the only bodies dropped.
+  const { kinematicBodies, CURL_ROOT_WEIGHTS } = await import("../../renderer/weight-pins.js");
+  assert.deepEqual([...CURL_ROOT_WEIGHTS], ["Ctr_F_Hair_012錘", "Ctr_F_Hair_013錘"]);
+  const out = kinematicBodies(data.rigidBodies, data.constraints, rigBones, PINNED_STRANDS);
+  const kinematic = out.rigidBodies.filter((rb, i) => rb.type === 0 && data.rigidBodies[i].type !== 0).map((rb) => rb.name);
+  assert.deepEqual(kinematic, ["Ctr_F_Hair_012", "Ctr_F_Hair_013"]);
+  const dropped = data.constraints.filter((c) => !out.constraints.includes(c)).map((c) => c.name);
+  assert.deepEqual(dropped, ["Ctr_F_Hair_012横"], "only the weld to the fringe base goes");
 });
 
 test("every hair strand except the static curl is stiffened, without weight (錘) bones", async () => {

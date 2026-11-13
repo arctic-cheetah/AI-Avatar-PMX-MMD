@@ -260,6 +260,32 @@ motion in the head's frame, sway on, offset 3 s after physics starts):
 At 0.4 the fringe stays within about half its old offset of strand D and
 still moves visibly with the sway.
 
+### Physics step rate
+
+MMDPhysics steps the world in fixed slices (`unitStep`). At the PMX default of
+1/65 s, a 60 fps display gets one step per frame and an extra one every 12th
+frame, and that 5 Hz beat shows up as jitter. A **Physics steps** slider sets
+the rate from **65 to 120 steps per second**, defaulting to **120**, and it is
+stored in `yidhari.physics.rate`. `physicsStep()` turns the rate into
+`unitStep` and a `maxStepNum` that still catches up about 46 ms per frame (3
+steps at 65, 6 at 120). The layer applies it to a running build at once,
+without a rebuild, and to every new build before its warm-up.
+
+Measured over three fresh loads each (vertex motion in the head's frame):
+
+| | 1/65 | 1/120 |
+|---|---|---|
+| Strand D standing still | 0.115–0.119 units/s (range 0.012) | 0.028–0.060 units/s (range 0.002–0.004) |
+| Strand D swaying | 0.080–0.083 units/s | 0.011–0.013 units/s |
+| Swing size (range) | 0.021–0.024 | 0.021–0.022 (unchanged) |
+| Back hair standing still | 0.002–0.003 units/s | 0.021–0.025 units/s (range 0.001) |
+| `physics.update` median / p95 | 1.6 / 2.1 ms | 1.8 / 2.4 ms |
+
+So the swings keep their size and speed; only the jitter on top of them
+shrinks. Rates that divide evenly into the display rate (120 at 60 fps) step
+the same number of times every frame. In-between rates such as 90 alternate
+one and two steps per frame, so they can still beat a little.
+
 ### Frame order
 
 ```
@@ -278,6 +304,7 @@ so their place in the frame doesn't matter to physics.
 | Physics · 物理 | `yidhari.physics` | on |
 | Chest physics · 胸 | `yidhari.physics.chest` | off |
 | Hip physics · 腰 | `yidhari.physics.hips` | off |
+| Physics steps (65–120 /s) | `yidhari.physics.rate` | 120 |
 
 The main toggle is the kill-switch. The chest and hip toggles change their
 groups independently (a change rebuilds), and they keep their choice while

@@ -118,6 +118,21 @@ tests cover it with a fake build.
   disposing removes the old rigid bodies and joints from the shared world.
   Rebuilding never creates another world, so toggling doesn't leak worlds.
 
+### Pinned strand: the tiny front curl
+
+With physics on, the little spiral curl at the front of her fringe
+(`Ctr_F_Hair_012` → `013` → `014` → `015` → `016`, plus `018`) **buzzed at
+frame rate even while she stood still**. Its bones' range was only 0.006–0.019
+units, but their path was 0.05–0.13 units/s, the worst of any hair. It also
+clipped.
+
+`renderer/weight-pins.js` removes that curl's vertex weights **at load time**:
+each vertex's weight on those bones moves to the nearest ancestor that physics
+doesn't move (`Ctr_F_Hair_01`, a plain child of `頭`). Each vertex still sums
+to 1, and the PMX stays untouched. The curl then rides with her head, while the
+rest of the fringe keeps its physics. Its bodies still simulate, but nothing
+draws from them.
+
 ### Frame order
 
 ```

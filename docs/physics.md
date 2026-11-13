@@ -149,6 +149,26 @@ while too. Once the loader-params fix had calmed the buzz, it went back to
 physics with the 40 % blend below (14 November 2026), so it moves with the
 fringe around it instead of the fringe passing through it.
 
+Measured in the browser (vertex motion in the head's frame, 6 s settled):
+
+| | D offset | Tips offset | Standing still: D / tips | Swaying: D / tips |
+|---|---|---|---|---|
+| D static | 0.006 | 0.039 | 0.002 / 0.012 units/s | 0.003 / 0.013 units/s |
+| D on physics, 40 % blend | 0.037 | 0.035 | **0.14 / 0.11** units/s | 0.09 / 0.013 units/s |
+
+D and its neighbours now settle together, but putting D's bodies back brings
+a **standing-still buzz** of about 5 Hz (range 0.011–0.014 units) to the front
+fringe. Things checked:
+
+- Dropping the locked cross joints (`Ctr_F_Hair_09横`, `012横`): no change.
+- Turning off D's collisions, or every fringe body's: no change.
+- Physics step 1/60: no change. **Step 1/120** (2 substeps per frame): range
+  down to 0.003 (D 0.05, tips 0.07 units/s), at twice the physics cost, which
+  #116 has to measure on the Strix Halo.
+
+The 5 Hz rate matches the beat between 60 fps frames and the default 1/65 s
+physics step.
+
 ### Stiffened fringe: blending its weights
 
 With strand D static, the rest of the fringe settles 0.04–0.09 units away

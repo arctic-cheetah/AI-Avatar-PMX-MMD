@@ -58,8 +58,7 @@ import { filterPhysics } from "./physics-groups.js";
 import { PhysicsLayer } from "./physics-layer.js";
 import { bindStoredToggle } from "./stored-toggle.js";
 import {
-  CURL_ROOT_WEIGHTS, HAIR_FOLLOW, PINNED_STRANDS, blendWeights, kinematicBodies, pinTargets, pinWeights,
-  stiffStrands,
+  HAIR_FOLLOW, RIGID_STRANDS, blendWeights, pinTargets, pinnedBones, stiffStrands,
 } from "./weight-pins.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
@@ -1656,11 +1655,10 @@ async function buildPhysics(groups) {
   // The loader's copies, not the raw PMX: it turns 40 physics+bone (type 2)
   // chain bodies into type 1, which stops them vibrating against their parent.
   const loaded = object.geometry.userData.MMD;
-  // The curl's root holds still so its tips can't swing far (see docs/physics.md).
-  const { rigidBodies, constraints } = kinematicBodies(loaded.rigidBodies, loaded.constraints, rigBones,
-    PINNED_STRANDS);
-  const filtered = filterPhysics(rigidBodies, constraints, groups,
-    { drop: (body) => CURL_ROOT_WEIGHTS.includes(body.name) });
+  // Only the curl's root keeps physics; the rest of the spiral follows it rigidly.
+  const rigid = pinnedBones(rigBones, RIGID_STRANDS);
+  const filtered = filterPhysics(loaded.rigidBodies, loaded.constraints, groups,
+    { drop: (body) => rigid.has(body.boneIndex) });
   if (filtered.orphaned.length > 0) {
     console.warn(`Physics: dropped ${filtered.orphaned.length} bodies with no anchor left`, filtered.orphaned);
   }
@@ -1750,10 +1748,8 @@ function setupPhysics(object, data) {
 }
 
 /**
- * Move the static strands' vertex weights onto a still bone, so they ride
- * with her head (their bodies are dropped in buildPhysics()), and blend the
- * rest of her hair so it shows only HAIR_FOLLOW of its physics motion.
- * The PMX stays untouched.
+ * Blend her hair's vertex weights so it shows only HAIR_FOLLOW of its physics
+ * motion, the rest riding a still bone. The PMX stays untouched.
  * @param {THREE.SkinnedMesh} object Loaded PMX mesh.
  * @param {object} data Parsed PMX.
  * @returns {void}
@@ -1763,12 +1759,11 @@ function pinStrands(object, data) {
   const bones = data.bones.map((bone) => ({ name: bone.name, parent: bone.parentIndex }));
   const isDynamic = (index) => driven.has(index);
   const { skinIndex, skinWeight } = object.geometry.attributes;
-  const pinned = pinWeights(skinIndex.array, skinWeight.array, pinTargets(bones, PINNED_STRANDS, isDynamic));
   // The rest of her hair shows only part of its physics motion (see docs/physics.md).
   const strands = stiffStrands(bones.map((bone) => bone.name));
   const stiff = blendWeights(skinIndex.array, skinWeight.array, pinTargets(bones, strands, isDynamic), HAIR_FOLLOW);
   if (stiff.skipped > 0) console.warn(`Hair: ${stiff.skipped} vertices had no free slot and keep full physics`);
-  if (pinned > 0 || stiff.changed > 0) {
+  if (stiff.changed > 0) {
     skinIndex.needsUpdate = true;
     skinWeight.needsUpdate = true;
   }

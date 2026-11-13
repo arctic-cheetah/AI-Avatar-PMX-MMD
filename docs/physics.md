@@ -129,39 +129,22 @@ tests cover it with a fake build.
   disposing removes the old rigid bodies and joints from the shared world.
   Rebuilding never creates another world, so toggling doesn't leak worlds.
 
-### The spiral curl: a still root, tips on physics
+### The spiral curl: one moving root, a rigid spiral
 
 The little spiral curl at the front (`Ctr_F_Hair_012` → `013` → `014` → `015`
-→ `016`, plus the branch `018`) **buzzed at frame rate even while she stood
-still** (range 0.006–0.019 units, but a path of 0.05–0.13 units/s) and
-clipped. At first the whole curl was made static. Since 14 November 2026 only
-its **root** is:
+→ `016`, plus the branch `018`) buzzed at frame rate and clipped when every
+link was on physics. A still root with its tips on physics fixed the buzz, but
+the tips settled 0.06 units away from where they were drawn and **bent the
+spiral out of shape**.
 
-1. **Root weights:** each vertex's weight on `012` and `013` moves to the
-   nearest ancestor that physics doesn't move (`Ctr_F_Hair_01`, a plain child
-   of `頭`). Each vertex still sums to 1.
-2. **Root bodies:** the `012` and `013` bodies become **kinematic** (type 0):
-   they follow their bones, which no longer move relative to her head. Their
-   `…錘` weight bodies (`CURL_ROOT_WEIGHTS`) are dropped. The locked cross joint
-   `Ctr_F_Hair_012横` is dropped too, because it would weld the still root to
-   the moving fringe base `02` and hold the base still. `kinematicBodies()`
-   keeps every joint within the curl's own bone lineage (`頭` → `012` → `013` →
-   tips).
-3. **Tips:** `014`, `015`, `016` and `018` stay on physics, hanging from the
-   still `013` body, with the 40 % blend like the rest of the hair. With a
-   still root, they can't swing far.
+Since 14 November 2026, **only `012` keeps physics**. `RIGID_STRANDS` (`013`,
+`014`, `015`, `016`, `018`) lose their rigid bodies, together with their
+`…錘` weights and joints (10 bodies), so those bones simply follow `012`: the
+spiral swings as **one rigid piece** and keeps its drawn shape. Its weights
+aren't changed, apart from the 40 % blend that the rest of the hair has too.
 
-Measured in the browser (head frame, 6 s settled, sway on for "swaying"):
-
-| | Offset from drawn | Standing still | Swaying |
-|---|---|---|---|
-| Curl root (`012`, `013`) | 0.002 | 0.007 units/s | 0.006 units/s |
-| Curl tips (`014`–`016`, `018`) | 0.061 | 0.050 units/s (range 0.002) | 0.048 units/s (range 0.004) |
-| Fringe base `02`/`03` | 0.021 | 0.004 units/s | 0.015 units/s (still sways: the weld is gone) |
-
-The tips settle 0.06 units from where they were drawn, so the spiral closes
-a little. With the blend, 180 hair vertices have no free influence slot and
-keep full physics.
+Earlier versions tried making the whole curl static (weights pinned and bodies
+dropped), and giving `012` and `013` kinematic bodies with the tips on physics.
 
 The strand over the brow (`Ctr_F_Hair_09` → `010`, strand D) was static for a
 while too. Once the loader-params fix had calmed the buzz, it went back to

@@ -74,6 +74,22 @@ const PMX = new URL("../../yidhari-mmd/伊德海莉.pmx", import.meta.url);
 const PARSER = new URL("../../node_modules/three/examples/jsm/libs/mmdparser.module.js", import.meta.url);
 const haveModel = existsSync(PMX) && existsSync(PARSER);
 
+test("her real rig: every stiffened strand blends towards a bone that physics doesn't move", { skip: !haveModel && "PMX or MMD parser absent" }, async () => {
+  const { stiffStrands } = await import("../../renderer/weight-pins.js");
+  const { MMDParser } = await import(PARSER.href);
+  const bytes = readFileSync(PMX);
+  const data = new MMDParser.Parser().parsePmx(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length), true);
+  const rigBones = data.bones.map((b) => ({ name: b.name, parent: b.parentIndex }));
+  const driven = new Set(data.rigidBodies.filter((rb) => rb.type !== 0).map((rb) => rb.boneIndex));
+  const names = stiffStrands(rigBones.map((b) => b.name));
+  for (const side of ["Ctr_L_HairA_03", "Ctr_R_HairA_04", "Ctr_B_HairB_01", "Ctr_F_Hair_09", "Ctr_F_HairB_01"]) {
+    assert.ok(names.includes(side), side);
+  }
+  const targets = pinTargets(rigBones, names, (i) => driven.has(i));
+  assert.ok(targets.size >= 40, `found ${targets.size} hair bones`);
+  for (const target of targets.values()) assert.ok(!driven.has(target), `${rigBones[target].name} is still`);
+});
+
 test("her real rig: the curl pins to Ctr_F_Hair_01, which has no body", { skip: !haveModel && "PMX or MMD parser absent" }, async () => {
   const { MMDParser } = await import(PARSER.href);
   const bytes = readFileSync(PMX);
@@ -93,13 +109,18 @@ test("her real rig: the curl pins to Ctr_F_Hair_01, which has no body", { skip: 
   ]);
 });
 
-test("the stiffened strands are the rest of the front fringe, including the brow strand", async () => {
-  const { STIFF_STRANDS, FRINGE_FOLLOW } = await import("../../renderer/weight-pins.js");
-  assert.deepEqual([...STIFF_STRANDS], [
-    "Ctr_F_Hair_02", "Ctr_F_Hair_03", "Ctr_F_Hair_04", "Ctr_F_Hair_06", "Ctr_F_Hair_07", "Ctr_F_HairB_01",
-    "Ctr_F_Hair_09", "Ctr_F_Hair_010",
+test("every hair strand except the static curl is stiffened, without weight (錘) bones", async () => {
+  const { stiffStrands, HAIR_FOLLOW } = await import("../../renderer/weight-pins.js");
+  const names = [
+    "頭", "Ctr_F_Hair_01", "Ctr_F_Hair_02", "Ctr_F_Hair_02錘", "Ctr_F_Hair_09", "Ctr_F_HairB_01",
+    "Ctr_F_Hair_013", "Ctr_L_HairA_03", "Ctr_R_HairB_02", "Ctr_B_HairC_01", "Ctr_T_Hair_01",
+    "Ctr_Hat_05", "左Tail1_1", "左腕",
+  ];
+  assert.deepEqual(stiffStrands(names), [
+    "Ctr_F_Hair_01", "Ctr_F_Hair_02", "Ctr_F_Hair_09", "Ctr_F_HairB_01",
+    "Ctr_L_HairA_03", "Ctr_R_HairB_02", "Ctr_B_HairC_01", "Ctr_T_Hair_01",
   ]);
-  assert.ok(FRINGE_FOLLOW > 0 && FRINGE_FOLLOW < 1, "the fringe still moves, just less");
+  assert.equal(HAIR_FOLLOW, 0.4, "40% follows physics, 60% rides a still bone");
 });
 
 test("blendWeights keeps a share on the moving bone and gives the rest to the still bone", async () => {

@@ -171,10 +171,33 @@ panel picks it up by itself.
 - For previews and comparison grids, `globalThis.__yidhariIdlePose = { tilt, chest,
   shoulders, back, headPitch, glance }` holds a pose (radians, normalised
   glance) until it is set back to `null`.
-- Nothing plays while she is active, sleepy or waking, so the blocking rules
+- Nothing plays on its own while she is active, sleepy or waking, so the blocking rules
   above cover motions too.
 - The first motion waits a full gap after idle begins, and each new idle
   period starts a new gap.
+
+### Playing an action on demand (#164)
+
+The **Animation actions · 仕草再生** section has one button per action. The
+buttons are built from `ACTION_LABELS`, so a new action gets a button with no
+HTML change. Each button plays its action once through the same springs, so it
+eases in, eases out and settles back to rest.
+
+- **Same button again** stops it, easing back. **Another button** switches to
+  that action, blending from the current pose.
+- **No waking:** a button is not activity. Only chat, voice and the bridge
+  wake her, as before. While she is sleepy the action plays and she stays
+  asleep.
+- **Gated:** the buttons are disabled, and a playing action stops, until the
+  model has loaded, while *Idle behaviours* is off, while idle is blocked
+  (speech, thinking, an open ask, a streaming reply or a morph preview),
+  while a pose is held for a preview, during the stretch into sleepy, and
+  while she wakes. The status line under the buttons says which.
+- A manual action takes the place of the idle or sleep action for its
+  length. Idle auto play then waits a fresh gap.
+- The **Actions** ticks above choose what idle and sleep may pick
+  automatically. They do not limit the buttons, and the buttons never change
+  them.
 
 ## Settings
 

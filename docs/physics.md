@@ -155,7 +155,7 @@ Measured in the browser (head frame, 6 s settled):
 
 Spiral shape: pairwise distances between its vertices change by 0.0015 units
 on average (0.038 at most, at blended edges), so it keeps its drawn shape.
-218 hair vertices now have no free influence slot and keep full physics.
+(Before the equal-share fix below; see *Stiffened hair*.)
 
 The strand over the brow (`Ctr_F_Hair_09` → `010`, strand D) was static for a
 while too. Once the loader-params fix had calmed the buzz, it went back to
@@ -202,8 +202,27 @@ skinning side** instead. `blendWeights` keeps `HAIR_FOLLOW` of each
 vertex's weight on its moving fringe bone and gives the rest to the nearest
 still ancestor (`Ctr_F_Hair_01`, or `頭` for `Ctr_F_HairB_01`). The strands
 then show that share of their physics motion and offset, while the solver is
-unchanged. A vertex with no free influence slot keeps its weights and is
-counted as skipped.
+unchanged.
+
+**Every vertex gets the same share** (fixed 14 November 2026). Skinning allows
+four influences per vertex, and 1,021 hair vertices already use all four.
+Earlier, the 218 that couldn't take the still-bone share kept full physics
+while their neighbours moved at 40 %, which **creased the fringe's side
+profile**. Now:
+
+1. **A twin of the target counts as the target.** `sameMotionAs()` treats a
+   plain `Ctr_` bone with no body as moving exactly like its parent (for
+   example `Ctr_F_Hair_01` ≡ `頭`), so the share goes onto whichever of them
+   the vertex already has.
+2. **A vertex whose four slots all move** (one strand's chain, 166 vertices)
+   folds its smallest moving influence into its largest one, which frees a
+   slot for the still bone. That changes the vertex by a fraction of its
+   smallest weight, between neighbouring bones of the same chain.
+3. Only bones that physics moves are blended. Plain bones such as
+   `Ctr_F_Hair_01` are left alone.
+
+A vertex is still skipped only if it has no moving pair to fold and no free or
+twin slot.
 
 Stiffened strands: **all of her hair** except the static curl, i.e. every
 `Ctr_[BFLRT]_Hair…` bone apart from the `…錘` weights (`stiffStrands()`).
@@ -220,7 +239,7 @@ With all hair blended (browser, head frame, 6 s settled):
 | Fringe tips / brow strand D | 0.040 / 0.030 | 0.004 units/s | 0.015 / 0.013 units/s |
 | Side strand `Ctr_F_HairB_01` | 0.027 | 0.063 units/s | 0.082 units/s |
 
-140 hair vertices have all four influence slots in use and keep full physics.
+(Before the equal-share fix in this section.)
 The face capture showed no seam. `Ctr_F_HairB_01` is the one strand that still
 buzzes a little.
 
@@ -235,8 +254,7 @@ motion in the head's frame, sway on, offset 3 s after physics starts):
 | 0.25 | 0.024 / 0.016 | 0.009 / 0.007 units/s |
 
 At 0.4 the fringe stays within about half its old offset of strand D and
-still moves visibly with the sway. 26 vertices have all four influence slots
-in use, so they keep full physics; the face capture showed no seam.
+still moves visibly with the sway.
 
 ### Frame order
 

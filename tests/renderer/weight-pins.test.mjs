@@ -16,10 +16,9 @@ const bones = [
 ];
 const dynamic = new Set([2, 3, 4]);
 
-test("the static strands are the spiral curl and the strand over the brow", () => {
+test("the only static strand is the spiral curl", () => {
   assert.deepEqual([...PINNED_STRANDS], [
     "Ctr_F_Hair_012", "Ctr_F_Hair_013", "Ctr_F_Hair_014", "Ctr_F_Hair_015", "Ctr_F_Hair_016", "Ctr_F_Hair_018",
-    "Ctr_F_Hair_09", "Ctr_F_Hair_010",
   ]);
 });
 
@@ -84,20 +83,21 @@ test("her real rig: the curl pins to Ctr_F_Hair_01, which has no body", { skip: 
   const targets = pinTargets(rigBones, PINNED_STRANDS, (i) => driven.has(i));
   assert.equal(targets.size, PINNED_STRANDS.length);
   for (const target of new Set(targets.values())) assert.equal(rigBones[target].name, "Ctr_F_Hair_01");
-  // Each strand's bodies hang off pinned bones: 6 curl + 2 brow-strand bones, each with its 錘.
+  // The curl's bodies hang off pinned bones: 6 bones, each with its 錘. The brow strand keeps its bodies.
   const pinned = pinnedBones(rigBones, PINNED_STRANDS);
   const bodies = data.rigidBodies.filter((rb) => pinned.has(rb.boneIndex)).map((rb) => rb.name).sort();
   assert.deepEqual(bodies, [
-    "Ctr_F_Hair_010", "Ctr_F_Hair_010錘", "Ctr_F_Hair_012", "Ctr_F_Hair_012錘", "Ctr_F_Hair_013", "Ctr_F_Hair_013錘",
+    "Ctr_F_Hair_012", "Ctr_F_Hair_012錘", "Ctr_F_Hair_013", "Ctr_F_Hair_013錘",
     "Ctr_F_Hair_014", "Ctr_F_Hair_014錘", "Ctr_F_Hair_015", "Ctr_F_Hair_015錘", "Ctr_F_Hair_016", "Ctr_F_Hair_016錘",
-    "Ctr_F_Hair_018", "Ctr_F_Hair_018錘", "Ctr_F_Hair_09", "Ctr_F_Hair_09錘",
+    "Ctr_F_Hair_018", "Ctr_F_Hair_018錘",
   ]);
 });
 
-test("the stiffened strands are the rest of the front fringe", async () => {
+test("the stiffened strands are the rest of the front fringe, including the brow strand", async () => {
   const { STIFF_STRANDS, FRINGE_FOLLOW } = await import("../../renderer/weight-pins.js");
   assert.deepEqual([...STIFF_STRANDS], [
     "Ctr_F_Hair_02", "Ctr_F_Hair_03", "Ctr_F_Hair_04", "Ctr_F_Hair_06", "Ctr_F_Hair_07", "Ctr_F_HairB_01",
+    "Ctr_F_Hair_09", "Ctr_F_Hair_010",
   ]);
   assert.ok(FRINGE_FOLLOW > 0 && FRINGE_FOLLOW < 1, "the fringe still moves, just less");
 });

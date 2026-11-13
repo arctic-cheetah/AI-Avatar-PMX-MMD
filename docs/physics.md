@@ -154,6 +154,31 @@ untouched:
 Only the curl was pinned at first, but the strand over the brow kept buzzing,
 so both were made static on 13 November 2026.
 
+### Stiffened fringe: blending its weights
+
+With strand D static, the rest of the fringe settles 0.04–0.09 units away
+from where it was drawn, and so it clips through D. Stiffening it **inside the
+solver** made things worse (browser probe, standing still, after the
+loader-params fix):
+
+| Change to the fringe's joints/bodies | Standing-still buzz | Offset from drawn |
+|---|---|---|
+| None (PMX: ±20° limits, no springs) | ~0.001 units/s | tips 0.09, base 0.04 |
+| Limits ×0.25 (±5°) | up to **0.61** units/s | tips 0.17 |
+| Rotation springs 500 | up to **1.45** units/s | tips 0.08 |
+| Gravity ×0.25 | up to 0.02 units/s | tips **0.16** (floats further) |
+
+Tight limits and stiff springs make the solver fight itself, and lighter
+gravity lets the strands drift further. So the fringe is stiffened **on the
+skinning side** instead. `blendWeights` keeps `FRINGE_FOLLOW` of each
+vertex's weight on its moving fringe bone and gives the rest to the nearest
+still ancestor (`Ctr_F_Hair_01`, or `頭` for `Ctr_F_HairB_01`). The strands
+then show that share of their physics motion and offset, while the solver is
+unchanged. A vertex with no free influence slot keeps its weights and is
+counted as skipped.
+
+Stiffened strands: `Ctr_F_Hair_02`, `03`, `04`, `06`, `07` and `Ctr_F_HairB_01`.
+
 ### Frame order
 
 ```

@@ -197,6 +197,8 @@ export class IdleMotion {
     this.sleepCycle = null;
     /** Actions that may be picked, in ACTIONS order. */
     this.actions = Object.keys(ACTIONS);
+    /** @type {null | { kind: string, t: number, duration: number }} The action played from a panel button (#164). */
+    this.manual = null;
     this.springs = Object.fromEntries(ANGLES.map((key) => [key, new Spring(0)]));
   }
 
@@ -211,7 +213,16 @@ export class IdleMotion {
     const dt = Number.isFinite(delta) && delta > 0 ? delta : 0;
     const target = Object.fromEntries(ANGLES.map((key) => [key, 0]));
     let glance = null;
-    if (state === "idle") {
+    if (this.manual) {
+      // The stretch into sleepy and waking up have their own motion.
+      this.manual.t += dt;
+      if (state === "stretching" || state === "waking" || this.manual.t >= this.manual.duration) this.manual = null;
+    }
+    if (state === "idle" && this.manual) {
+      // The manual action takes the auto action's place; a fresh gap follows it.
+      this.current = null;
+      this.gapLeft = null;
+    } else if (state === "idle") {
       this.gapLeft ??= this.#gap();
       if (this.current) {
         this.current.t += dt;
@@ -250,6 +261,11 @@ export class IdleMotion {
         this.sleepCycle = null;
       }
     }
+    if (this.manual) {
+      // It replaces whatever idle or sleep would show, through the same springs.
+      for (const key of ANGLES) target[key] = 0;
+      glance = ACTIONS[this.manual.kind].apply(this.manual, target);
+    }
     const pose = { glance };
     for (const key of ANGLES) {
       const spring = this.springs[key];
@@ -268,6 +284,43 @@ export class IdleMotion {
   setActions(names) {
     const chosen = new Set(names);
     this.actions = Object.keys(ACTIONS).filter((name) => chosen.has(name));
+  }
+
+  /** The name of the action playing from a button, or null. */
+  get playing() {
+    return this.manual?.kind ?? null;
+  }
+
+  /**
+   * Play one action now, once, whatever is ticked (#164). It does not wake her.
+   * @param {string} name An ACTIONS key; anything else is ignored.
+   * @returns {boolean} Whether it started.
+   */
+  play(name) {
+    if (typeof name !== "string" || !Object.hasOwn(ACTIONS, name)) return false;
+    this.manual = { kind: name, t: 0, ...ACTIONS[name].create(this.random) };
+    this.current = null;
+    return true;
+  }
+
+  /**
+   * A panel button press: the same action again stops it, another one switches.
+   * @param {string} name
+   * @returns {"playing"|"stopped"|null} null for an unknown name.
+   */
+  toggle(name) {
+    if (typeof name !== "string" || !Object.hasOwn(ACTIONS, name)) return null;
+    if (this.manual?.kind === name) {
+      this.stop();
+      return "stopped";
+    }
+    this.play(name);
+    return "playing";
+  }
+
+  /** Stop the button's action; the springs ease her back. */
+  stop() {
+    this.manual = null;
   }
 
   #gap() {
@@ -292,6 +345,21 @@ export class IdleMotion {
     }
     return { kind, t: 0, ...ACTIONS[kind].create(this.random) };
   }
+}
+
+/**
+ * Why the Animation actions buttons cannot play now, or null when they can (#164).
+ * @param {{ loaded: boolean, idleEnabled: boolean, blocked: boolean, held: boolean, state: string }} status
+ * @returns {string|null}
+ */
+export function manualPlayBlocked({ loaded, idleEnabled, blocked, held, state }) {
+  if (!loaded) return "Waiting for the model";
+  if (!idleEnabled) return "Turn on Idle behaviours to play actions";
+  if (blocked) return "Busy: speech, thinking, an ask or a preview";
+  if (held) return "A pose is held for a preview";
+  if (state === "stretching") return "Stretching into sleepy";
+  if (state === "waking") return "Waking up";
+  return null;
 }
 
 /**

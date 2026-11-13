@@ -57,7 +57,7 @@ import { createAmmoLoader } from "./ammo-loader.js";
 import { filterPhysics } from "./physics-groups.js";
 import { PhysicsLayer } from "./physics-layer.js";
 import { bindStoredToggle } from "./stored-toggle.js";
-import { PINNED_STRANDS, pinTargets, pinWeights } from "./weight-pins.js";
+import { PINNED_STRANDS, pinTargets, pinWeights, pinnedBones } from "./weight-pins.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
 const MODEL_URL = "/yidhari-mmd/伊德海莉.pmx";
@@ -1649,7 +1649,10 @@ let physicsBones = [];
  */
 async function buildPhysics(groups) {
   const [, { object, data }] = await Promise.all([loadAmmo(), physicsModel]);
-  const filtered = filterPhysics(data.rigidBodies, data.constraints, groups);
+  const staticBones = pinnedBones(data.bones.map((bone) => ({ name: bone.name, parent: bone.parentIndex })),
+    PINNED_STRANDS);
+  const filtered = filterPhysics(data.rigidBodies, data.constraints, groups,
+    { drop: (body) => staticBones.has(body.boneIndex) });
   if (filtered.orphaned.length > 0) {
     console.warn(`Physics: dropped ${filtered.orphaned.length} bodies with no anchor left`, filtered.orphaned);
   }
@@ -1739,8 +1742,9 @@ function setupPhysics(object, data) {
 }
 
 /**
- * Move the tiny front curl's vertex weights onto a still bone, so it rides
- * with her head instead of buzzing under physics. The PMX stays untouched.
+ * Move the static strands' vertex weights onto a still bone, so they ride
+ * with her head instead of buzzing under physics. Their bodies are dropped
+ * in buildPhysics(). The PMX stays untouched.
  * @param {THREE.SkinnedMesh} object Loaded PMX mesh.
  * @param {object} data Parsed PMX.
  * @returns {void}

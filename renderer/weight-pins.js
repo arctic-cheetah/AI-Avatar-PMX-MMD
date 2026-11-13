@@ -6,10 +6,38 @@
  * Pure module: no DOM or Three.js imports, so `node --test` covers it.
  */
 
-/** The tiny front curl, which buzzed at frame rate and clipped with physics on. */
+/**
+ * Static strands: the spiral curl and the strand over the brow, which buzzed
+ * at frame rate and clipped with physics on.
+ */
 export const PINNED_STRANDS = Object.freeze([
   "Ctr_F_Hair_012", "Ctr_F_Hair_013", "Ctr_F_Hair_014", "Ctr_F_Hair_015", "Ctr_F_Hair_016", "Ctr_F_Hair_018",
+  "Ctr_F_Hair_09", "Ctr_F_Hair_010",
 ]);
+
+/**
+ * @param {{name: string, parent: number}[]} bones Bone names and parent indices.
+ * @param {Iterable<string>} names Strand bones; names missing from the rig are skipped.
+ * @returns {Set<number>} Those bones and all their descendants (such as …錘 weights).
+ */
+export function pinnedBones(bones, names) {
+  const pinned = new Set();
+  for (const name of names) {
+    const index = bones.findIndex((bone) => bone.name === name);
+    if (index >= 0) pinned.add(index);
+  }
+  let grew = true;
+  while (grew) {
+    grew = false;
+    bones.forEach((bone, i) => {
+      if (!pinned.has(i) && pinned.has(bone.parent)) {
+        pinned.add(i);
+        grew = true;
+      }
+    });
+  }
+  return pinned;
+}
 
 /**
  * @param {{name: string, parent: number}[]} bones Bone names and parent indices (-1 for a root).

@@ -51,14 +51,18 @@ export function defaultPhysicsGroups() {
  * @param {B[]} rigidBodies Parsed rigid body params.
  * @param {C[]} constraints Parsed joint params.
  * @param {Iterable<string>} enabledGroups Group ids to simulate.
+ * @param {{drop?: (body: B) => boolean}} [options] drop removes chosen dynamic
+ *   bodies whatever their group (kinematic anchors always stay).
  * @returns {{rigidBodies: B[], constraints: C[], bodyIndex: Int32Array, orphaned: string[]}}
  *   bodyIndex maps each original body index to its new one, or -1.
  */
-export function filterPhysics(rigidBodies, constraints, enabledGroups) {
+export function filterPhysics(rigidBodies, constraints, enabledGroups, { drop = () => false } = {}) {
   const enabled = new Set(enabledGroups);
   const keep = rigidBodies.map((body) => {
     const group = classifyBody(body);
-    return group === null || group === "other" || enabled.has(group);
+    if (group === null) return true;
+    if (drop(body)) return false;
+    return group === "other" || enabled.has(group);
   });
   const valid = (i) => Number.isInteger(i) && i >= 0 && i < rigidBodies.length;
   const joined = (c) => valid(c.rigidBodyIndex1) && valid(c.rigidBodyIndex2)

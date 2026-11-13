@@ -11,7 +11,8 @@ see [Restoration status](./restoration-status.md) for current recovery limits.
 A quiet companion, not a dancer. The face combines blink, semantic moods, and
 accurate sound-by-sound lip sync. Small canned hand poses are planned. The body
 stays mostly stationary; no dance VMD or locomotion is required. Existing arm
-lowering is a local pose adjustment. Hair/coat/tail physics remain future work.
+lowering is a local pose adjustment. Hair, hat, tail and accessory physics run
+on the PMX rig through `MMDPhysics` (see [physics.md](./physics.md)).
 
 Speech uses timed phonemes mapped to calibrated visemes, including consonant
 closures and silence. Five vowel shapes or a loudness-driven mouth alone are not

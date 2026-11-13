@@ -5,15 +5,19 @@
  * @param {{ checked: boolean, addEventListener(type: string, fn: () => void): void } | null} toggle Checkbox.
  * @param {string} key localStorage key; '0' means off, anything else on.
  * @param {(on: boolean) => void} apply Called with the starting state and on every change.
- * @param {{ local?: Storage }} [options] Storage to use instead of localStorage.
+ * @param {{ local?: Storage, defaultOn?: boolean }} [options] Storage to use instead of
+ *   localStorage, and the state when nothing is stored (on unless false).
  * @returns {void}
  */
-export function bindStoredToggle(toggle, key, apply, { local } = {}) {
+export function bindStoredToggle(toggle, key, apply, { local, defaultOn = true } = {}) {
   try {
     local ??= globalThis.localStorage;
   } catch { /* Storage access itself can throw. */ }
-  let enabled = true;
-  try { enabled = local?.getItem(key) !== '0'; } catch { /* Default on. */ }
+  let enabled = defaultOn;
+  try {
+    const stored = local?.getItem(key);
+    if (stored != null) enabled = stored !== '0';
+  } catch { /* Keep the default. */ }
   apply(enabled);
   if (!toggle) return;
   toggle.checked = enabled;

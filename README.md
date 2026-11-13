@@ -368,6 +368,7 @@ avatar-yidhari/
 | [pmx-morph-catalog.md](docs/pmx-morph-catalog.md)                 | Every PMX facial morph                                  |
 | [gaze-tracking.md](docs/gaze-tracking.md)                         | Cursor + webcam gaze tracking design (issue #6)         |
 | [body-sway.md](docs/body-sway.md)                               | Slow sine-wave body sway design (issue #4)              |
+| [physics.md](docs/physics.md)                                   | Hair, tail and accessory physics; body groups (#37)     |
 | [idle-behaviours.md](docs/idle-behaviours.md)                   | Idle, sleepy and wake-up states and settings (#71)      |
 | [animation-transitions.md](docs/animation-transitions.md)         | Smooth, interruptible transitions and layer rules (#54) |
 | [pop-out-window.md](docs/pop-out-window.md)                       | Floating window, Firefox popup, platform limits (#52)   |

@@ -224,6 +224,10 @@ profile**. Now:
 A vertex is still skipped only if it has no moving pair to fold and no free or
 twin slot.
 
+In the browser no hair vertex is skipped any more, and the side profile with
+physics on matches physics off again: the creased fringe edge and the spiral's
+jagged outline from the 40 % blend are gone.
+
 Stiffened strands: **all of her hair** except the static curl, i.e. every
 `Ctr_[BFLRT]_Hair…` bone apart from the `…錘` weights (`stiffStrands()`).
 It started with the front fringe and was extended to the side, back and top

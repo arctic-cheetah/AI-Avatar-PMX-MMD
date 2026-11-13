@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  ACTIONS, ACTIONS_KEY, ACTION_LABELS, IDLE_MOTION, IdleMotion, bindActionSettings, bump,
+  ACTIONS, ACTIONS_KEY, ACTION_LABELS, IDLE_MOTION, IdleMotion, bindActionSettings, bump, manualPlayBlocked,
 } from "../../renderer/idle-motion.js";
 import { IDLE_TIMING } from "../../renderer/idle-behaviour.js";
 
@@ -294,22 +294,24 @@ test("an action plays on every interval while sleepy, then she settles", () => {
   assert.ok(peak(play(motion, "sleepy", IDLE_TIMING.stretch, { from: 59.9, every: 30 }), "yawn") > 0.9, "again at 60 s");
 });
 
+/** What each action visibly does, by name. */
+const SHOWS = {
+  glance: (poses) => poses.some((p) => p.glance),
+  "tilt-left": (poses) => signedPeak(poses, "tilt") > IDLE_MOTION.tilt.angle * 0.8,
+  "tilt-right": (poses) => signedPeak(poses, "tilt") < -IDLE_MOTION.tilt.angle * 0.8,
+  "shrug-left": (poses) => peak(poses, "shoulderLeft") > IDLE_MOTION.shrug.angle * 0.8 && peak(poses, "shoulderRight") === 0,
+  "shrug-right": (poses) => peak(poses, "shoulderRight") > IDLE_MOTION.shrug.angle * 0.8 && peak(poses, "shoulderLeft") === 0,
+  "shrug-both": (poses) => peak(poses, "shoulderLeft") > IDLE_MOTION.shrug.angle * 0.8 && peak(poses, "shoulderRight") > IDLE_MOTION.shrug.angle * 0.8,
+  sigh: (poses) => peak(poses, "chest") > IDLE_MOTION.sigh.chest * 0.8,
+  "stretch-yawn": (poses) => peak(poses, "yawn") > 0.9,
+  nod: (poses) => Math.min(...poses.map((p) => p.headPitch)) < -IDLE_MOTION.nod.angle * 0.8,
+};
+
 test("every action also plays while asleep", () => {
-  const checks = {
-    glance: (poses) => poses.some((p) => p.glance),
-    "tilt-left": (poses) => signedPeak(poses, "tilt") > IDLE_MOTION.tilt.angle * 0.8,
-    "tilt-right": (poses) => signedPeak(poses, "tilt") < -IDLE_MOTION.tilt.angle * 0.8,
-    "shrug-left": (poses) => peak(poses, "shoulderLeft") > IDLE_MOTION.shrug.angle * 0.8 && peak(poses, "shoulderRight") === 0,
-    "shrug-right": (poses) => peak(poses, "shoulderRight") > IDLE_MOTION.shrug.angle * 0.8 && peak(poses, "shoulderLeft") === 0,
-    "shrug-both": (poses) => peak(poses, "shoulderLeft") > IDLE_MOTION.shrug.angle * 0.8 && peak(poses, "shoulderRight") > IDLE_MOTION.shrug.angle * 0.8,
-    sigh: (poses) => peak(poses, "chest") > IDLE_MOTION.sigh.chest * 0.8,
-    "stretch-yawn": (poses) => peak(poses, "yawn") > 0.9,
-    nod: (poses) => Math.min(...poses.map((p) => p.headPitch)) < -IDLE_MOTION.nod.angle * 0.8,
-  };
   for (const name of NAMES) {
     const { kind, poses } = asleep(name);
     assert.equal(kind, name);
-    assert.ok(checks[name](poses), `${name} shows while asleep`);
+    assert.ok(SHOWS[name](poses), `${name} shows while asleep`);
     assert.ok(isRest(play(new IdleMotion(), "sleepy", 0.1)[0]));
   }
 });
@@ -426,4 +428,137 @@ test("corrupt or blocked storage keeps every action", () => {
     bindActionSettings(motion, {}, { local });
     assert.deepEqual(motion.actions, NAMES);
   }
+});
+
+// Manual play (#164): the Animation actions buttons play one action on demand.
+
+/** Step one frame at 60 fps in a state; stateTime is not used by manual play. */
+const frame = (motion, state = "active", every = 0) => motion.update(1 / 60, state, 0, every);
+
+test("each action plays once on demand while active, shows, then settles back to rest", () => {
+  for (const name of NAMES) {
+    const motion = new IdleMotion({ random: scripted(0.9) });
+    assert.equal(motion.play(name), true, name);
+    assert.equal(motion.playing, name);
+    const poses = play(motion, "active", 6);
+    assert.ok(SHOWS[name](poses), `${name} shows`);
+    assert.equal(motion.playing, null, `${name} ends`);
+    assert.ok(isRest(play(motion, "active", 1).at(-1)), `${name} settles`);
+  }
+});
+
+test("manual actions stay within their limits and move smoothly, in every state they may play in", () => {
+  for (const state of ["active", "idle", "sleepy"]) {
+    for (const name of NAMES) {
+      const motion = new IdleMotion({ random: scripted(0.9) });
+      motion.play(name);
+      let previous = motion.update(0, state, 0);
+      for (let i = 1; i <= 6 * 60; i += 1) {
+        const pose = motion.update(1 / 60, state, i / 60);
+        assert.ok(Math.abs(pose.tilt) <= IDLE_MOTION.tilt.angle + 1e-9, `${state} ${name} tilt`);
+        assert.ok(pose.yawn >= 0 && pose.yawn <= 1, `${state} ${name} yawn`);
+        for (const key of ANGLES) {
+          assert.ok(Math.abs(pose[key] - previous[key]) < 0.25 * DEG, `${state} ${name} ${key} jumped at frame ${i}`);
+        }
+        assert.ok(Math.abs(pose.yawn - previous.yawn) < 0.03, `${state} ${name} yawn jumped at frame ${i}`);
+        previous = { ...pose };
+      }
+    }
+  }
+});
+
+test("unknown or empty names are ignored and change nothing", () => {
+  const motion = new IdleMotion();
+  for (const name of ["", "dance", "__proto__", "constructor", undefined, null]) {
+    assert.equal(motion.play(name), false, String(name));
+    assert.equal(motion.toggle(name), null, String(name));
+  }
+  assert.equal(motion.playing, null);
+  assert.ok(isRest(frame(motion)));
+});
+
+test("a second click on the same button stops it; another button switches without a jump", () => {
+  const motion = new IdleMotion({ random: scripted(0.9) });
+  assert.equal(motion.toggle("tilt-left"), "playing");
+  play(motion, "active", 1.5);
+  assert.equal(motion.toggle("tilt-left"), "stopped");
+  assert.equal(motion.playing, null);
+  const back = play(motion, "active", 1);
+  assert.ok(back[0].tilt > 0, "eases back, not snaps");
+  assert.ok(Math.abs(back.at(-1).tilt) < 0.05 * DEG);
+
+  motion.toggle("tilt-left");
+  play(motion, "active", 1.5);
+  const before = frame(motion).tilt;
+  assert.equal(motion.toggle("tilt-right"), "playing");
+  assert.equal(motion.playing, "tilt-right");
+  const after = frame(motion).tilt;
+  assert.ok(Math.abs(after - before) < 0.25 * DEG, "switch blends from the current pose");
+  assert.ok(signedPeak(play(motion, "active", 3), "tilt") < -IDLE_MOTION.tilt.angle * 0.8, "then tilts right");
+});
+
+test("stop() eases back to rest and drops a glance at once", () => {
+  const motion = new IdleMotion({ random: scripted(0.9) });
+  motion.play("glance");
+  play(motion, "active", 1);
+  motion.play("sigh");
+  play(motion, "active", 1);
+  motion.stop();
+  assert.equal(motion.playing, null);
+  const back = play(motion, "active", 1);
+  assert.equal(back[0].glance, null);
+  assert.ok(back[0].chest > 0, "eases, not snaps");
+  assert.ok(isRest(back.at(-1)));
+});
+
+test("a manual action replaces the idle auto action, and auto play waits a fresh gap after it", () => {
+  const motion = new IdleMotion({ random: scripted(0, rollFor("tilt-left"), 0.9, 0) });
+  play(motion, "idle", IDLE_MOTION.gap[0] + 0.5);
+  assert.equal(motion.current?.kind, "tilt-left");
+  motion.play("tilt-right");
+  assert.equal(motion.current, null, "the auto action gives way");
+  assert.ok(signedPeak(play(motion, "idle", 3.6), "tilt") < 0, "only the manual tilt shows");
+  assert.equal(motion.playing, null);
+  const quiet = play(motion, "idle", IDLE_MOTION.gap[0] - 0.5);
+  assert.equal(motion.current, null, "no auto action straight after");
+  assert.ok(isRest(quiet.at(-1)));
+});
+
+test("a manual action overrides the sleep action while asleep", () => {
+  const motion = new IdleMotion({ random: scripted(rollFor("tilt-left"), 0.9) });
+  play(motion, "sleepy", 30.5, { every: 30 });
+  assert.equal(motion.sleepAction, "tilt-left");
+  motion.play("nod");
+  const poses = play(motion, "sleepy", 2, { from: 30.5, every: 30 });
+  assert.ok(Math.abs(poses.at(-1).tilt) < 0.05 * DEG, "the sleep tilt eases away");
+  assert.ok(SHOWS.nod(poses));
+});
+
+test("the stretch into sleepy and waking up end a manual action", () => {
+  for (const state of ["stretching", "waking"]) {
+    const motion = new IdleMotion({ random: scripted(0.9) });
+    motion.play("shrug-both");
+    play(motion, "active", 1);
+    frame(motion, state);
+    assert.equal(motion.playing, null, state);
+  }
+});
+
+test("manual play never touches the ticked actions or the stored choice", () => {
+  const motion = new IdleMotion();
+  motion.setActions(["sigh"]);
+  for (const name of NAMES) motion.play(name);
+  assert.deepEqual(motion.actions, ["sigh"]);
+});
+
+test("the buttons wait for the model, idle on, no block, no held pose and a calm state", () => {
+  const ok = { loaded: true, idleEnabled: true, blocked: false, held: false, state: "active" };
+  assert.equal(manualPlayBlocked(ok), null);
+  for (const state of ["active", "idle", "sleepy"]) assert.equal(manualPlayBlocked({ ...ok, state }), null, state);
+  assert.match(manualPlayBlocked({ ...ok, loaded: false }), /model/i);
+  assert.match(manualPlayBlocked({ ...ok, idleEnabled: false }), /idle/i);
+  assert.match(manualPlayBlocked({ ...ok, blocked: true }), /busy|speech|thinking/i);
+  assert.match(manualPlayBlocked({ ...ok, held: true }), /held|preview/i);
+  assert.match(manualPlayBlocked({ ...ok, state: "stretching" }), /stretch/i);
+  assert.match(manualPlayBlocked({ ...ok, state: "waking" }), /waking/i);
 });

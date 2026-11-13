@@ -129,30 +129,25 @@ tests cover it with a fake build.
   disposing removes the old rigid bodies and joints from the shared world.
   Rebuilding never creates another world, so toggling doesn't leak worlds.
 
-### Static strands: the spiral curl and the strand over the brow
+### Static strand: the spiral curl
 
-Two small fringe strands **buzzed at frame rate even while she stood still**
-(range 0.006–0.019 units, but a path of 0.05–0.13 units/s). They were the worst
-of any hair, and they clipped:
-
-| Strand | Bones |
-|---|---|
-| Spiral curl | `Ctr_F_Hair_012` → `013` → `014` → `015` → `016`, plus `018` |
-| Strand over the brow | `Ctr_F_Hair_09` → `010` |
-
-`renderer/weight-pins.js` makes them **static** at load time, and the PMX stays
+The little spiral curl at the front (`Ctr_F_Hair_012` → `013` → `014` → `015`
+→ `016`, plus `018`) **buzzed at frame rate even while she stood still**
+(range 0.006–0.019 units, but a path of 0.05–0.13 units/s) and clipped.
+`renderer/weight-pins.js` makes it **static** at load time, and the PMX stays
 untouched:
 
 1. **Weights:** each vertex's weight on those bones moves to the nearest
    ancestor that physics doesn't move (`Ctr_F_Hair_01`, a plain child of `頭`).
-   Each vertex still sums to 1, so the strands ride with her head.
-2. **Bodies:** the strands' 16 rigid bodies (each bone plus its `…錘`) are
+   Each vertex still sums to 1, so the curl rides with her head.
+2. **Bodies:** the curl's 12 rigid bodies (each bone plus its `…錘`) are
    dropped before `MMDPhysics` is built, through `filterPhysics`'s `drop`
-   option, together with their joints. A static strand can't push or tug the
-   rest of the fringe, which keeps its physics.
+   option, together with their joints.
 
-Only the curl was pinned at first, but the strand over the brow kept buzzing,
-so both were made static on 13 November 2026.
+The strand over the brow (`Ctr_F_Hair_09` → `010`, strand D) was static for a
+while too. Once the loader-params fix had calmed the buzz, it went back to
+physics with the 40 % blend below (14 November 2026), so it moves with the
+fringe around it instead of the fringe passing through it.
 
 ### Stiffened fringe: blending its weights
 
@@ -177,7 +172,8 @@ then show that share of their physics motion and offset, while the solver is
 unchanged. A vertex with no free influence slot keeps its weights and is
 counted as skipped.
 
-Stiffened strands: `Ctr_F_Hair_02`, `03`, `04`, `06`, `07` and `Ctr_F_HairB_01`.
+Stiffened strands: `Ctr_F_Hair_02`, `03`, `04`, `06`, `07`, `09`, `010` and
+`Ctr_F_HairB_01`.
 
 `FRINGE_FOLLOW` is **0.4**, chosen from these browser measurements (vertex
 motion in the head's frame, sway on, offset 3 s after physics starts):

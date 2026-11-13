@@ -58,7 +58,7 @@ import { filterPhysics } from "./physics-groups.js";
 import { PhysicsLayer } from "./physics-layer.js";
 import { bindStoredToggle } from "./stored-toggle.js";
 import {
-  HAIR_FOLLOW, RIGID_STRANDS, blendWeights, pinTargets, pinnedBones, stiffStrands,
+  HAIR_FOLLOW, RIGID_STRANDS, blendWeights, pinTargets, pinnedBones, sameMotionAs, stiffStrands,
 } from "./weight-pins.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
@@ -1760,9 +1760,12 @@ function pinStrands(object, data) {
   const isDynamic = (index) => driven.has(index);
   const { skinIndex, skinWeight } = object.geometry.attributes;
   // The rest of her hair shows only part of its physics motion (see docs/physics.md).
-  const strands = stiffStrands(bones.map((bone) => bone.name));
-  const stiff = blendWeights(skinIndex.array, skinWeight.array, pinTargets(bones, strands, isDynamic), HAIR_FOLLOW);
-  if (stiff.skipped > 0) console.warn(`Hair: ${stiff.skipped} vertices had no free slot and keep full physics`);
+  // Only bones that physics moves; plain bones such as Ctr_F_Hair_01 stay as they are.
+  const strands = stiffStrands(bones.map((bone) => bone.name)).filter((name) =>
+    isDynamic(bones.findIndex((bone) => bone.name === name)));
+  const stiff = blendWeights(skinIndex.array, skinWeight.array, pinTargets(bones, strands, isDynamic), HAIR_FOLLOW,
+    { sameMotion: sameMotionAs(bones, isDynamic) });
+  if (stiff.skipped > 0) console.warn(`Hair: ${stiff.skipped} vertices had no slot for the still bone and keep full physics`);
   if (stiff.changed > 0) {
     skinIndex.needsUpdate = true;
     skinWeight.needsUpdate = true;

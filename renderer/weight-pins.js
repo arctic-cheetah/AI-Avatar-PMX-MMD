@@ -107,40 +107,77 @@ export function stiffStrands(boneNames) {
 export const HAIR_FOLLOW = 0.4;
 
 /**
+ * A test of whether two bones always move identically: a plain Ctr_ bone with
+ * no rigid body is never posed, so it moves exactly like its parent (for
+ * example Ctr_F_Hair_01 ≡ 頭). Skinning to either gives the same result.
+ * @param {{name: string, parent: number}[]} bones
+ * @param {(index: number) => boolean} isDynamic Whether physics moves the bone.
+ * @returns {(a: number, b: number) => boolean}
+ */
+export function sameMotionAs(bones, isDynamic) {
+  const key = (bone) => {
+    let b = bone;
+    while (b >= 0 && !isDynamic(b) && bones[b].name.startsWith("Ctr_") && bones[b].parent >= 0) b = bones[b].parent;
+    return b;
+  };
+  return (a, b) => key(a) === key(b);
+}
+
+/**
  * Keep `follow` of each weight on a moving bone and give the rest to its still
- * target, in place. follow 0 is a full pin. A vertex with no free slot for the
- * target keeps its weights and is counted as skipped.
+ * target, in place, so every vertex shows the same share of the motion. The
+ * share goes onto the target, a bone that moves exactly like it, or a free
+ * slot. A vertex whose four slots all move folds its smallest moving
+ * influence into its largest to free one. follow 0 is a full pin.
  * @param {ArrayLike<number> & {[i: number]: number}} skinIndex
  * @param {ArrayLike<number> & {[i: number]: number}} skinWeight
- * @param {Map<number, number>} targets From pinTargets().
- * @param {number} follow Share left on the moving bone, 0 to 1.
- * @returns {{changed: number, skipped: number}}
+ * @param {Map<number, number>} targets From pinTargets(): moving bone → still target.
+ * @param {number} follow Share left on the moving bones, 0 to 1.
+ * @param {{sameMotion?: (a: number, b: number) => boolean}} [options]
+ * @returns {{changed: number, skipped: number, folded: number}}
  */
-export function blendWeights(skinIndex, skinWeight, targets, follow) {
-  if (targets.size === 0 || follow >= 1) return { changed: 0, skipped: 0 };
-  if (follow <= 0) return { changed: pinWeights(skinIndex, skinWeight, targets), skipped: 0 };
+export function blendWeights(skinIndex, skinWeight, targets, follow, { sameMotion = (a, b) => a === b } = {}) {
+  if (targets.size === 0 || follow >= 1) return { changed: 0, skipped: 0, folded: 0 };
+  if (follow <= 0) return { changed: pinWeights(skinIndex, skinWeight, targets), skipped: 0, folded: 0 };
   let changed = 0;
   let skipped = 0;
+  let folded = 0;
+  const slots = [0, 1, 2, 3];
   for (let base = 0; base < skinIndex.length; base += 4) {
+    const used = (k) => skinWeight[base + k] > 0;
+    const moving = () => slots.filter((k) => used(k) && targets.has(skinIndex[base + k]));
+    if (moving().length === 0) continue;
     let touched = false;
     let blocked = false;
-    for (let k = 0; k < 4; k++) {
-      const target = targets.get(skinIndex[base + k]);
-      if (target === undefined || !(skinWeight[base + k] > 0)) continue;
-      let slot = [0, 1, 2, 3].find((j) => j !== k && skinIndex[base + j] === target && skinWeight[base + j] > 0);
-      slot ??= [0, 1, 2, 3].find((j) => j !== k && !(skinWeight[base + j] > 0));
+    for (const target of new Set(moving().map((k) => targets.get(skinIndex[base + k])))) {
+      const own = () => moving().filter((k) => targets.get(skinIndex[base + k]) === target);
+      const findSlot = () => slots.find((k) => used(k) && !targets.has(skinIndex[base + k])
+        && sameMotion(skinIndex[base + k], target)) ?? slots.find((k) => !used(k));
+      let slot = findSlot();
+      if (slot === undefined && moving().length >= 2) {
+        const byWeight = moving().sort((a, b) => skinWeight[base + a] - skinWeight[base + b]);
+        const [smallest, largest] = [byWeight[0], byWeight[byWeight.length - 1]];
+        skinWeight[base + largest] += skinWeight[base + smallest];
+        skinWeight[base + smallest] = 0;
+        skinIndex[base + smallest] = 0;
+        folded += 1;
+        slot = findSlot();
+      }
       if (slot === undefined) {
         blocked = true;
         continue;
       }
-      const moved = skinWeight[base + k] * (1 - follow);
-      if (!(skinWeight[base + slot] > 0)) skinIndex[base + slot] = target;
+      let moved = 0;
+      for (const k of own()) {
+        moved += skinWeight[base + k] * (1 - follow);
+        skinWeight[base + k] *= follow;
+      }
+      if (!used(slot)) skinIndex[base + slot] = target;
       skinWeight[base + slot] += moved;
-      skinWeight[base + k] -= moved;
       touched = true;
     }
     if (touched) changed += 1;
     else if (blocked) skipped += 1;
   }
-  return { changed, skipped };
+  return { changed, skipped, folded };
 }

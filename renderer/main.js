@@ -57,7 +57,9 @@ import { createAmmoLoader } from "./ammo-loader.js";
 import { filterPhysics } from "./physics-groups.js";
 import { PhysicsLayer } from "./physics-layer.js";
 import { bindStoredToggle } from "./stored-toggle.js";
-import { PINNED_STRANDS, pinTargets, pinWeights, pinnedBones } from "./weight-pins.js";
+import {
+  FRINGE_FOLLOW, PINNED_STRANDS, STIFF_STRANDS, blendWeights, pinTargets, pinWeights, pinnedBones,
+} from "./weight-pins.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
 const MODEL_URL = "/yidhari-mmd/伊德海莉.pmx";
@@ -1746,8 +1748,9 @@ function setupPhysics(object, data) {
 
 /**
  * Move the static strands' vertex weights onto a still bone, so they ride
- * with her head instead of buzzing under physics. Their bodies are dropped
- * in buildPhysics(). The PMX stays untouched.
+ * with her head (their bodies are dropped in buildPhysics()), and blend the
+ * rest of the fringe so it shows only FRINGE_FOLLOW of its physics motion.
+ * The PMX stays untouched.
  * @param {THREE.SkinnedMesh} object Loaded PMX mesh.
  * @param {object} data Parsed PMX.
  * @returns {void}
@@ -1755,9 +1758,14 @@ function setupPhysics(object, data) {
 function pinStrands(object, data) {
   const driven = new Set(data.rigidBodies.filter((body) => body.type !== 0).map((body) => body.boneIndex));
   const bones = data.bones.map((bone) => ({ name: bone.name, parent: bone.parentIndex }));
-  const targets = pinTargets(bones, PINNED_STRANDS, (index) => driven.has(index));
+  const isDynamic = (index) => driven.has(index);
   const { skinIndex, skinWeight } = object.geometry.attributes;
-  if (pinWeights(skinIndex.array, skinWeight.array, targets) > 0) {
+  const pinned = pinWeights(skinIndex.array, skinWeight.array, pinTargets(bones, PINNED_STRANDS, isDynamic));
+  // The rest of the fringe shows only part of its physics motion (see docs/physics.md).
+  const stiff = blendWeights(skinIndex.array, skinWeight.array, pinTargets(bones, STIFF_STRANDS, isDynamic),
+    FRINGE_FOLLOW);
+  if (stiff.skipped > 0) console.warn(`Fringe: ${stiff.skipped} vertices had no free slot and keep full physics`);
+  if (pinned > 0 || stiff.changed > 0) {
     skinIndex.needsUpdate = true;
     skinWeight.needsUpdate = true;
   }

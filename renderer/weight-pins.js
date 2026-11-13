@@ -90,3 +90,50 @@ export function pinWeights(skinIndex, skinWeight, targets) {
   }
   return changed;
 }
+
+/** The rest of the front fringe, which follows only part of its physics motion. */
+export const STIFF_STRANDS = Object.freeze([
+  "Ctr_F_Hair_02", "Ctr_F_Hair_03", "Ctr_F_Hair_04", "Ctr_F_Hair_06", "Ctr_F_Hair_07", "Ctr_F_HairB_01",
+]);
+
+/** Share of the stiffened fringe's weight left on its moving bones (see docs/physics.md). */
+export const FRINGE_FOLLOW = 0.4;
+
+/**
+ * Keep `follow` of each weight on a moving bone and give the rest to its still
+ * target, in place. follow 0 is a full pin. A vertex with no free slot for the
+ * target keeps its weights and is counted as skipped.
+ * @param {ArrayLike<number> & {[i: number]: number}} skinIndex
+ * @param {ArrayLike<number> & {[i: number]: number}} skinWeight
+ * @param {Map<number, number>} targets From pinTargets().
+ * @param {number} follow Share left on the moving bone, 0 to 1.
+ * @returns {{changed: number, skipped: number}}
+ */
+export function blendWeights(skinIndex, skinWeight, targets, follow) {
+  if (targets.size === 0 || follow >= 1) return { changed: 0, skipped: 0 };
+  if (follow <= 0) return { changed: pinWeights(skinIndex, skinWeight, targets), skipped: 0 };
+  let changed = 0;
+  let skipped = 0;
+  for (let base = 0; base < skinIndex.length; base += 4) {
+    let touched = false;
+    let blocked = false;
+    for (let k = 0; k < 4; k++) {
+      const target = targets.get(skinIndex[base + k]);
+      if (target === undefined || !(skinWeight[base + k] > 0)) continue;
+      let slot = [0, 1, 2, 3].find((j) => j !== k && skinIndex[base + j] === target && skinWeight[base + j] > 0);
+      slot ??= [0, 1, 2, 3].find((j) => j !== k && !(skinWeight[base + j] > 0));
+      if (slot === undefined) {
+        blocked = true;
+        continue;
+      }
+      const moved = skinWeight[base + k] * (1 - follow);
+      if (!(skinWeight[base + slot] > 0)) skinIndex[base + slot] = target;
+      skinWeight[base + slot] += moved;
+      skinWeight[base + k] -= moved;
+      touched = true;
+    }
+    if (touched) changed += 1;
+    else if (blocked) skipped += 1;
+  }
+  return { changed, skipped };
+}

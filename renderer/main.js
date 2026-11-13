@@ -57,6 +57,7 @@ import { createAmmoLoader } from "./ammo-loader.js";
 import { filterPhysics } from "./physics-groups.js";
 import { PhysicsLayer } from "./physics-layer.js";
 import { bindStoredToggle } from "./stored-toggle.js";
+import { PINNED_STRANDS, pinTargets, pinWeights } from "./weight-pins.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
 const MODEL_URL = "/yidhari-mmd/伊德海莉.pmx";
@@ -1539,6 +1540,7 @@ function onModelLoaded(loaded, data) {
   setupThinkingPose(mesh);
   setupSway(mesh);
   setupIdleMotion(mesh);
+  pinStrands(mesh, data);
   setupPhysics(mesh, data);
 
   const morphCount = mesh.morphTargetInfluences?.length ?? 0;
@@ -1734,6 +1736,24 @@ function setupPhysics(object, data) {
     physicsRevealTimer = setTimeout(revealModel, PHYSICS_REVEAL_TIMEOUT_MS);
   }
   resolvePhysicsModel({ object, data });
+}
+
+/**
+ * Move the tiny front curl's vertex weights onto a still bone, so it rides
+ * with her head instead of buzzing under physics. The PMX stays untouched.
+ * @param {THREE.SkinnedMesh} object Loaded PMX mesh.
+ * @param {object} data Parsed PMX.
+ * @returns {void}
+ */
+function pinStrands(object, data) {
+  const driven = new Set(data.rigidBodies.filter((body) => body.type !== 0).map((body) => body.boneIndex));
+  const bones = data.bones.map((bone) => ({ name: bone.name, parent: bone.parentIndex }));
+  const targets = pinTargets(bones, PINNED_STRANDS, (index) => driven.has(index));
+  const { skinIndex, skinWeight } = object.geometry.attributes;
+  if (pinWeights(skinIndex.array, skinWeight.array, targets) > 0) {
+    skinIndex.needsUpdate = true;
+    skinWeight.needsUpdate = true;
+  }
 }
 
 /**

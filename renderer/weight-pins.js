@@ -6,13 +6,9 @@
  * Pure module: no DOM or Three.js imports, so `node --test` covers it.
  */
 
-/**
- * Static strands: the spiral curl and the strand over the brow, which buzzed
- * at frame rate and clipped with physics on.
- */
+/** The static strand: the spiral curl, which buzzed at frame rate and clipped with physics on. */
 export const PINNED_STRANDS = Object.freeze([
   "Ctr_F_Hair_012", "Ctr_F_Hair_013", "Ctr_F_Hair_014", "Ctr_F_Hair_015", "Ctr_F_Hair_016", "Ctr_F_Hair_018",
-  "Ctr_F_Hair_09", "Ctr_F_Hair_010",
 ]);
 
 /**
@@ -94,6 +90,7 @@ export function pinWeights(skinIndex, skinWeight, targets) {
 /** The rest of the front fringe, which follows only part of its physics motion. */
 export const STIFF_STRANDS = Object.freeze([
   "Ctr_F_Hair_02", "Ctr_F_Hair_03", "Ctr_F_Hair_04", "Ctr_F_Hair_06", "Ctr_F_Hair_07", "Ctr_F_HairB_01",
+  "Ctr_F_Hair_09", "Ctr_F_Hair_010",
 ]);
 
 /** Share of the stiffened fringe's weight left on its moving bones (see docs/physics.md). */

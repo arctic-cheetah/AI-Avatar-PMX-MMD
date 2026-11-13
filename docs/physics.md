@@ -151,6 +151,18 @@ its **root** is:
    still `013` body, with the 40 % blend like the rest of the hair. With a
    still root, they can't swing far.
 
+Measured in the browser (head frame, 6 s settled, sway on for "swaying"):
+
+| | Offset from drawn | Standing still | Swaying |
+|---|---|---|---|
+| Curl root (`012`, `013`) | 0.002 | 0.007 units/s | 0.006 units/s |
+| Curl tips (`014`–`016`, `018`) | 0.061 | 0.050 units/s (range 0.002) | 0.048 units/s (range 0.004) |
+| Fringe base `02`/`03` | 0.021 | 0.004 units/s | 0.015 units/s (still sways: the weld is gone) |
+
+The tips settle 0.06 units from where they were drawn, so the spiral closes
+a little. With the blend, 180 hair vertices have no free influence slot and
+keep full physics.
+
 The strand over the brow (`Ctr_F_Hair_09` → `010`, strand D) was static for a
 while too. Once the loader-params fix had calmed the buzz, it went back to
 physics with the 40 % blend below (14 November 2026), so it moves with the

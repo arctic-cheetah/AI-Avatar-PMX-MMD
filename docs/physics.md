@@ -169,7 +169,7 @@ fringe. Things checked:
 The 5 Hz rate matches the beat between 60 fps frames and the default 1/65 s
 physics step.
 
-### Stiffened fringe: blending its weights
+### Stiffened hair: blending its weights
 
 With strand D static, the rest of the fringe settles 0.04–0.09 units away
 from where it was drawn, and so it clips through D. Stiffening it **inside the
@@ -185,17 +185,20 @@ loader-params fix):
 
 Tight limits and stiff springs make the solver fight itself, and lighter
 gravity lets the strands drift further. So the fringe is stiffened **on the
-skinning side** instead. `blendWeights` keeps `FRINGE_FOLLOW` of each
+skinning side** instead. `blendWeights` keeps `HAIR_FOLLOW` of each
 vertex's weight on its moving fringe bone and gives the rest to the nearest
 still ancestor (`Ctr_F_Hair_01`, or `頭` for `Ctr_F_HairB_01`). The strands
 then show that share of their physics motion and offset, while the solver is
 unchanged. A vertex with no free influence slot keeps its weights and is
 counted as skipped.
 
-Stiffened strands: `Ctr_F_Hair_02`, `03`, `04`, `06`, `07`, `09`, `010` and
-`Ctr_F_HairB_01`.
+Stiffened strands: **all of her hair** except the static curl, i.e. every
+`Ctr_[BFLRT]_Hair…` bone apart from the `…錘` weights (`stiffStrands()`).
+It started with the front fringe and was extended to the side, back and top
+hair on 14 November 2026, after the fringe stopped oscillating with it. The
+share is `HAIR_FOLLOW` (was `FRINGE_FOLLOW`).
 
-`FRINGE_FOLLOW` is **0.4**, chosen from these browser measurements (vertex
+`HAIR_FOLLOW` is **0.4**, chosen from these browser measurements (vertex
 motion in the head's frame, sway on, offset 3 s after physics starts):
 
 | Follow | Offset: tips / base | Swaying: tips / base |

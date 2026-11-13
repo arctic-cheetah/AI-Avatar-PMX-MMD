@@ -179,6 +179,20 @@ counted as skipped.
 
 Stiffened strands: `Ctr_F_Hair_02`, `03`, `04`, `06`, `07` and `Ctr_F_HairB_01`.
 
+`FRINGE_FOLLOW` is **0.4**, chosen from these browser measurements (vertex
+motion in the head's frame, sway on, offset 3 s after physics starts):
+
+| Follow | Offset: tips / base | Swaying: tips / base |
+|---|---|---|
+| 1 (unchanged) | 0.081 / 0.041 | 0.031 / 0.018 units/s |
+| 0.6 | 0.051 / 0.028 | 0.018 / 0.012 units/s |
+| **0.4** | **0.039 / 0.022** | **0.013 / 0.009 units/s** |
+| 0.25 | 0.024 / 0.016 | 0.009 / 0.007 units/s |
+
+At 0.4 the fringe stays within about half its old offset of strand D and
+still moves visibly with the sway. 26 vertices have all four influence slots
+in use, so they keep full physics; the face capture showed no seam.
+
 ### Frame order
 
 ```

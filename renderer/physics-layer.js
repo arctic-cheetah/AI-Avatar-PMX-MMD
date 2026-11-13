@@ -15,8 +15,27 @@ export const PHYSICS_WARMUP_CYCLES = 120;
 
 const GROUP_IDS = new Set(PHYSICS_GROUPS.map((group) => group.id));
 
+/** Physics steps per second: the PMX default, up to two per 60 fps frame. */
+export const PHYSICS_RATE_MIN = 65;
+export const PHYSICS_RATE_MAX = 120;
+export const PHYSICS_RATE_DEFAULT = 120;
+
 /**
- * @typedef {{update(delta: number): void, reset(): void, warmup(cycles: number): void, dispose(): void}} PhysicsRun
+ * MMDPhysics step settings for a rate. maxStepNum keeps the catch-up of the
+ * PMX default (3 steps of 1/65 s, about 46 ms) at any rate.
+ * @param {unknown} rate Steps per second; clamped, nonsense falls back to the default.
+ * @returns {{rate: number, unitStep: number, maxStepNum: number}}
+ */
+export function physicsStep(rate) {
+  let hz = Number(rate);
+  if (rate === undefined || rate === null || rate === "" || !Number.isFinite(hz)) hz = PHYSICS_RATE_DEFAULT;
+  hz = Math.min(PHYSICS_RATE_MAX, Math.max(PHYSICS_RATE_MIN, Math.round(hz)));
+  return { rate: hz, unitStep: 1 / hz, maxStepNum: Math.ceil((hz * 3) / PHYSICS_RATE_MIN) };
+}
+
+/**
+ * @typedef {{update(delta: number): void, reset(): void, warmup(cycles: number): void, dispose(): void,
+ *   setStep?: (step: {unitStep: number, maxStepNum: number}) => void}} PhysicsRun
  */
 
 export class PhysicsLayer {
@@ -34,6 +53,7 @@ export class PhysicsLayer {
     this._run = null;
     this._generation = 0;
     this._loading = false;
+    this._step = physicsStep(PHYSICS_RATE_DEFAULT);
     this.status = "off";
     this.error = null;
     /** @type {(status: string) => void} */
@@ -43,6 +63,22 @@ export class PhysicsLayer {
   /** @returns {Set<string>} A copy of the enabled group ids. */
   get groups() {
     return new Set(this._groups);
+  }
+
+  /** @returns {number} Physics steps per second. */
+  get stepRate() {
+    return this._step.rate;
+  }
+
+  /**
+   * Set the physics step rate. A running build takes it at once; new builds
+   * take it before their warm-up.
+   * @param {unknown} rate Steps per second, 65 to 120.
+   * @returns {void}
+   */
+  setStepRate(rate) {
+    this._step = physicsStep(rate);
+    this._run?.setStep?.(this._step);
   }
 
   /** @returns {boolean} Whether physics is switched on. */
@@ -133,6 +169,7 @@ export class PhysicsLayer {
 
   /** @param {PhysicsRun} run */
   _start(run) {
+    run.setStep?.(this._step);
     run.reset();
     run.warmup(this._warmupCycles);
     this._setStatus("on");

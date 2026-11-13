@@ -96,6 +96,11 @@
       <label class="check" title="Hair, hat, tails, bag and chains move with her. Switch off to save CPU."><input id="physics-toggle" type="checkbox" checked>Physics · 物理</label>
       <label class="check sub-check"><input id="chest-physics-toggle" type="checkbox">Chest physics · 胸</label>
       <label class="check sub-check"><input id="hip-physics-toggle" type="checkbox">Hip physics · 腰</label>
+      <div class="slider-row" title="How many physics steps per second. 120 (two per 60 fps frame) is the smoothest; 65 is the model's default.">
+        <label for="physics-rate">Physics steps</label>
+        <input id="physics-rate" type="range" min="65" max="120" step="5" value="120">
+        <output id="physics-rate-value" for="physics-rate">120 /s</output>
+      </div>
       <p id="physics-status" class="note" role="status"></p>
       <label class="check"><input id="cursor-gaze-toggle" type="checkbox" checked disabled>Cursor gaze tracking · 視線追従</label>
       <label class="check"><input id="camera-gaze-toggle" type="checkbox" disabled>Camera gaze tracking · カメラ追従</label>

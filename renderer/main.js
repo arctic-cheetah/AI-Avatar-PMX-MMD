@@ -114,6 +114,8 @@ const physicsToggle = document.querySelector("#physics-toggle");
 const chestPhysicsToggle = document.querySelector("#chest-physics-toggle");
 const hipPhysicsToggle = document.querySelector("#hip-physics-toggle");
 const physicsStatus = document.querySelector("#physics-status");
+const physicsRateInput = document.querySelector("#physics-rate");
+const physicsRateOutput = document.querySelector("#physics-rate-value");
 const gazeStatus = document.querySelector("#gaze-status");
 const idleToggle = document.querySelector("#idle-toggle");
 const idleAfterInput = document.querySelector("#idle-after");
@@ -1669,6 +1671,10 @@ async function buildPhysics(groups) {
     update: (delta) => physics.update(delta),
     reset: () => physics.reset(),
     warmup: (cycles) => physics.warmup(cycles),
+    setStep({ unitStep, maxStepNum }) {
+      physics.unitStep = unitStep;
+      physics.maxStepNum = maxStepNum;
+    },
     dispose() {
       for (const constraint of physics.constraints) physicsWorld.removeConstraint(constraint.constraint);
       for (const body of physics.bodies) physicsWorld.removeRigidBody(body.body);
@@ -1719,6 +1725,27 @@ physics.onStatus = () => {
 };
 
 bindStoredToggle(physicsToggle, "yidhari.physics", (on) => physics.setEnabled(on));
+const PHYSICS_RATE_KEY = "yidhari.physics.rate";
+
+/**
+ * Show and apply the physics step rate, and remember it when storage allows.
+ * @param {unknown} rate Steps per second.
+ * @param {boolean} save Whether to store it.
+ * @returns {void}
+ */
+function applyPhysicsRate(rate, save) {
+  physics.setStepRate(rate);
+  physicsRateInput.value = String(physics.stepRate);
+  physicsRateOutput.textContent = `${physics.stepRate} /s`;
+  if (!save) return;
+  try { localStorage.setItem(PHYSICS_RATE_KEY, String(physics.stepRate)); } catch { /* Session-only. */ }
+}
+
+let storedPhysicsRate = null;
+try { storedPhysicsRate = localStorage.getItem(PHYSICS_RATE_KEY); } catch { /* Use the default. */ }
+applyPhysicsRate(storedPhysicsRate ?? undefined, false);
+physicsRateInput.addEventListener("input", () => applyPhysicsRate(physicsRateInput.value, true));
+
 bindStoredToggle(chestPhysicsToggle, "yidhari.physics.chest", (on) => physics.setGroup("chest", on),
   { defaultOn: false });
 bindStoredToggle(hipPhysicsToggle, "yidhari.physics.hips", (on) => physics.setGroup("hips", on),

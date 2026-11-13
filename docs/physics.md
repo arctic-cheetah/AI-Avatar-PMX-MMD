@@ -129,20 +129,27 @@ tests cover it with a fake build.
   disposing removes the old rigid bodies and joints from the shared world.
   Rebuilding never creates another world, so toggling doesn't leak worlds.
 
-### Static strand: the spiral curl
+### The spiral curl: a still root, tips on physics
 
 The little spiral curl at the front (`Ctr_F_Hair_012` → `013` → `014` → `015`
-→ `016`, plus `018`) **buzzed at frame rate even while she stood still**
-(range 0.006–0.019 units, but a path of 0.05–0.13 units/s) and clipped.
-`renderer/weight-pins.js` makes it **static** at load time, and the PMX stays
-untouched:
+→ `016`, plus the branch `018`) **buzzed at frame rate even while she stood
+still** (range 0.006–0.019 units, but a path of 0.05–0.13 units/s) and
+clipped. At first the whole curl was made static. Since 14 November 2026 only
+its **root** is:
 
-1. **Weights:** each vertex's weight on those bones moves to the nearest
-   ancestor that physics doesn't move (`Ctr_F_Hair_01`, a plain child of `頭`).
-   Each vertex still sums to 1, so the curl rides with her head.
-2. **Bodies:** the curl's 12 rigid bodies (each bone plus its `…錘`) are
-   dropped before `MMDPhysics` is built, through `filterPhysics`'s `drop`
-   option, together with their joints.
+1. **Root weights:** each vertex's weight on `012` and `013` moves to the
+   nearest ancestor that physics doesn't move (`Ctr_F_Hair_01`, a plain child
+   of `頭`). Each vertex still sums to 1.
+2. **Root bodies:** the `012` and `013` bodies become **kinematic** (type 0):
+   they follow their bones, which no longer move relative to her head. Their
+   `…錘` weight bodies (`CURL_ROOT_WEIGHTS`) are dropped. The locked cross joint
+   `Ctr_F_Hair_012横` is dropped too, because it would weld the still root to
+   the moving fringe base `02` and hold the base still. `kinematicBodies()`
+   keeps every joint within the curl's own bone lineage (`頭` → `012` → `013` →
+   tips).
+3. **Tips:** `014`, `015`, `016` and `018` stay on physics, hanging from the
+   still `013` body, with the 40 % blend like the rest of the hair. With a
+   still root, they can't swing far.
 
 The strand over the brow (`Ctr_F_Hair_09` → `010`, strand D) was static for a
 while too. Once the loader-params fix had calmed the buzz, it went back to

@@ -51,7 +51,7 @@ import { addSeeThroughBrows, bindSeeThroughBrowsToggle } from "./see-through-bro
 import { installCollapsiblePanel } from "./collapsible-panel.js";
 import { FrameLoop, PopOut, popupWindow } from "./pop-out.js";
 import { IDLE_STATE_LABELS, IdleController, bindIdleSettings, idleBlocked } from "./idle-behaviour.js";
-import { ACTION_LABELS, IDLE_MOTION, IdleMotion, bindActionSettings } from "./idle-motion.js";
+import { ACTION_LABELS, IDLE_MOTION, IdleMotion, bindActionSettings, manualPlayBlocked } from "./idle-motion.js";
 import { fetchTurn, turnFile } from "./turn-replay.js";
 import { createAmmoLoader } from "./ammo-loader.js";
 import { filterPhysics } from "./physics-groups.js";
@@ -275,6 +275,61 @@ function actionCheckboxes(labels, container, prefix) {
   return boxes;
 }
 bindActionSettings(idleMotion, actionCheckboxes(ACTION_LABELS, "#actions", "action"));
+
+/**
+ * One play button per action label (#164), disabled until refreshActionPlay
+ * allows them. A click plays that action once; the same button again stops it.
+ * @param {Record<string, string>} labels ACTION_LABELS.
+ * @param {string} container Selector of the button grid.
+ * @returns {Record<string, HTMLButtonElement>}
+ */
+function actionPlayButtons(labels, container) {
+  const buttons = {};
+  for (const [name, label] of Object.entries(labels)) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.action = name;
+    button.textContent = label;
+    button.disabled = true;
+    button.setAttribute("aria-pressed", "false");
+    button.addEventListener("click", () => {
+      idleMotion.toggle(name);
+      refreshActionPlay();
+    });
+    document.querySelector(container).append(button);
+    buttons[name] = button;
+  }
+  return buttons;
+}
+const actionButtons = actionPlayButtons(ACTION_LABELS, "#action-play-controls");
+const actionPlayStatus = document.querySelector("#action-play-status");
+let shownActionPlay = null;
+
+/**
+ * Gate the play buttons each frame and stop a playing action when they are
+ * gated: before the model, idle off, blocked, a held pose, stretching or waking.
+ * @returns {void}
+ */
+function refreshActionPlay() {
+  const reason = manualPlayBlocked({
+    loaded: Boolean(mesh && expressions),
+    idleEnabled: idle.enabled,
+    blocked: idle.blocked,
+    held: Boolean(globalThis.__yidhariIdlePose),
+    state: idle.state,
+  });
+  if (reason) idleMotion.stop();
+  const playing = idleMotion.playing;
+  const shown = `${reason}|${playing}`;
+  if (shown === shownActionPlay) return;
+  shownActionPlay = shown;
+  for (const [name, button] of Object.entries(actionButtons)) {
+    button.disabled = Boolean(reason);
+    button.setAttribute("aria-pressed", String(playing === name));
+  }
+  actionPlayStatus.textContent = reason
+    ?? (playing ? `Playing: ${ACTION_LABELS[playing]}` : "Ready: click an action to play it once");
+}
 /**
  * Idle motion bones: which angle of the pose each one takes, and its sign
  * (checked on the model: negative pitch leans back, see docs/idle-behaviours.md).
@@ -296,7 +351,11 @@ const idleEuler = new THREE.Euler();
 const idleQuat = new THREE.Quaternion();
 // Only conversation keeps her awake: sent chat, voice input and bridge events.
 // The mouse, keys and cursor gaze do not (see docs/idle-behaviours.md).
-const noteActivity = () => idle.activity();
+// Activity also ends an action played from the panel (#164), without the panel waking her.
+const noteActivity = () => {
+  idle.activity();
+  idleMotion.stop();
+};
 const cameraGaze = new CameraGaze((target) => gaze.setCamera(target, cameraGazeToggle.checked));
 
 /**
@@ -977,6 +1036,7 @@ function updateIdle(delta) {
     }
     idleMood = null;
   }
+  refreshActionPlay();
   // A held pose lets previews and comparison grids show one motion on demand.
   idlePose = globalThis.__yidhariIdlePose
     ? { glance: null, tilt: 0, chest: 0, shoulders: 0, shoulderLeft: 0, shoulderRight: 0, back: 0, headPitch: 0, yawn: 0,

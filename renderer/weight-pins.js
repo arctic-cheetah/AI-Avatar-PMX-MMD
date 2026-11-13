@@ -87,14 +87,22 @@ export function pinWeights(skinIndex, skinWeight, targets) {
   return changed;
 }
 
-/** The rest of the front fringe, which follows only part of its physics motion. */
-export const STIFF_STRANDS = Object.freeze([
-  "Ctr_F_Hair_02", "Ctr_F_Hair_03", "Ctr_F_Hair_04", "Ctr_F_Hair_06", "Ctr_F_Hair_07", "Ctr_F_HairB_01",
-  "Ctr_F_Hair_09", "Ctr_F_Hair_010",
-]);
+/** Hair bones: every Ctr_[BFLRT]_Hair… bone; their …錘 weight bones carry no vertices. */
+const HAIR_BONE = /^Ctr_[BFLRT]_Hair/;
 
-/** Share of the stiffened fringe's weight left on its moving bones (see docs/physics.md). */
-export const FRINGE_FOLLOW = 0.4;
+/**
+ * The hair strands that follow only part of their physics motion: all of her
+ * hair except the static curl and the …錘 weight bones.
+ * @param {Iterable<string>} boneNames Every bone name in the rig.
+ * @returns {string[]} In rig order.
+ */
+export function stiffStrands(boneNames) {
+  const pinned = new Set(PINNED_STRANDS);
+  return [...boneNames].filter((name) => HAIR_BONE.test(name) && !name.endsWith("錘") && !pinned.has(name));
+}
+
+/** Share of the stiffened hair's weight left on its moving bones (see docs/physics.md). */
+export const HAIR_FOLLOW = 0.4;
 
 /**
  * Keep `follow` of each weight on a moving bone and give the rest to its still

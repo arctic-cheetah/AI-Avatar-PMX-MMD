@@ -198,6 +198,19 @@ It started with the front fringe and was extended to the side, back and top
 hair on 14 November 2026, after the fringe stopped oscillating with it. The
 share is `HAIR_FOLLOW` (was `FRINGE_FOLLOW`).
 
+With all hair blended (browser, head frame, 6 s settled):
+
+| Strands | Offset from drawn | Standing still | Swaying |
+|---|---|---|---|
+| Side locks (`L/R_HairA`) | 0.054 (was 0.28–0.38) | 0.005 units/s | 0.016 units/s (was 0.08–0.09) |
+| Back hair (`B_Hair`, `L/R_HairB`, `L_HairC`) | 0.068 | 0.012 units/s | 0.023 units/s |
+| Fringe tips / brow strand D | 0.040 / 0.030 | 0.004 units/s | 0.015 / 0.013 units/s |
+| Side strand `Ctr_F_HairB_01` | 0.027 | 0.063 units/s | 0.082 units/s |
+
+140 hair vertices have all four influence slots in use and keep full physics.
+The face capture showed no seam. `Ctr_F_HairB_01` is the one strand that still
+buzzes a little.
+
 `HAIR_FOLLOW` is **0.4**, chosen from these browser measurements (vertex
 motion in the head's frame, sway on, offset 3 s after physics starts):
 

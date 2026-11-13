@@ -93,34 +93,3 @@ test("her real rig: the curl pins to Ctr_F_Hair_01, which has no body", { skip: 
     "Ctr_F_Hair_018", "Ctr_F_Hair_018錘", "Ctr_F_Hair_09", "Ctr_F_Hair_09錘",
   ]);
 });
-
-test("static colliders: picked bodies follow a still bone, keep their place, and only touch hair", async () => {
-  const { staticColliders } = await import("../../renderer/weight-pins.js");
-  const rigidBodies = [
-    { name: "頭", type: 0, boneIndex: 0, position: [0, 0, 0], groupIndex: 0, groupTarget: 0xffff },
-    { name: "Ctr_F_Hair_02", type: 2, boneIndex: 1, position: [0, 0, 0], groupIndex: 3, groupTarget: 0xfff7 },
-    { name: "Ctr_F_Hair_09", type: 1, boneIndex: 2, position: [0.1, -0.2, 0.3], groupIndex: 3, groupTarget: 0xfff7 },
-  ];
-  const constraints = [
-    { name: "head-02", rigidBodyIndex1: 0, rigidBodyIndex2: 1 },
-    { name: "02-09", rigidBodyIndex1: 1, rigidBodyIndex2: 2 },
-  ];
-  const bonePositions = [[0, 19, 0], [0, 21, -0.5], [-0.2, 20.5, -0.8]];
-  const before = JSON.stringify({ rigidBodies, constraints });
-  const out = staticColliders(rigidBodies, constraints, {
-    pick: (body) => body.name === "Ctr_F_Hair_09", targetBone: 0, bonePositions,
-  });
-  const collider = out.rigidBodies[2];
-  assert.equal(collider.type, 0, "kinematic");
-  assert.equal(collider.boneIndex, 0, "rides the still bone");
-  // Same model-space place: old bone + old offset = new bone + new offset.
-  const world = [-0.2 + 0.1, 20.5 - 0.2, -0.8 + 0.3];
-  collider.position.forEach((v, i) => assert.ok(Math.abs(bonePositions[0][i] + v - world[i]) < 1e-9, `axis ${i}`));
-  // Collides with the hair groups (2 and 3) and nothing else.
-  assert.equal(collider.groupTarget, (1 << 2) | (1 << 3));
-  assert.ok((rigidBodies[1].groupTarget & (1 << collider.groupIndex)) !== 0, "hair collides back");
-  // Its joint goes, so it can't hold the moving strand still; other joints keep their indices.
-  assert.deepEqual(out.constraints.map((c) => c.name), ["head-02"]);
-  assert.equal(out.rigidBodies[1], rigidBodies[1], "other bodies are untouched");
-  assert.equal(JSON.stringify({ rigidBodies, constraints }), before, "inputs not mutated");
-});

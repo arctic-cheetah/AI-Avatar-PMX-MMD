@@ -146,6 +146,17 @@ aren't changed, apart from the 40 % blend that the rest of the hair has too.
 Earlier versions tried making the whole curl static (weights pinned and bodies
 dropped), and giving `012` and `013` kinematic bodies with the tips on physics.
 
+Measured in the browser (head frame, 6 s settled):
+
+| | Offset from drawn | Standing still | Swaying |
+|---|---|---|---|
+| Curl root `012` | 0.011 | 0.004 units/s | 0.004 units/s |
+| Spiral (`013`–`018`) | **0.020** (was 0.061 with its tips on physics) | 0.013 units/s | 0.011 units/s |
+
+Spiral shape: pairwise distances between its vertices change by 0.0015 units
+on average (0.038 at most, at blended edges), so it keeps its drawn shape.
+218 hair vertices now have no free influence slot and keep full physics.
+
 The strand over the brow (`Ctr_F_Hair_09` → `010`, strand D) was static for a
 while too. Once the loader-params fix had calmed the buzz, it went back to
 physics with the 40 % blend below (14 November 2026), so it moves with the

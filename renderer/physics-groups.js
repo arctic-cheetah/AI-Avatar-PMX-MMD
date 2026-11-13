@@ -15,7 +15,10 @@ const KINEMATIC = 0;
  * @type {ReadonlyArray<Readonly<{id: string, label: string, pattern: RegExp, enabledByDefault: boolean}>>}
  */
 export const PHYSICS_GROUPS = Object.freeze([
-  { id: "hair", label: "Hair", pattern: /^Ctr_[BFLRT]_Hair/, enabledByDefault: true },
+  // The fringe sags onto her eyes under the PMX's own joints, so it follows
+  // its bones unless switched on (see docs/physics.md).
+  { id: "fringe", label: "Fringe", pattern: /^Ctr_F_Hair/, enabledByDefault: false },
+  { id: "hair", label: "Hair", pattern: /^Ctr_[BLRT]_Hair/, enabledByDefault: true },
   { id: "hat", label: "Hat", pattern: /^Ctr_Hat/, enabledByDefault: true },
   { id: "tails", label: "Tails", pattern: /Tail/, enabledByDefault: true },
   { id: "bag", label: "Bag", pattern: /^Ctr_Bag/, enabledByDefault: true },

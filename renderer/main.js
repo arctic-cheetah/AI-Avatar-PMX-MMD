@@ -108,6 +108,7 @@ const cameraGazeToggle = document.querySelector("#camera-gaze-toggle");
 const restingFaceToggle = document.querySelector("#resting-face-toggle");
 const seeThroughBrowsToggle = document.querySelector("#see-through-brows-toggle");
 const physicsToggle = document.querySelector("#physics-toggle");
+const fringePhysicsToggle = document.querySelector("#fringe-physics-toggle");
 const chestPhysicsToggle = document.querySelector("#chest-physics-toggle");
 const hipPhysicsToggle = document.querySelector("#hip-physics-toggle");
 const physicsStatus = document.querySelector("#physics-status");
@@ -1708,6 +1709,8 @@ physics.onStatus = () => {
 };
 
 bindStoredToggle(physicsToggle, "yidhari.physics", (on) => physics.setEnabled(on));
+bindStoredToggle(fringePhysicsToggle, "yidhari.physics.fringe", (on) => physics.setGroup("fringe", on),
+  { defaultOn: false });
 bindStoredToggle(chestPhysicsToggle, "yidhari.physics.chest", (on) => physics.setGroup("chest", on),
   { defaultOn: false });
 bindStoredToggle(hipPhysicsToggle, "yidhari.physics.hips", (on) => physics.setGroup("hips", on),

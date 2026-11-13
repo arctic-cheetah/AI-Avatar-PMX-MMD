@@ -90,6 +90,17 @@ to download.
   physics is unavailable, the toggle shows the error and the rest of the
   avatar keeps working.
 
+### Body parameters
+
+Physics is built from the **loader's** body and joint params
+(`mesh.geometry.userData.MMD`), not the raw parsed PMX. `MMDLoader` makes them
+bone-relative and, like MMD, turns a physics+bone (type 2) body into type 1
+when it is jointed to its parent bone's dynamic body. Type 2 there makes the
+chain fight its parent and **vibrate**. On her rig that changes 40 bodies: most
+of the hair chains, five hat bodies, the badge and a strap. #114 first built
+from the raw PMX, which skipped this fix, and the hair buzzed at frame rate
+while she stood still.
+
 ### The physics layer
 
 `renderer/physics-layer.js` owns the lifecycle. It is a pure module, so Node

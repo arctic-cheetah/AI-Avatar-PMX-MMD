@@ -24,8 +24,8 @@ function rig() {
   const rigidBodies = [
     body("頭", KINEMATIC), //                  0
     body("下半身", KINEMATIC), //              1
-    body("Ctr_F_Hair_01", PHYSICS_BONE), //    2
-    body("Ctr_F_Hair_01錘", PHYSICS), //       3
+    body("Ctr_B_Hair_01", PHYSICS_BONE), //    2
+    body("Ctr_B_Hair_01錘", PHYSICS), //       3
     body("Ctr_Hat_03", PHYSICS_BONE), //       4
     body("左Tail1_1", PHYSICS), //             5
     body("左胸上", PHYSICS), //                6
@@ -52,7 +52,7 @@ const names = (bodies) => bodies.map((b) => b.name);
 
 test("groups cover the rig's simulated parts, each with a label and default", () => {
   assert.deepEqual(ALL, [
-    "hair", "hat", "tails", "bag", "chains", "butterflies", "footRings", "chest", "hips",
+    "fringe", "hair", "hat", "tails", "bag", "chains", "butterflies", "footRings", "chest", "hips",
   ]);
   for (const group of PHYSICS_GROUPS) {
     assert.equal(typeof group.label, "string", group.id);
@@ -62,7 +62,10 @@ test("groups cover the rig's simulated parts, each with a label and default", ()
 
 test("dynamic bodies are classified by name, including their weight (錘) bodies", () => {
   const cases = {
-    Ctr_F_Hair_013: "hair",
+    Ctr_F_Hair_013: "fringe",
+    Ctr_F_Hair_010錘: "fringe",
+    Ctr_F_HairB_01: "fringe",
+    Ctr_B_HairA_03: "hair",
     Ctr_L_HairA_01錘: "hair",
     Ctr_T_Hair_01: "hair",
     Ctr_Hat_05錘: "hat",
@@ -95,7 +98,7 @@ test("an unknown dynamic body is 'other', so a new rig part is never silently lo
   assert.equal(classifyBody(body("Yid_L_Sleeve_01", PHYSICS)), "other");
 });
 
-test("defaults keep hair, hat, tails, bag and chains, and leave the rest off", () => {
+test("defaults keep hair, hat, tails, bag and chains; the fringe follows its bones", () => {
   assert.deepEqual([...defaultPhysicsGroups()].sort(), ["bag", "chains", "hair", "hat", "tails"]);
 });
 
@@ -171,7 +174,7 @@ test("the input params are never mutated", () => {
 });
 
 test("a joint with an out-of-range body index is dropped, not passed to Ammo", () => {
-  const rigidBodies = [body("頭", KINEMATIC), body("Ctr_F_Hair_01", PHYSICS_BONE)];
+  const rigidBodies = [body("頭", KINEMATIC), body("Ctr_B_Hair_01", PHYSICS_BONE)];
   const constraints = [joint("ok", 0, 1), joint("bad", 0, 7), joint("none", -1, 1)];
   const out = filterPhysics(rigidBodies, constraints, ["hair"]);
   assert.deepEqual(out.constraints.map((c) => c.name), ["ok"]);
@@ -191,12 +194,14 @@ test("her real rig: every dynamic body has a group and the defaults leave no orp
     if (group) counts[group] = (counts[group] ?? 0) + 1;
   }
   assert.deepEqual(counts, {
-    hair: 80, hat: 12, tails: 69, bag: 25, chains: 23,
+    fringe: 28, hair: 52, hat: 12, tails: 69, bag: 25, chains: 23,
     butterflies: 24, footRings: 16, chest: 6, hips: 16,
   });
   const out = filterPhysics(data.rigidBodies, data.constraints, defaultPhysicsGroups());
   assert.deepEqual(out.orphaned, []);
-  assert.equal(out.rigidBodies.filter((rb) => rb.type !== KINEMATIC).length, 80 + 12 + 69 + 25 + 23);
+  assert.equal(out.rigidBodies.filter((rb) => rb.type !== KINEMATIC).length, 52 + 12 + 69 + 25 + 23);
+  // The fringe on its own still hangs from the head, so it never orphans.
+  assert.deepEqual(filterPhysics(data.rigidBodies, data.constraints, ["fringe"]).orphaned, []);
   // Bag without chains has no anchor left: it must be dropped, not left to fall.
   const bagOnly = filterPhysics(data.rigidBodies, data.constraints, ["bag"]);
   assert.equal(bagOnly.orphaned.length, 25);

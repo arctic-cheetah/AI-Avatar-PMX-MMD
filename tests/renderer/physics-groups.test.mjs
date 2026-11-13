@@ -177,6 +177,24 @@ test("a joint with an out-of-range body index is dropped, not passed to Ammo", (
   assert.deepEqual(out.constraints.map((c) => c.name), ["ok"]);
 });
 
+test("a drop predicate removes chosen bodies, their joints and any orphans, whatever their group", () => {
+  const { rigidBodies, constraints } = rig();
+  const out = filterPhysics(rigidBodies, constraints, ALL, { drop: (b) => b.name === "Ctr_B_Hair_01" });
+  assert.ok(!names(out.rigidBodies).includes("Ctr_B_Hair_01"));
+  // Its weight body hung only from it, so it goes too and is reported.
+  assert.deepEqual(out.orphaned, ["Ctr_B_Hair_01錘"]);
+  assert.ok(!out.constraints.some((c) => ["head-hair", "hair-weight"].includes(c.name)));
+  for (const c of out.constraints) {
+    assert.ok(c.rigidBodyIndex1 < out.rigidBodies.length && c.rigidBodyIndex2 < out.rigidBodies.length);
+  }
+});
+
+test("a drop predicate never removes kinematic anchors", () => {
+  const { rigidBodies, constraints } = rig();
+  const out = filterPhysics(rigidBodies, constraints, ALL, { drop: () => true });
+  assert.deepEqual(names(out.rigidBodies), ["頭", "下半身"]);
+});
+
 const PMX = new URL("../../yidhari-mmd/伊德海莉.pmx", import.meta.url);
 const PARSER = new URL("../../node_modules/three/examples/jsm/libs/mmdparser.module.js", import.meta.url);
 const haveModel = existsSync(PMX) && existsSync(PARSER);

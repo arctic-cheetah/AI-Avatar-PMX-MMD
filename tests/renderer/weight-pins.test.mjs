@@ -2,22 +2,30 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
-import { PINNED_STRANDS, pinTargets, pinWeights } from "../../renderer/weight-pins.js";
+import { PINNED_STRANDS, pinTargets, pinWeights, pinnedBones } from "../../renderer/weight-pins.js";
 
-// 0 head → 1 strand root (no body) → 2 curl (dynamic) → 3 curl tip (dynamic); 4 other hair (dynamic)
+// 0 head → 1 strand root (no body) → 2 curl (dynamic) → 3 curl tip (dynamic) → 5 its weight (錘);
+// 4 other hair (dynamic)
 const bones = [
   { name: "頭", parent: -1 },
   { name: "Ctr_F_Hair_01", parent: 0 },
   { name: "Ctr_F_Hair_012", parent: 1 },
   { name: "Ctr_F_Hair_013", parent: 2 },
   { name: "Ctr_L_HairA_01", parent: 0 },
+  { name: "Ctr_F_Hair_013錘", parent: 3 },
 ];
 const dynamic = new Set([2, 3, 4]);
 
-test("the tiny front curl is the pinned strand", () => {
+test("the static strands are the spiral curl and the strand over the brow", () => {
   assert.deepEqual([...PINNED_STRANDS], [
     "Ctr_F_Hair_012", "Ctr_F_Hair_013", "Ctr_F_Hair_014", "Ctr_F_Hair_015", "Ctr_F_Hair_016", "Ctr_F_Hair_018",
+    "Ctr_F_Hair_09", "Ctr_F_Hair_010",
   ]);
+});
+
+test("pinned bones include every descendant, such as the strand's weight (錘) bones", () => {
+  assert.deepEqual([...pinnedBones(bones, ["Ctr_F_Hair_013"])].sort(), [3, 5]);
+  assert.deepEqual([...pinnedBones(bones, ["Ctr_F_Hair_012", "No_Such_Bone"])].sort(), [2, 3, 5]);
 });
 
 test("each pinned bone maps to its nearest ancestor that physics doesn't move", () => {
@@ -76,4 +84,12 @@ test("her real rig: the curl pins to Ctr_F_Hair_01, which has no body", { skip: 
   const targets = pinTargets(rigBones, PINNED_STRANDS, (i) => driven.has(i));
   assert.equal(targets.size, PINNED_STRANDS.length);
   for (const target of new Set(targets.values())) assert.equal(rigBones[target].name, "Ctr_F_Hair_01");
+  // Each strand's bodies hang off pinned bones: 6 curl + 2 brow-strand bones, each with its 錘.
+  const pinned = pinnedBones(rigBones, PINNED_STRANDS);
+  const bodies = data.rigidBodies.filter((rb) => pinned.has(rb.boneIndex)).map((rb) => rb.name).sort();
+  assert.deepEqual(bodies, [
+    "Ctr_F_Hair_010", "Ctr_F_Hair_010錘", "Ctr_F_Hair_012", "Ctr_F_Hair_012錘", "Ctr_F_Hair_013", "Ctr_F_Hair_013錘",
+    "Ctr_F_Hair_014", "Ctr_F_Hair_014錘", "Ctr_F_Hair_015", "Ctr_F_Hair_015錘", "Ctr_F_Hair_016", "Ctr_F_Hair_016錘",
+    "Ctr_F_Hair_018", "Ctr_F_Hair_018錘", "Ctr_F_Hair_09", "Ctr_F_Hair_09錘",
+  ]);
 });

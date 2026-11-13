@@ -93,3 +93,40 @@ test("her real rig: the curl pins to Ctr_F_Hair_01, which has no body", { skip: 
     "Ctr_F_Hair_018", "Ctr_F_Hair_018錘", "Ctr_F_Hair_09", "Ctr_F_Hair_09錘",
   ]);
 });
+
+test("the stiffened strands are the rest of the front fringe", async () => {
+  const { STIFF_STRANDS, FRINGE_FOLLOW } = await import("../../renderer/weight-pins.js");
+  assert.deepEqual([...STIFF_STRANDS], [
+    "Ctr_F_Hair_02", "Ctr_F_Hair_03", "Ctr_F_Hair_04", "Ctr_F_Hair_06", "Ctr_F_Hair_07", "Ctr_F_HairB_01",
+  ]);
+  assert.ok(FRINGE_FOLLOW > 0 && FRINGE_FOLLOW < 1, "the fringe still moves, just less");
+});
+
+test("blendWeights keeps a share on the moving bone and gives the rest to the still bone", async () => {
+  const { blendWeights } = await import("../../renderer/weight-pins.js");
+  // v0: all on the strand (2); v1: strand + still bone already present; v2: four influences, no free slot
+  const skinIndex = new Uint16Array([2, 0, 0, 0, 2, 1, 0, 0, 2, 4, 5, 6]);
+  const skinWeight = new Float32Array([1, 0, 0, 0, 0.6, 0.4, 0, 0, 0.4, 0.2, 0.2, 0.2]);
+  const result = blendWeights(skinIndex, skinWeight, new Map([[2, 1]]), 0.4);
+  const influence = (v, bone) => [0, 1, 2, 3].reduce((sum, k) =>
+    sum + (skinIndex[v * 4 + k] === bone ? skinWeight[v * 4 + k] : 0), 0);
+  assert.ok(Math.abs(influence(0, 2) - 0.4) < 1e-6 && Math.abs(influence(0, 1) - 0.6) < 1e-6, "v0 split 40/60");
+  assert.ok(Math.abs(influence(1, 2) - 0.24) < 1e-6 && Math.abs(influence(1, 1) - 0.76) < 1e-6, "v1 merges the share");
+  for (const v of [0, 1, 2]) {
+    const total = [0, 1, 2, 3].reduce((s, k) => s + skinWeight[v * 4 + k], 0);
+    assert.ok(Math.abs(total - 1) < 1e-6, `v${v} sums to 1`);
+  }
+  assert.deepEqual([...skinIndex.slice(8)], [2, 4, 5, 6], "a full vertex is left alone");
+  assert.deepEqual(result, { changed: 2, skipped: 1 });
+});
+
+test("blendWeights with follow 1 changes nothing, and with 0 matches a full pin", async () => {
+  const { blendWeights } = await import("../../renderer/weight-pins.js");
+  const idx = new Uint16Array([2, 0, 0, 0]);
+  const w = new Float32Array([1, 0, 0, 0]);
+  assert.deepEqual(blendWeights(idx, w, new Map([[2, 1]]), 1), { changed: 0, skipped: 0 });
+  assert.deepEqual([...idx], [2, 0, 0, 0]);
+  blendWeights(idx, w, new Map([[2, 1]]), 0);
+  assert.equal(idx[0], 1);
+  assert.equal(w[0], 1);
+});

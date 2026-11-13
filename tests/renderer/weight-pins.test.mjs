@@ -140,16 +140,73 @@ test("blendWeights keeps a share on the moving bone and gives the rest to the st
     assert.ok(Math.abs(total - 1) < 1e-6, `v${v} sums to 1`);
   }
   assert.deepEqual([...skinIndex.slice(8)], [2, 4, 5, 6], "a full vertex is left alone");
-  assert.deepEqual(result, { changed: 2, skipped: 1 });
+  assert.deepEqual(result, { changed: 2, skipped: 1, folded: 0 });
 });
 
 test("blendWeights with follow 1 changes nothing, and with 0 matches a full pin", async () => {
   const { blendWeights } = await import("../../renderer/weight-pins.js");
   const idx = new Uint16Array([2, 0, 0, 0]);
   const w = new Float32Array([1, 0, 0, 0]);
-  assert.deepEqual(blendWeights(idx, w, new Map([[2, 1]]), 1), { changed: 0, skipped: 0 });
+  assert.deepEqual(blendWeights(idx, w, new Map([[2, 1]]), 1), { changed: 0, skipped: 0, folded: 0 });
   assert.deepEqual([...idx], [2, 0, 0, 0]);
   blendWeights(idx, w, new Map([[2, 1]]), 0);
   assert.equal(idx[0], 1);
   assert.equal(w[0], 1);
+});
+
+test("blendWeights puts the share on a bone that moves exactly like the target, instead of skipping", async () => {
+  const { blendWeights } = await import("../../renderer/weight-pins.js");
+  // Bone 7 (say 頭) moves exactly like target 1 (a plain still child of it); no free slot.
+  const skinIndex = new Uint16Array([2, 3, 4, 7]);
+  const skinWeight = new Float32Array([0.4, 0.3, 0.2, 0.1]);
+  const sameMotion = (a, b) => (a === 1 || a === 7) && (b === 1 || b === 7);
+  const result = blendWeights(skinIndex, skinWeight, new Map([[2, 1], [3, 1], [4, 1]]), 0.4, { sameMotion });
+  assert.deepEqual(result, { changed: 1, skipped: 0, folded: 0 });
+  assert.deepEqual([...skinIndex], [2, 3, 4, 7]);
+  assert.deepEqual([...skinWeight].map((w) => +w.toFixed(3)), [0.16, 0.12, 0.08, 0.64]);
+});
+
+test("blendWeights folds the smallest moving influence into the largest when all four slots move", async () => {
+  const { blendWeights } = await import("../../renderer/weight-pins.js");
+  const skinIndex = new Uint16Array([2, 3, 4, 5]);
+  const skinWeight = new Float32Array([0.4, 0.3, 0.2, 0.1]);
+  const targets = new Map([[2, 1], [3, 1], [4, 1], [5, 1]]);
+  const result = blendWeights(skinIndex, skinWeight, targets, 0.4);
+  assert.deepEqual(result, { changed: 1, skipped: 0, folded: 1 });
+  const influence = (bone) => [0, 1, 2, 3].reduce((s, k) => s + (skinIndex[k] === bone ? skinWeight[k] : 0), 0);
+  // 5 folded into 2 (0.5), then every moving weight keeps 40% and the target gets 60% of the moving total.
+  assert.ok(Math.abs(influence(2) - 0.2) < 1e-6, `bone 2 ${influence(2)}`);
+  assert.ok(Math.abs(influence(3) - 0.12) < 1e-6 && Math.abs(influence(4) - 0.08) < 1e-6);
+  assert.ok(Math.abs(influence(1) - 0.6) < 1e-6, "the still target carries 60%");
+  assert.equal(influence(5), 0);
+});
+
+test("every vertex on a blended strand ends with the same 40% on moving bones", async () => {
+  const { blendWeights } = await import("../../renderer/weight-pins.js");
+  // v0 has a free slot, v1 has the target's twin, v2 is full of moving bones.
+  const skinIndex = new Uint16Array([2, 0, 0, 0, 2, 3, 4, 7, 2, 3, 4, 5]);
+  const skinWeight = new Float32Array([1, 0, 0, 0, 0.4, 0.3, 0.2, 0.1, 0.4, 0.3, 0.2, 0.1]);
+  const moving = new Set([2, 3, 4, 5]);
+  const targets = new Map([...moving].map((b) => [b, 1]));
+  const sameMotion = (a, b) => (a === 1 || a === 7) && (b === 1 || b === 7);
+  blendWeights(skinIndex, skinWeight, targets, 0.4, { sameMotion });
+  const share = (v) => [0, 1, 2, 3].reduce((s, k) => s + (moving.has(skinIndex[v * 4 + k]) ? skinWeight[v * 4 + k] : 0), 0);
+  assert.ok(Math.abs(share(0) - 0.4) < 1e-6, `v0 ${share(0)}`);
+  assert.ok(Math.abs(share(1) - 0.9 * 0.4) < 1e-6, `v1 ${share(1)}`); // 0.1 was already on the still twin
+  assert.ok(Math.abs(share(2) - 0.4) < 1e-6, `v2 ${share(2)}`);
+});
+
+test("sameMotionAs: a plain Ctr_ bone with no body moves exactly like its parent", async () => {
+  const { sameMotionAs } = await import("../../renderer/weight-pins.js");
+  // 0 首, 1 頭 (posed by gaze), 2 Ctr_F_Hair_01 (no body), 3 Ctr_F_Hair_02 (dynamic), 4 Ctr_F_Hair_x (no body, under 3)
+  const rig = [
+    { name: "首", parent: -1 }, { name: "頭", parent: 0 }, { name: "Ctr_F_Hair_01", parent: 1 },
+    { name: "Ctr_F_Hair_02", parent: 2 }, { name: "Ctr_F_Hair_x", parent: 3 },
+  ];
+  const same = sameMotionAs(rig, (i) => i === 3);
+  assert.ok(same(2, 1) && same(1, 2), "Ctr_F_Hair_01 ≡ 頭");
+  assert.ok(!same(1, 0), "頭 is posed by gaze, so not ≡ 首");
+  assert.ok(!same(3, 2), "a dynamic bone is its own motion");
+  assert.ok(same(4, 3), "a plain child follows its dynamic parent exactly");
+  assert.ok(same(2, 2));
 });

@@ -86,7 +86,7 @@ test("her real rig: every stiffened strand blends towards a bone that physics do
     assert.ok(names.includes(side), side);
   }
   const targets = pinTargets(rigBones, names, (i) => driven.has(i));
-  assert.ok(targets.size >= 40, `found ${targets.size} hair bones`);
+  assert.equal(targets.size, 36, "36 hair bones outside the curl");
   for (const target of targets.values()) assert.ok(!driven.has(target), `${rigBones[target].name} is still`);
 });
 

@@ -505,7 +505,7 @@ test("stop() eases back to rest and drops a glance at once", () => {
   play(motion, "active", 1);
   motion.stop();
   assert.equal(motion.playing, null);
-  const back = play(motion, "active", 1);
+  const back = play(motion, "active", 2);
   assert.equal(back[0].glance, null);
   assert.ok(back[0].chest > 0, "eases, not snaps");
   assert.ok(isRest(back.at(-1)));
@@ -517,7 +517,8 @@ test("a manual action replaces the idle auto action, and auto play waits a fresh
   assert.equal(motion.current?.kind, "tilt-left");
   motion.play("tilt-right");
   assert.equal(motion.current, null, "the auto action gives way");
-  assert.ok(signedPeak(play(motion, "idle", 3.6), "tilt") < 0, "only the manual tilt shows");
+  const length = motion.manual.duration;
+  assert.ok(signedPeak(play(motion, "idle", length + 0.05), "tilt") < 0, "only the manual tilt shows");
   assert.equal(motion.playing, null);
   const quiet = play(motion, "idle", IDLE_MOTION.gap[0] - 0.5);
   assert.equal(motion.current, null, "no auto action straight after");

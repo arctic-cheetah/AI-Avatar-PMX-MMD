@@ -179,10 +179,12 @@ test("a joint with an out-of-range body index is dropped, not passed to Ammo", (
 
 test("a drop predicate removes chosen bodies, their joints and any orphans, whatever their group", () => {
   const { rigidBodies, constraints } = rig();
-  const out = filterPhysics(rigidBodies, constraints, ALL, { drop: (b) => b.name === "Ctr_B_Hair_01" });
-  assert.ok(!names(out.rigidBodies).includes("Ctr_B_Hair_01"));
-  // Its weight body hung only from it, so it goes too and is reported.
-  assert.deepEqual(out.orphaned, ["Ctr_B_Hair_01錘"]);
+  // Hat off too, so the weight body's other joint (to the hat) is gone as well.
+  const groups = ALL.filter((id) => id !== "hat");
+  const out = filterPhysics(rigidBodies, constraints, groups, { drop: (b) => b.name === "Ctr_F_Hair_01" });
+  assert.ok(!names(out.rigidBodies).includes("Ctr_F_Hair_01"));
+  // Its weight body now hangs from nothing, so it goes too and is reported.
+  assert.deepEqual(out.orphaned, ["Ctr_F_Hair_01錘"]);
   assert.ok(!out.constraints.some((c) => ["head-hair", "hair-weight"].includes(c.name)));
   for (const c of out.constraints) {
     assert.ok(c.rigidBodyIndex1 < out.rigidBodies.length && c.rigidBodyIndex2 < out.rigidBodies.length);

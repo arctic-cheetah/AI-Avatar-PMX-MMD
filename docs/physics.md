@@ -31,8 +31,7 @@ group of their chain:
 
 | Group | Bodies (name pattern) | Count | Default |
 |---|---|---|---|
-| `fringe` | `Ctr_F_Hair…` (front fringe and front side locks) | 28 | off, own toggle |
-| `hair` | `Ctr_[BLRT]_Hair…` (side and back hair) | 52 | on |
+| `hair` | `Ctr_[BFLRT]_Hair…` | 80 | on |
 | `hat` | `Ctr_Hat…` | 12 | on |
 | `tails` | `…Tail…` (`左/右Tail1–2`, `Ctr_Tail_Root`) | 69 | on |
 | `bag` | `Ctr_Bag…` | 25 | on |
@@ -41,14 +40,6 @@ group of their chain:
 | `footRings` | `…FootRing…` | 16 | off |
 | `chest` | `左/右胸上`, `左/右胸下` | 6 | off, own toggle |
 | `hips` | `左/右尻…`, `左/右ひざ2…`, `左/右足2…` (hip and thigh softness) | 16 | off, own toggle |
-
-**The fringe follows its bones by default** (decided on 13 November 2026).
-Under gravity the PMX's own joints let it sag up to 0.34 units onto her eyes,
-and the forehead collider `頭4` is authored to ignore collision group 3, which
-36 of the 40 hair bodies are in, so nothing holds it up. Its front side locks
-(`Ctr_F_Hair_015/016`) also shift sideways behind her ear. Following the bones
-keeps the authored fringe in face and bust framing, and the rest of her hair
-still moves. Fringe physics stays available behind its own toggle.
 
 The defaults keep what reads from the usual bust framing, and they spend the
 CPU budget there (the Strix Halo also runs the LLM). #116 will confirm them
@@ -143,12 +134,11 @@ so their place in the frame doesn't matter to physics.
 | Toggle | Key | Default |
 |---|---|---|
 | Physics · 物理 | `yidhari.physics` | on |
-| Fringe physics · 前髪 | `yidhari.physics.fringe` | off |
 | Chest physics · 胸 | `yidhari.physics.chest` | off |
 | Hip physics · 腰 | `yidhari.physics.hips` | off |
 
-The main toggle is the kill-switch. The fringe, chest and hip toggles change
-their groups independently (a change rebuilds), and they keep their choice while
+The main toggle is the kill-switch. The chest and hip toggles change their
+groups independently (a change rebuilds), and they keep their choice while
 physics is off. `bindStoredToggle` takes `defaultOn: false` for these.
 
 ## Tests

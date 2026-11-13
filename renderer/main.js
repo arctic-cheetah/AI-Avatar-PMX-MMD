@@ -58,7 +58,8 @@ import { filterPhysics } from "./physics-groups.js";
 import { PhysicsLayer } from "./physics-layer.js";
 import { bindStoredToggle } from "./stored-toggle.js";
 import {
-  HAIR_FOLLOW, PINNED_STRANDS, blendWeights, pinTargets, pinWeights, pinnedBones, stiffStrands,
+  CURL_ROOT_WEIGHTS, HAIR_FOLLOW, PINNED_STRANDS, blendWeights, kinematicBodies, pinTargets, pinWeights,
+  stiffStrands,
 } from "./weight-pins.js";
 
 // Served by renderer/serve.py from the workspace root. Do not rename the PMX.
@@ -1651,13 +1652,15 @@ let physicsBones = [];
  */
 async function buildPhysics(groups) {
   const [, { object, data }] = await Promise.all([loadAmmo(), physicsModel]);
-  const staticBones = pinnedBones(data.bones.map((bone) => ({ name: bone.name, parent: bone.parentIndex })),
-    PINNED_STRANDS);
+  const rigBones = data.bones.map((bone) => ({ name: bone.name, parent: bone.parentIndex }));
   // The loader's copies, not the raw PMX: it turns 40 physics+bone (type 2)
   // chain bodies into type 1, which stops them vibrating against their parent.
-  const { rigidBodies, constraints } = object.geometry.userData.MMD;
+  const loaded = object.geometry.userData.MMD;
+  // The curl's root holds still so its tips can't swing far (see docs/physics.md).
+  const { rigidBodies, constraints } = kinematicBodies(loaded.rigidBodies, loaded.constraints, rigBones,
+    PINNED_STRANDS);
   const filtered = filterPhysics(rigidBodies, constraints, groups,
-    { drop: (body) => staticBones.has(body.boneIndex) });
+    { drop: (body) => CURL_ROOT_WEIGHTS.includes(body.name) });
   if (filtered.orphaned.length > 0) {
     console.warn(`Physics: dropped ${filtered.orphaned.length} bodies with no anchor left`, filtered.orphaned);
   }

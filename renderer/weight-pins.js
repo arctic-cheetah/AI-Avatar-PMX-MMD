@@ -6,10 +6,52 @@
  * Pure module: no DOM or Three.js imports, so `node --test` covers it.
  */
 
-/** The static strand: the spiral curl, which buzzed at frame rate and clipped with physics on. */
-export const PINNED_STRANDS = Object.freeze([
-  "Ctr_F_Hair_012", "Ctr_F_Hair_013", "Ctr_F_Hair_014", "Ctr_F_Hair_015", "Ctr_F_Hair_016", "Ctr_F_Hair_018",
-]);
+/**
+ * The spiral curl's root, held still so its tips can't swing far: its weights
+ * are pinned and its bodies become kinematic. The tips stay on physics.
+ */
+export const PINNED_STRANDS = Object.freeze(["Ctr_F_Hair_012", "Ctr_F_Hair_013"]);
+
+/** The curl root's weight bodies, dropped once the root is kinematic. */
+export const CURL_ROOT_WEIGHTS = Object.freeze(PINNED_STRANDS.map((name) => `${name}錘`));
+
+/**
+ * Make the named bodies kinematic (type 0) on their own bones, and drop their
+ * joints to dynamic bodies outside their bone lineage, which would otherwise
+ * weld a moving neighbour to a still body. Joints within the lineage (the
+ * head above, the tips below) stay. Inputs are not mutated; kept joints are
+ * the same objects.
+ * @template {{name: string, type: number, boneIndex: number}} B
+ * @template {{rigidBodyIndex1: number, rigidBodyIndex2: number}} C
+ * @param {B[]} rigidBodies
+ * @param {C[]} constraints
+ * @param {{name: string, parent: number}[]} bones
+ * @param {Iterable<string>} names Bodies to make kinematic.
+ * @returns {{rigidBodies: B[], constraints: C[]}}
+ */
+export function kinematicBodies(rigidBodies, constraints, bones, names) {
+  const wanted = new Set(names);
+  const converted = new Set();
+  const bodies = rigidBodies.map((body, i) => {
+    if (!wanted.has(body.name) || body.type === 0) return body;
+    converted.add(i);
+    return { ...body, type: 0 };
+  });
+  const ancestors = (bone) => {
+    const chain = new Set();
+    for (let b = bone; b >= 0; b = bones[b].parent) chain.add(b);
+    return chain;
+  };
+  const sameLineage = (a, b) => ancestors(a).has(b) || ancestors(b).has(a);
+  const joints = constraints.filter((c) => {
+    for (const [self, other] of [[c.rigidBodyIndex1, c.rigidBodyIndex2], [c.rigidBodyIndex2, c.rigidBodyIndex1]]) {
+      if (!converted.has(self) || bodies[other]?.type === 0) continue;
+      if (!sameLineage(bodies[self].boneIndex, bodies[other].boneIndex)) return false;
+    }
+    return true;
+  });
+  return { rigidBodies: bodies, constraints: joints };
+}
 
 /**
  * @param {{name: string, parent: number}[]} bones Bone names and parent indices.

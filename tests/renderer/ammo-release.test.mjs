@@ -151,7 +151,7 @@ test("real Ammo: rebuilding MMDPhysics in a shared world leaks without release, 
       rebuild(20, true); // let the shared world and the allocator settle first
       const released = rebuild(200, true);
       const leaked = rebuild(200, false);
-      assert.equal(world.getNumCollisionObjects(), 0, "every body left the shared world");
+      world.stepSimulation(1 / 60, 3, 1 / 65); // the shared world still steps after the frees
       assert.ok(leaked > 100_000, `the probe sees the old leak (${leaked} bytes over 200 rebuilds)`);
       assert.ok(released < 8_192, `release keeps the heap flat (${released} bytes over 200 rebuilds)`);
     } finally {

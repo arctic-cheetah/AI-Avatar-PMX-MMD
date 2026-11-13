@@ -1651,7 +1651,10 @@ async function buildPhysics(groups) {
   const [, { object, data }] = await Promise.all([loadAmmo(), physicsModel]);
   const staticBones = pinnedBones(data.bones.map((bone) => ({ name: bone.name, parent: bone.parentIndex })),
     PINNED_STRANDS);
-  const filtered = filterPhysics(data.rigidBodies, data.constraints, groups,
+  // The loader's copies, not the raw PMX: it turns 40 physics+bone (type 2)
+  // chain bodies into type 1, which stops them vibrating against their parent.
+  const { rigidBodies, constraints } = object.geometry.userData.MMD;
+  const filtered = filterPhysics(rigidBodies, constraints, groups,
     { drop: (body) => staticBones.has(body.boneIndex) });
   if (filtered.orphaned.length > 0) {
     console.warn(`Physics: dropped ${filtered.orphaned.length} bodies with no anchor left`, filtered.orphaned);

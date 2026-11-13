@@ -1,11 +1,13 @@
 // Run with: node --test tests/renderer/*.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PHYSICS_WARMUP_CYCLES, PhysicsLayer } from "../../renderer/physics-layer.js";
+import {
+  PHYSICS_RATE_DEFAULT, PHYSICS_RATE_MAX, PHYSICS_RATE_MIN, PHYSICS_WARMUP_CYCLES, PhysicsLayer, physicsStep,
+} from "../../renderer/physics-layer.js";
 import { defaultPhysicsGroups } from "../../renderer/physics-groups.js";
 
 /** A fake MMDPhysics build that records every call in one shared log. */
-function harness({ fail = false, deferred = false } = {}) {
+function harness({ fail = false, deferred = false, steps = false } = {}) {
   const log = [];
   const builds = [];
   const pending = [];
@@ -19,6 +21,7 @@ function harness({ fail = false, deferred = false } = {}) {
       warmup: (cycles) => log.push(["warmup", id, cycles]),
       dispose: () => log.push(["dispose", id]),
     };
+    if (steps) physics.setStep = ({ unitStep, maxStepNum }) => log.push(["step", id, Math.round(1 / unitStep), maxStepNum]);
     builds.push(physics);
     log.push(["build", id]);
     if (fail) return Promise.reject(new Error("Ammo failed to load"));
@@ -167,4 +170,44 @@ test("when group changes overlap, only the newest build runs and older ones are 
   layer.update(0.01);
   assert.deepEqual(log, [["update", 1, 0.01]]);
   assert.equal(layer.status, "on");
+});
+
+test("physicsStep turns a rate into MMDPhysics' unitStep and keeps ~46 ms of catch-up", () => {
+  assert.deepEqual([PHYSICS_RATE_MIN, PHYSICS_RATE_MAX, PHYSICS_RATE_DEFAULT], [65, 120, 120]);
+  assert.deepEqual(physicsStep(65), { rate: 65, unitStep: 1 / 65, maxStepNum: 3 });
+  assert.deepEqual(physicsStep(120), { rate: 120, unitStep: 1 / 120, maxStepNum: 6 });
+  assert.equal(physicsStep(90).maxStepNum, 5);
+});
+
+test("physicsStep clamps to 65–120 and falls back to the default for nonsense", () => {
+  assert.equal(physicsStep(30).rate, 65);
+  assert.equal(physicsStep(500).rate, 120);
+  for (const bad of [Number.NaN, undefined, "fast"]) assert.equal(physicsStep(bad).rate, PHYSICS_RATE_DEFAULT);
+  assert.equal(physicsStep("100").rate, 100);
+});
+
+test("a new build gets the step rate before it warms up", async () => {
+  const { layer, log } = harness({ steps: true });
+  await layer.setEnabled(true);
+  assert.deepEqual(log, [["build", 0], ["step", 0, 120, 6], ["reset", 0], ["warmup", 0, PHYSICS_WARMUP_CYCLES]]);
+});
+
+test("changing the rate while on applies at once, without a rebuild", async () => {
+  const { layer, log, builds } = harness({ steps: true });
+  await layer.setEnabled(true);
+  log.length = 0;
+  layer.setStepRate(65);
+  assert.equal(layer.stepRate, 65);
+  assert.deepEqual(log, [["step", 0, 65, 3]]);
+  assert.equal(builds.length, 1);
+});
+
+test("a rate set while off, or before the first build, is used when physics starts", async () => {
+  const { layer, log } = harness({ steps: true });
+  layer.setStepRate(100);
+  assert.deepEqual(log, []);
+  await layer.setEnabled(true);
+  assert.deepEqual(log.find(([kind]) => kind === "step"), ["step", 0, 100, 5]);
+  await layer.setGroup("chest", true);
+  assert.deepEqual(log.filter(([kind]) => kind === "step").at(-1), ["step", 1, 100, 5], "rebuilds keep it");
 });

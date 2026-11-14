@@ -155,6 +155,7 @@ class ApplioSettings:
     drawl_stretch: float = 0.125  # seconds per drawn-out sound, said by Kokoro itself (per-token speed, #83)
     quote_voice: bool = True  # Kokoro: pause before and a slight pitch dip across quotes (#84)
     quote_bend: float = -2.0  # semitones at the quote's dip
+    quote_pace: float = 0.9  # a quotation's speed × the sentence's, by per-token speed; not yet listened to (#83)
     question_rise_bend: float = 9.0  # semitones a question's last word rises (peak at 70 %)
     interjection_hold: float = 0.0  # seconds an "aww" is held; 0 keeps Kokoro's ~0.36 s (#84)
     exclaim_gain: float = 3.0  # dB louder for a clip ending in !, with punctuation_cadence
@@ -224,6 +225,8 @@ class ApplioSettings:
             raise ValueError("drawl_stretch must be between 0 and 0.125 seconds.")
         if not math.isfinite(self.quote_bend) or abs(self.quote_bend) > 12.0:
             raise ValueError("quote_bend must be between -12 and 12 semitones.")
+        if not math.isfinite(self.quote_pace) or not 0.5 <= self.quote_pace <= 1.5:
+            raise ValueError("quote_pace must be between 0.5 and 1.5.")
         if not math.isfinite(self.question_rise_bend) or abs(self.question_rise_bend) > 12.0:
             raise ValueError("question_rise_bend must be between -12 and 12 semitones.")
         if not math.isfinite(self.interjection_hold) or not 0.0 <= self.interjection_hold <= 1.2:
@@ -763,6 +766,9 @@ class ApplioWorker:
             held += [[index, self.settings.drawl_hold] for index in drawls
                      if index not in {hold[0] for hold in holds}]
         held = held[:MAX_SPANS]
+        # A quotation's own pace (#83): Kokoro says its words at quote_pace × the sentence's speed.
+        pace = self.settings.quote_pace
+        paces = [[first, last, pace] for first, last in quotes][:MAX_SPANS] if pace != 1.0 else []
         spanned = tuple(dict.fromkeys([*contours, *drawls, *row_bends, *rises, *quoted, *lifts]))[:MAX_SPANS]
         if self.kokoro is not None:
             source_metrics = await self.kokoro.request(
@@ -771,6 +777,7 @@ class ApplioWorker:
                     **self._kokoro_fields(prosody, emphasis, spanned),
                     **({"holds": held} if held else {}),
                     **({"stretch": stretch} if stretch else {}),
+                    **({"paces": paces} if paces else {}),
                 },
             )
         request_id = secrets.token_hex(8)
@@ -838,6 +845,8 @@ class ApplioWorker:
                         "emphasisPauses",
                         "stretched",
                         "stretchSkipped",
+                        "paced",
+                        "paceSkipped",
                     )
                     if key in source_metrics
                 }
@@ -1031,6 +1040,8 @@ async def synthesise(
             "emphasisPauses",
             "stretched",
             "stretchSkipped",
+            "paced",
+            "paceSkipped",
             "contours",
             "lifts",
             "rises",

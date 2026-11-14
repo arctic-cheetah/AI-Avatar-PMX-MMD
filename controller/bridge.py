@@ -1278,6 +1278,12 @@ def build_parser():
         help="Semitones at a quotation's pitch dip (-12 to 12).",
     )
     parser.add_argument(
+        "--quote-pace",
+        type=float,
+        default=0.9,
+        help="A quotation's speed as a factor of the sentence's (0.5 to 1.5; 1 turns it off).",
+    )
+    parser.add_argument(
         "--question-rise-bend",
         type=float,
         default=9.0,
@@ -1368,6 +1374,7 @@ def speech_settings(args):
         surprise_bend=args.surprise_bend,
         affection_bend=args.affection_bend,
         hesitation_bend=args.hesitation_bend,
+        quote_pace=args.quote_pace,
         question_rise_bend=args.question_rise_bend,
         quote_voice=args.quote_voice and not plain,
         dynamic_emphasis=args.dynamic_emphasis and not plain,

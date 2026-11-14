@@ -22,7 +22,7 @@ VOICE_ID = re.compile(r'[ab][a-z]_[a-z]+')
 MAX_BLEND_VOICES = 4
 MAX_CLAUSE_PAUSE = 0.5
 # Optional per-sentence request fields.
-PROSODY_FIELDS = ('speed', 'clause_pause', 'emphasis', 'emphasis_pause', 'spans', 'holds', 'stretch')
+PROSODY_FIELDS = ('speed', 'clause_pause', 'emphasis', 'emphasis_pause', 'spans', 'holds', 'stretch', 'paces')
 MAX_HOLD = 1.5        # seconds a held vowel may last
 AUDIBLE_FLOOR_DB = -30.0  # a word's frames this far below its loudest are not part of it
 HOLD_WINDOW = 0.025   # seconds either side of the vowel's middle used to find its period
@@ -42,6 +42,7 @@ SPLICE_FADE = 0.005       # seconds faded out and in around a spliced pause
 PAUSE_QUIET_DB = -40.0    # spaces can contain coarticulated speech; only splice into actual quiet
 FRAME = 0.025             # seconds per Kokoro duration frame (600 samples at 24 kHz)
 MAX_STRETCH = 0.125       # seconds one sound may be drawn out to: 5 frames sounded natural, 8 broke up
+MIN_PACE, MAX_PACE = 0.5, 1.5  # speed factors a range of words (a quotation) may be said at
 STRESS_MARKS = ('ˈ', 'ˌ')  # primary first
 VOWELS = frozenset('aeiouyæɐɑɒɔəɘɚɛɜɝɞɤɨɪɯɵøœɶʉʊʌʏᵻː')  # ː lengthens the vowel before it
 HOLDABLE = frozenset('lmnŋɹrɾsʃzʒfvθðjwɫ')  # consonants that can be held; stops cannot be drawn out
@@ -257,6 +258,17 @@ def validate_stretch(stretch) -> None:
             raise ValueError(f'Each stretch must be [word index, seconds up to {MAX_STRETCH}].')
 
 
+def validate_paces(paces) -> None:
+    if not isinstance(paces, list) or len(paces) > MAX_SPANS:
+        raise ValueError(f'Paces must be a list of up to {MAX_SPANS} [first word, last word, factor].')
+    for item in paces:
+        if (not isinstance(item, (list, tuple)) or len(item) != 3
+                or any(isinstance(index, bool) or not isinstance(index, int) for index in item[:2])
+                or not 0 <= item[0] <= item[1] < 1000
+                or not _number(item[2]) or not MIN_PACE <= item[2] <= MAX_PACE):
+            raise ValueError(f'Each pace must be [first word, last word, factor {MIN_PACE}-{MAX_PACE}].')
+
+
 def _phoneme_words(phonemes: str):
     """(first character position, word) for each spoken word of a phoneme string."""
     position = 0
@@ -291,6 +303,25 @@ def stretch_factors(timings, phonemes: str, stretch, speed: float = 1.0) -> list
             frames = round((sounds[i].end - sounds[i].start) / FRAME)
             if 0 < frames < target:
                 factors[position + i] = frames / target
+    return factors
+
+
+def pace_factors(phonemes: str, paces, factors: list[float] | None = None) -> list[float]:
+    """Per-phoneme speed factors with each [first, last, factor] range of words said at ``factor``.
+
+    The spaces between the words get it too. A sound that already has a factor
+    (a stretch) keeps it: multiplying both could draw it out past MAX_STRETCH.
+    """
+    factors = [1.0] * len(phonemes) if factors is None else list(factors)
+    words = list(_phoneme_words(phonemes))
+    for first, last, factor in paces:
+        if first >= len(words):
+            continue
+        last = min(last, len(words) - 1)
+        start, end = words[first][0], words[last][0] + len(words[last][1])
+        for i in range(start, end):
+            if factors[i] == 1.0:
+                factors[i] = factor
     return factors
 
 
@@ -537,7 +568,8 @@ class Synthesizer:
     def synthesize(self, text: str, path: str, speed: float | None = None,
                    clause_pause: float | None = None, emphasis: list[int] | None = None,
                    emphasis_pause: float = 0.12, spans: list[int] | None = None,
-                   holds: list | None = None, stretch: list | None = None) -> dict:
+                   holds: list | None = None, stretch: list | None = None,
+                   paces: list | None = None) -> dict:
         """Write ``text`` to ``path``.
 
         ``speed``/``clause_pause`` override the settings for one sentence.
@@ -548,6 +580,8 @@ class Synthesizer:
         ``holds`` ([word index, seconds]) lengthen those words' vowels.
         ``stretch`` ([word index, seconds]) has Kokoro itself say those words'
         stressed sounds longer, with per-token speed (a second pass).
+        ``paces`` ([first word, last word, factor]) say those words at that
+        factor of ``speed``, in the same second pass.
         """
         if not isinstance(text, str) or not text.strip() or len(text) > 16000:
             raise ValueError('Speech text must contain 1–16000 characters.')
@@ -563,11 +597,14 @@ class Synthesizer:
             validate_holds(holds)
         if stretch is not None:
             validate_stretch(stretch)
+        if paces is not None:
+            validate_paces(paces)
         lang = 'en-gb' if self.voice.lstrip().startswith('b') else 'en-us'
         started = time.perf_counter()
         pauses, found, skipped = None, {}, 'misaligned'
         stretched, stretch_skipped = 0, 'misaligned'
-        timed = bool(emphasis or spans or holds or stretch)
+        paced, pace_skipped = 0, 'misaligned'
+        timed = bool(emphasis or spans or holds or stretch or paces)
         phonemes = (self.model.tokenizer.phonemize(text, lang)
                     if timed or needs_respelling(text) else None)
         spoken = respell_phonemes(text, phonemes) if phonemes else None
@@ -578,8 +615,9 @@ class Synthesizer:
                     trim=False, clause_pause=clause_pause)
 
             samples, rate, timings = create_timed()
-            if stretch:
-                stretched, stretch_skipped, redone = self._stretch(spoken, timings, stretch, speed, create_timed)
+            if stretch or paces:
+                stretched, stretch_skipped, paced, pace_skipped, redone = self._stretch(
+                    spoken, timings, stretch or [], speed, create_timed, paces or [])
                 if redone is not None:
                     samples, rate, timings = redone
             candidates = pause_points(timings, emphasis or [])
@@ -633,30 +671,42 @@ class Synthesizer:
             metrics['stretched'] = stretched
             if not stretched:
                 metrics['stretchSkipped'] = stretch_skipped
+        if paces is not None:
+            metrics['paced'] = paced
+            if not paced:
+                metrics['paceSkipped'] = pace_skipped
         if spans is not None:
             metrics['wordSpans'] = [list(found[i]) for i in spans if i in found]
             metrics['spanWords'] = [i for i in spans if i in found]
         return metrics
 
 
-    def _stretch(self, spoken: str, timings, stretch, speed: float, create_timed):
-        """Second pass with per-token speed: (words stretched, reason if none, new result or None)."""
+    def _stretch(self, spoken: str, timings, stretch, speed: float, create_timed, paces=()):
+        """Second pass with per-token speed for stretches and paces.
+
+        Returns (words stretched, reason if none, ranges paced, reason if none,
+        new result or None).
+        """
         if not getattr(self, 'token_speeds', False):
-            return 0, 'no-model', None
+            return 0, 'no-model', 0, 'no-model', None
         known = self.model.tokenizer.known(spoken)
         if not timings or known != ' '.join(spoken.split()):
-            return 0, 'misaligned', None
+            return 0, 'misaligned', 0, 'misaligned', None
         factors = stretch_factors(timings, known, stretch, speed)
         if factors is None:
-            return 0, 'misaligned', None
+            return 0, 'misaligned', 0, 'misaligned', None
         words = list(_phoneme_words(known))
         drawn = sum(any(factors[p] < 1.0 for p in range(position, position + len(word)))
                     for position, word in (words[index] for index, _ in stretch if index < len(words)))
-        if not drawn:
-            return 0, 'nothing-to-stretch', None
+        paced = sum(first < len(words) and factor != 1.0 for first, _, factor in paces)
+        factors = pace_factors(known, paces, factors)
+        stretch_reason = '' if drawn else 'nothing-to-stretch'
+        pace_reason = '' if paced else 'nothing-to-pace'
+        if not drawn and not paced:
+            return 0, stretch_reason, 0, pace_reason, None
         self.plan = TokenPlan(self.model.tokenizer.tokenize(known), factors)
         try:
-            return drawn, '', create_timed()
+            return drawn, stretch_reason, paced, pace_reason, create_timed()
         finally:
             self.plan = None
 

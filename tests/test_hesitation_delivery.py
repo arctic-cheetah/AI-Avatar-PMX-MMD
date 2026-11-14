@@ -21,14 +21,14 @@ class HumPhonemeTests(unittest.TestCase):
     def test_spelled_out_hums_are_fixed(self):
         cases = [
             ('Mmm, yummy.', 'ˌɛmˌɛmˈɛm, jˈʌmi.', 'mmm, jˈʌmi.'),
-            ('Hm.', 'ˌeɪtʃˈɛm.', 'həm.'),  # said like espeak's own "Hmm"
+            ('Hm.', 'ˌeɪtʃˈɛm.', 'ˈʌm.'),  # listening (14 Nov 2026): a plain "Hm" like "Umm" too
             # Listening (14 Nov 2026): a questioning həm? had a "th" sound; said like "umm" it works.
             ('Hm?', 'ˌeɪtʃˈɛm?', 'ˈʌm?'),
             ('Hmm?', 'həm?', 'ˈʌm?'),
             ('Well… hmm?', 'wˈɛl… həm?', 'wˈɛl… ˈʌm?'),
             ('"Hmm?" she asked.', '“həm?” ʃiː ˈæskt.', '“ˈʌm?” ʃiː ˈæskt.'),
             ('Mm.', 'ˌɛmˈɛm.', 'mm.'),
-            ('"Hm," she said.', '“ˌeɪtʃˈɛm,” ʃiː sˈɛd.', '“həm,” ʃiː sˈɛd.'),
+            ('"Hm," she said.', '“ˌeɪtʃˈɛm,” ʃiː sˈɛd.', '“ˈʌm,” ʃiː sˈɛd.'),
         ]
         for text, phonemes, expected in cases:
             with self.subTest(text=text):
@@ -64,7 +64,7 @@ class SynthesizeHumTests(unittest.TestCase):
         synthesizer = test_contours.AwwPronunciationTests.synthesizer(self, 'ˌeɪtʃˈɛm.')
         synthesizer.synthesize('Hm.', 'out.wav')
         args, kwargs = synthesizer.model.create.call_args
-        self.assertEqual((args[0], kwargs['is_phonemes']), ('həm.', True))
+        self.assertEqual((args[0], kwargs['is_phonemes']), ('ˈʌm.', True))
 
 
 class HesitationRowTests(unittest.TestCase):

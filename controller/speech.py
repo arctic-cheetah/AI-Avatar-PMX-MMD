@@ -144,7 +144,8 @@ class ApplioSettings:
     word_lifts: bool = True  # Kokoro: lift endearments in address and the word before ! (#84)
     word_lift_bend: float = 4.0  # semitones at the lift's peak
     surprise_bend: float = 5.0  # a surprised word's rise ("whaaat"); not yet listened to (#83)
-    affection_bend: float = 3.0  # a fond word's warm rise-fall ("sooo cute"); not yet listened to (#83)
+    affection_bend: float = 5.0  # a fond word's warm rise-fall: 5 of 3/5 st sounded best (14 Nov 2026, #83)
+    affection_intensifier_bend: float = 7.0  # the "sooo" in "sooo cute", a little higher (14 Nov 2026)
     replay_cap_mb: int = 500  # spoken turns kept on disk for bubble replay; oldest go first (#152)
     endearment_bend: float = 8.0  # an endearment's own lift: 8 of 4/6/8 st sounded best (9 Nov 2026, #83)
     dynamic_emphasis: bool = True  # Kokoro: deeper, drawn-out "buuut"; brighter *word* (listened 9 Nov 2026, #83)
@@ -210,6 +211,8 @@ class ApplioSettings:
             raise ValueError("surprise_bend must be between -12 and 12 semitones.")
         if not math.isfinite(self.affection_bend) or abs(self.affection_bend) > 12.0:
             raise ValueError("affection_bend must be between -12 and 12 semitones.")
+        if not math.isfinite(self.affection_intensifier_bend) or abs(self.affection_intensifier_bend) > 12.0:
+            raise ValueError("affection_intensifier_bend must be between -12 and 12 semitones.")
         if not math.isfinite(self.endearment_bend) or abs(self.endearment_bend) > 12.0:
             raise ValueError("endearment_bend must be between -12 and 12 semitones.")
         if not math.isfinite(self.drawl_bend) or abs(self.drawl_bend) > 12.0:
@@ -412,8 +415,8 @@ class Delivery:
 # The first row that matches a word wins. Docs: docs/testing-kokoro.md §2g.
 DELIVERIES: tuple[Delivery, ...] = (
     # Before the drawls, so a fond "So cute!" is warm rather than a deeper "Sooo…".
-    Delivery("affection", AFFECTION_INTENSIFIERS, moods=AFFECTIONATE_MOODS, bend="affection_bend",
-             before=AFFECTION_WORDS),  # "sooo cute", "too sweet"
+    Delivery("affection", AFFECTION_INTENSIFIERS, moods=AFFECTIONATE_MOODS,
+             bend="affection_intensifier_bend", before=AFFECTION_WORDS),  # "sooo cute", "too sweet"
     Delivery("affection", AFFECTION_WORDS, moods=AFFECTIONATE_MOODS, bend="affection_bend"),
     Delivery("drawl", DRAWL_OPENERS, opener_only=True),  # "Buuut…", "Wellll…"
     Delivery("drawl", ATTITUDE_WORDS, moods=SKEPTICAL_MOODS),  # sarcastic "suuure"

@@ -429,5 +429,57 @@
       "口角下げ": 0.45,
       "眼角下": 0.25
     }
+  },
+  "playful": {
+    "description": "Tease playfully with a wink and a smirk.",
+    "morphs": {
+      "ウィンク": 1,
+      "にやり２": 0.6,
+      "口角上げ": 0.3
+    }
+  },
+  "curious": {
+    "description": "Show eager interest in something new or puzzling.",
+    "morphs": {
+      "上左": 0.6,
+      "びっくり": 0.35,
+      "う": 0.2
+    }
+  },
+  "amused": {
+    "description": "Chuckle quietly at something funny.",
+    "morphs": {
+      "笑い": 0.7,
+      "い２": 0.5,
+      "口角上げ": 0.5
+    }
+  },
+  "awed": {
+    "description": "React with wonder at something impressive or beautiful.",
+    "morphs": {
+      "上": 0.8,
+      "びっくり": 0.6,
+      "お": 0.35
+    }
+  },
+  "wistful": {
+    "description": "Express bittersweet longing or fond nostalgia.",
+    "morphs": {
+      "眼角下": 0.45,
+      "じと目": 0.35,
+      "困る": 0.35,
+      "口角下げ": 0.15,
+      "にこり": 0.25
+    }
+  },
+  "proud": {
+    "description": "Show quiet pride in an achievement, yours or the user's.",
+    "morphs": {
+      "じと目": 0.4,
+      "上": 0.55,
+      "口角上げ": 0.6,
+      "にやり": 0.2,
+      "下眼上": 0.2
+    }
   }
 }

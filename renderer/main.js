@@ -45,7 +45,7 @@ import { CameraGaze } from "./camera-gaze.js";
 import { CameraControls } from "./camera-controls.js";
 import { SWAY, SwayController, swayAnglesAt } from "./body-sway.js";
 import { Spring, TIMING, frameDelta } from "./smoothing.js";
-import { composeBlink, eyeClosure } from "./facial-layers.js";
+import { composeBlink, composeWink, eyeClosures, splitBlink } from "./facial-layers.js";
 import { GreetingGate, bindGreetingToggle } from "./greeting.js";
 import { bindRestingFaceToggle } from "./resting-face.js";
 import { addSeeThroughBrows, bindSeeThroughBrowsToggle } from "./see-through-brows.js";
@@ -1075,7 +1075,8 @@ function blinkWeightAt(now) {
 
 /**
  * Combine the idle blink with what the mood and winks already wrote this frame.
- * A mood's own blink weight survives, and closed eyes do not blink on top.
+ * A mood's own blink weight survives, closed eyes do not blink on top, and
+ * while one eye winks the open eye blinks through its own wink morph (#99).
  * @param {number} now Current performance time in seconds.
  * @returns {void}
  */
@@ -1085,7 +1086,13 @@ function updateBlink(now) {
   }
   const weight = blinkToggle.checked ? blinkWeightAt(now) : 0;
   const influences = mesh.morphTargetInfluences;
-  influences[blinkIndex] = composeBlink(influences[blinkIndex], weight, eyeClosure(mesh));
+  const { left, right } = eyeClosures(mesh);
+  const split = splitBlink(weight, left, right);
+  influences[blinkIndex] = composeBlink(influences[blinkIndex], split.both);
+  for (const side of ["left", "right"]) {
+    const index = winks[side].index;
+    if (index >= 0 && split[side] > 0) influences[index] = composeBlink(influences[index], split[side]);
+  }
 }
 
 /**
@@ -1104,7 +1111,8 @@ function updateWinks(delta) {
       continue;
     }
     wink.spring.step(wink.target, delta, TIMING.wink);
-    mesh.morphTargetInfluences[wink.index] = wink.spring.clamp(0, 1);
+    const influences = mesh.morphTargetInfluences;
+    influences[wink.index] = composeWink(influences[wink.index], wink.spring.clamp(0, 1));
   }
 }
 

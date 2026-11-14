@@ -34,11 +34,11 @@ LOW = Prosody(0.92, 1.4, -1)
 # Moods not listed (neutral, soft-smile, tender, angry, surprised, …) are unchanged.
 MOOD_GROUPS = {
     **dict.fromkeys(('excited', 'joyful', 'happy', 'grin', 'cocky', 'smug',
-                     'mischievous', 'hopeful'), ENERGETIC),
+                     'mischievous', 'hopeful', 'playful', 'amused', 'proud'), ENERGETIC),
     **dict.fromkeys(('thinking', 'skeptical', 'confused', 'suspicious', 'serious',
                      'worried', 'nervous', 'troubled'), REFLECTIVE),
     **dict.fromkeys(('sad', 'sorrowful', 'rueful', 'sleepy', 'disappointed',
-                     'cry', 'sulky'), LOW),
+                     'cry', 'sulky', 'wistful'), LOW),
 }
 
 

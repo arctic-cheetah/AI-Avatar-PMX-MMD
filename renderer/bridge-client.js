@@ -156,7 +156,8 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     if (reply) keep.add(reply.parentElement);
     if (greetingLine) keep.add(greetingLine);
     while (chatLog.children.length > MAX_LOG_LINES) {
-      const oldest = chatLog.children.find((line) => !keep.has(line));
+      // `children` is a live HTMLCollection in a real browser: no .find().
+      const oldest = [...chatLog.children].find((line) => !keep.has(line));
       if (!oldest) break;
       for (const [turn, record] of turns) {
         if (record.line === oldest) turns.delete(turn);

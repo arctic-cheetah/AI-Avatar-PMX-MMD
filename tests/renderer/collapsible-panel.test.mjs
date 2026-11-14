@@ -86,7 +86,7 @@ test("Chat keeps its original visible subtree while secondary controls move inta
   const installed = installCollapsiblePanel(panel, { local });
   assert.equal(installed.length, 7);
   assert.equal(chat.children.length, originalChatChildren.length);
-  assert.ok(originalChatChildren.every((child) => chat.children.includes(child)), "Chat is not hidden or restructured");
+  assert.ok(originalChatChildren.every((child) => [...chat.children].includes(child)), "Chat is not hidden or restructured");
   const details = panel.querySelectorAll("details");
   assert.equal(details.length, 7);
   assert.ok(details.every((item) => item.open === (item.dataset.panelSection === "presets")));

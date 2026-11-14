@@ -398,6 +398,10 @@ Longer spellings ("Hmmmmm") are shortened to "hmm" first (elongated spellings,
 §2h). "Mmm" is pronounced right but is not a hesitation row word, because "Mmm,
 yummy." is pleasure. Hesitation words are in any mood, can sit mid-sentence ("I,
 er, forgot."), and a questioning "Hmm?" keeps the question's rise.
+Measured (Kokoro frames of 25 ms, `h m m`): "Hmm, let me think." 3/4/3, so both
+m sounds are drawn out to 5 frames (250 ms of hum). Before "…" or "?" Kokoro
+already holds the last m for 14–17 frames, so nothing is drawn out there
+(`stretchSkipped: nothing-to-stretch`).
 Listening: ⏳ not yet listened to (14 Nov 2026).
 
 Affection words keep away from the endearments ("sweetie", "precious",

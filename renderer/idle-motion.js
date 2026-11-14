@@ -44,13 +44,60 @@ export const IDLE_MOTION = Object.freeze({
     /** Morphs the squint channel drives: eyes squeezed shut. */
     eyes: Object.freeze({ "まばたき": 1 }),
   }),
+  /** Playful wink (#149 part 1): close, hold, open; a little smile and a tilt toward the eye. */
+  wink: Object.freeze({
+    keys: Object.freeze([0, 0.2, 1.0, 1.4]),
+    close: Object.freeze([0, 1, 1, 0]),
+    tilt: Object.freeze([0, 3 * DEG, 3 * DEG, 0]),
+    mouthLift: Object.freeze([0, 0.5, 0.5, 0]),
+  }),
+  /** Look-around: the gaze drifts left, pauses, drifts right, pauses, then back. */
+  lookAround: Object.freeze({
+    keys: Object.freeze([0, 1.0, 1.8, 3.2, 4.0, 5.0]),
+    x: Object.freeze([0, -0.6, -0.6, 0.6, 0.6, 0]),
+    y: Object.freeze([0, 0.05, 0.05, 0, 0, 0]),
+    rise: 0.8,
+  }),
+  /** A little shiver: a fast tremble, its size eased in and out. */
+  shiver: Object.freeze({ angle: 0.6 * DEG, hz: 6, duration: 1.4, rise: 0.3 }),
+  /** A hiccup: a quick hop of the chest and shoulders with wide eyes. */
+  hiccup: Object.freeze({
+    keys: Object.freeze([0, 0.12, 0.35, 1.0]),
+    chest: Object.freeze([0, 2 * DEG, 0.5 * DEG, 0]),
+    shoulders: Object.freeze([0, 3 * DEG, 1 * DEG, 0]),
+    headPitch: Object.freeze([0, 2 * DEG, 0.5 * DEG, 0]),
+    surprise: Object.freeze([0, 0.6, 0.3, 0]),
+  }),
+  /** Nodding off: droop slowly with heavy eyes, then jerk up wide awake. */
+  noddingOff: Object.freeze({
+    keys: Object.freeze([0, 2.4, 2.55, 2.85, 3.3, 4.6]),
+    headPitch: Object.freeze([0, -6 * DEG, -6 * DEG, 3 * DEG, 2 * DEG, 0]),
+    squint: Object.freeze([0, 0.6, 0.6, 0, 0, 0]),
+    surprise: Object.freeze([0, 0, 0, 0.5, 0.3, 0]),
+  }),
   /** Spring rate for every angle, so interrupted motions ease back. */
   rate: 8,
   /** The eyes close faster than bones move, so a sneeze's squint keeps up. */
   squintRate: 30,
 });
 
-const ANGLES = ["tilt", "chest", "shoulders", "shoulderLeft", "shoulderRight", "back", "headPitch", "yawn", "squint"];
+const ANGLES = ["tilt", "chest", "shoulders", "shoulderLeft", "shoulderRight", "back", "headPitch", "shiver",
+  "yawn", "squint", "winkLeft", "winkRight", "mouthLift", "surprise"];
+
+/**
+ * Face channels (#149): an action writes a 0-1 weight per channel, and the
+ * renderer adds these morphs on top of the mood. Winks are named by the side
+ * of the screen, checked in a grid of the model: ウィンク右 closes the eye on
+ * the left of the screen.
+ */
+export const FACE_MORPHS = Object.freeze({
+  yawn: IDLE_MOTION.yawn.morphs,
+  squint: IDLE_MOTION.sneeze.eyes,
+  winkLeft: Object.freeze({ "ウィンク右": 1 }),
+  winkRight: Object.freeze({ "ウィンク": 1 }),
+  mouthLift: Object.freeze({ "口角上げ": 1 }),
+  surprise: Object.freeze({ "びっくり": 1 }),
+});
 const LIMITS = Object.freeze({
   tilt: [-IDLE_MOTION.tilt.angle, IDLE_MOTION.tilt.angle],
   chest: [0, IDLE_MOTION.sigh.chest],
@@ -61,6 +108,11 @@ const LIMITS = Object.freeze({
   headPitch: [-IDLE_MOTION.nod.angle, IDLE_MOTION.stretch.headPitch],
   yawn: [0, 1],
   squint: [0, 1],
+  winkLeft: [0, 1],
+  winkRight: [0, 1],
+  mouthLift: [0, 1],
+  surprise: [0, 1],
+  shiver: [0, IDLE_MOTION.shiver.angle],
 });
 
 const smoothstep = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
@@ -128,6 +180,18 @@ const shrug = (left, right) => ({
 
 const NOD = 3.2;
 
+/** A playful wink by screen side: close one eye, smile a little, tilt toward it. */
+const wink = (eye, sign) => ({
+  create: () => ({ duration: IDLE_MOTION.wink.keys.at(-1) }),
+  apply: (motion, target) => {
+    const { wink: w } = IDLE_MOTION;
+    target[eye] = keyed(motion.t, w.keys, w.close);
+    target.tilt = sign * keyed(motion.t, w.keys, w.tilt);
+    target.mouthLift = keyed(motion.t, w.keys, w.mouthLift);
+    return null;
+  },
+});
+
 /** The value of keyframed `values` at `t`, eased between keys; 0 outside. */
 function keyed(t, keys, values) {
   if (!(t > 0) || t >= keys.at(-1)) return 0;
@@ -135,6 +199,14 @@ function keyed(t, keys, values) {
   while (keys[i] <= t) i += 1;
   const f = smoothstep((t - keys[i - 1]) / (keys[i] - keys[i - 1]));
   return values[i - 1] + (values[i] - values[i - 1]) * f;
+}
+
+/** Write every keyed channel of `spec` (all but `keys`) into `target`. */
+function keyedPose(t, spec, target) {
+  for (const [key, values] of Object.entries(spec)) {
+    if (key !== "keys") target[key] = keyed(t, spec.keys, values);
+  }
+  return null;
 }
 
 /** The sigh's fixed chance (the user, 14 Nov 2026): new actions never take from it. */
@@ -202,6 +274,43 @@ const ACTION_TABLE = {
       }
       return null;
     },
+    quick: true,
+  }),
+  "wink-left": Object.freeze({ share: 0.5, ...wink("winkLeft", 1) }),
+  "wink-right": Object.freeze({ share: 0.5, ...wink("winkRight", -1) }),
+  "look-around": Object.freeze({
+    share: 1,
+    create: () => ({ duration: IDLE_MOTION.lookAround.keys.at(-1) }),
+    apply: (motion) => {
+      const { lookAround } = IDLE_MOTION;
+      return {
+        x: keyed(motion.t, lookAround.keys, lookAround.x),
+        y: keyed(motion.t, lookAround.keys, lookAround.y),
+        weight: bump(motion.t, motion.duration, lookAround.rise),
+      };
+    },
+  }),
+  shiver: Object.freeze({
+    share: 0.5,
+    quick: true,
+    create: () => ({ duration: IDLE_MOTION.shiver.duration }),
+    apply: (motion, target) => {
+      const { shiver } = IDLE_MOTION;
+      target.shiver = shiver.angle * bump(motion.t, shiver.duration, shiver.rise);
+      return null;
+    },
+  }),
+  hiccup: Object.freeze({
+    share: 0.5,
+    quick: true,
+    create: () => ({ duration: IDLE_MOTION.hiccup.keys.at(-1) }),
+    apply: (motion, target) => keyedPose(motion.t, IDLE_MOTION.hiccup, target),
+  }),
+  "nodding-off": Object.freeze({
+    share: 1,
+    quick: true,
+    create: () => ({ duration: IDLE_MOTION.noddingOff.keys.at(-1) }),
+    apply: (motion, target) => keyedPose(motion.t, IDLE_MOTION.noddingOff, target),
   }),
 };
 
@@ -228,6 +337,12 @@ export const ACTION_LABELS = Object.freeze({
   "stretch-yawn": "Stretch & yawn",
   nod: "Dozing nod",
   sneeze: "Light sneeze",
+  "wink-left": "Wink left",
+  "wink-right": "Wink right",
+  "look-around": "Look around",
+  shiver: "Little shiver",
+  hiccup: "Hiccup",
+  "nodding-off": "Nodding off",
 });
 
 export const ACTIONS_KEY = "yidhari.actions";
@@ -255,6 +370,8 @@ export class IdleMotion {
     /** @type {null | { kind: string, t: number, duration: number }} The action played from a panel button (#164). */
     this.manual = null;
     this.springs = Object.fromEntries(ANGLES.map((key) => [key, new Spring(0)]));
+    /** Seconds of motion so far; the shiver's wave runs on it. */
+    this.clock = 0;
   }
 
   /**
@@ -321,13 +438,17 @@ export class IdleMotion {
       for (const key of ANGLES) target[key] = 0;
       glance = ACTIONS[this.manual.kind].apply(this.manual, target);
     }
+    this.clock += dt;
     const pose = { glance };
     for (const key of ANGLES) {
       const spring = this.springs[key];
-      spring.step(target[key], dt, key === "squint" ? IDLE_MOTION.squintRate : IDLE_MOTION.rate);
+      // Eyes and mouth corners move quicker than bones; the yawn keeps its slow, tuned ease.
+      spring.step(target[key], dt, Object.hasOwn(FACE_MORPHS, key) && key !== "yawn" ? IDLE_MOTION.squintRate : IDLE_MOTION.rate);
       spring.clamp(...LIMITS[key]);
       pose[key] = spring.settle(target[key], 1e-6);
     }
+    // The shiver's size is eased by its spring; its fast wave is added here, after it.
+    pose.shiverWave = pose.shiver * Math.sin(2 * Math.PI * IDLE_MOTION.shiver.hz * this.clock);
     return pose;
   }
 

@@ -51,7 +51,7 @@ import { addSeeThroughBrows, bindSeeThroughBrowsToggle } from "./see-through-bro
 import { installCollapsiblePanel } from "./collapsible-panel.js";
 import { FrameLoop, PopOut, popupWindow } from "./pop-out.js";
 import { IDLE_STATE_LABELS, IdleController, bindIdleSettings, idleBlocked } from "./idle-behaviour.js";
-import { ACTION_LABELS, IDLE_MOTION, IdleMotion, bindActionSettings, manualPlayBlocked } from "./idle-motion.js";
+import { ACTION_LABELS, FACE_MORPHS, IDLE_MOTION, IdleMotion, bindActionSettings, manualPlayBlocked } from "./idle-motion.js";
 import { fetchTurn, turnFile } from "./turn-replay.js";
 import { createAmmoLoader } from "./ammo-loader.js";
 import { filterPhysics } from "./physics-groups.js";
@@ -338,12 +338,12 @@ function refreshActionPlay() {
  */
 const IDLE_BONES = Object.freeze([
   { name: "上半身", pitch: [["back", -1]] },
-  { name: "上半身2", pitch: [["chest", -1]] },
+  { name: "上半身2", pitch: [["chest", -1]], roll: [["shiverWave", 1]] },
   { name: "首", pitch: [["headPitch", -0.4]] },
   { name: "頭", pitch: [["headPitch", -0.6]], roll: [["tilt", 1]] },
   // Her left shoulder is on the right of the screen (#149 shrugs are named by screen side).
-  { name: "左肩", roll: [["shoulders", -1], ["shoulderRight", -1]], own: true },
-  { name: "右肩", roll: [["shoulders", 1], ["shoulderLeft", 1]], own: true },
+  { name: "左肩", roll: [["shoulders", -1], ["shoulderRight", -1], ["shiverWave", -0.8]], own: true },
+  { name: "右肩", roll: [["shoulders", 1], ["shoulderLeft", 1], ["shiverWave", 0.8]], own: true },
 ]);
 /** @type {{ bone: THREE.Bone, rest: THREE.Quaternion | null, pitch?: [string, number][], roll?: [string, number][] }[]} */
 let idleBones = [];
@@ -497,8 +497,8 @@ function setupIdleMotion(object) {
 function applyYawn() {
   if (!mesh) return;
   const influences = mesh.morphTargetInfluences;
-  // The yawn's mouth (#71), and a sneeze's squeezed-shut eyes (#149).
-  for (const [channel, morphs] of [["yawn", IDLE_MOTION.yawn.morphs], ["squint", IDLE_MOTION.sneeze.eyes]]) {
+  // Every face channel of the idle actions (#71, #149): yawn, squint, winks, smile, wide eyes.
+  for (const [channel, morphs] of Object.entries(FACE_MORPHS)) {
     const amount = idlePose[channel];
     if (!(amount > 0)) continue;
     for (const [name, weight] of Object.entries(morphs)) {
@@ -1044,7 +1044,8 @@ function updateIdle(delta) {
   refreshActionPlay();
   // A held pose lets previews and comparison grids show one motion on demand.
   idlePose = globalThis.__yidhariIdlePose
-    ? { glance: null, tilt: 0, chest: 0, shoulders: 0, shoulderLeft: 0, shoulderRight: 0, back: 0, headPitch: 0, yawn: 0, squint: 0,
+    ? { glance: null, tilt: 0, chest: 0, shoulders: 0, shoulderLeft: 0, shoulderRight: 0, back: 0, headPitch: 0, yawn: 0, squint: 0, winkLeft: 0, winkRight: 0, mouthLift: 0, surprise: 0,
+      shiver: 0, shiverWave: 0,
       ...globalThis.__yidhariIdlePose }
     : idleMotion.update(delta.eased, idle.state, idle.stateTime, idle.timing.sleepActionEvery);
   gaze.setIdle(idlePose.glance);

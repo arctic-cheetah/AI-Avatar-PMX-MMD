@@ -213,3 +213,144 @@ test("damaged saved data shows a notice instead of breaking the chat", (t) => {
   chat(page);
   assert.ok(new ChatHistory({ storage: session }).load().entries.length > 0, "new lines are saved again");
 });
+
+// --- #154: the log survives closing the tab (localStorage, display only) ---
+
+test("the log is kept in localStorage by default, so it survives closing the tab", (t) => {
+  const local = storage();
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  Object.defineProperty(globalThis, "localStorage", { value: local, configurable: true });
+  t.after(() => {
+    if (previous) Object.defineProperty(globalThis, "localStorage", previous);
+    else delete globalThis.localStorage;
+  });
+  const history = new ChatHistory();
+  history.load();
+  history.add({ who: "you", text: "Hello" });
+  assert.ok(local.items.has(CHAT_LOG_KEY));
+  assert.deepEqual(new ChatHistory().load().entries, [{ who: "you", text: "Hello" }]);
+});
+
+test("a log saved in sessionStorage by an older version is moved over once", () => {
+  const local = storage();
+  const session = storage();
+  const old = new ChatHistory({ storage: session, legacy: null });
+  old.add({ who: "you", text: "From before" });
+  const moved = new ChatHistory({ storage: local, legacy: session }).load();
+  assert.deepEqual(moved.entries, [{ who: "you", text: "From before" }]);
+  assert.equal(session.items.has(CHAT_LOG_KEY), false, "the old copy is removed");
+  assert.ok(local.items.has(CHAT_LOG_KEY));
+
+  session.setItem(CHAT_LOG_KEY, JSON.stringify({ version: 1, entries: [{ who: "you", text: "stale" }] }));
+  assert.deepEqual(new ChatHistory({ storage: local, legacy: session }).load().entries.map((e) => e.text),
+    ["From before"], "an existing localStorage log wins");
+});
+
+test("two tabs add to one saved log instead of overwriting each other", () => {
+  const shared = storage();
+  const a = new ChatHistory({ storage: shared, legacy: null });
+  const b = new ChatHistory({ storage: shared, legacy: null });
+  a.load();
+  b.load();
+  a.add({ who: "you", text: "from A" });
+  b.add({ who: "you", text: "from B" });
+  a.add({ who: "you", text: "A again" });
+  assert.deepEqual(new ChatHistory({ storage: shared }).load().entries.map((e) => e.text),
+    ["from A", "from B", "A again"]);
+});
+
+test("a stale tab preserves another tab's messages when one saved entry is malformed", () => {
+  const shared = storage();
+  const a = new ChatHistory({ storage: shared, legacy: null });
+  const b = new ChatHistory({ storage: shared, legacy: null });
+  a.add({ who: "you", text: "from A" });
+  b.load();
+  b.add({ who: "you", text: "from B" });
+  const saved = JSON.parse(shared.getItem(CHAT_LOG_KEY));
+  saved.entries.splice(1, 0, { who: "unknown", text: "malformed" });
+  shared.setItem(CHAT_LOG_KEY, JSON.stringify(saved));
+  assert.equal(new ChatHistory({ storage: shared }).load().damaged, true);
+
+  assert.equal(a.add({ who: "you", text: "A again" }), true);
+  assert.deepEqual(new ChatHistory({ storage: shared }).load(), {
+    entries: ["from A", "from B", "A again"].map((text) => ({ who: "you", text })),
+    damaged: false,
+  });
+});
+
+test("attaching a spoken turn preserves valid shared entries beside a malformed entry", () => {
+  const shared = storage();
+  const a = new ChatHistory({ storage: shared, legacy: null });
+  const b = new ChatHistory({ storage: shared, legacy: null });
+  a.add({ who: "yidhari", text: "Spoken." });
+  const id = a.last().id;
+  b.load();
+  b.add({ who: "you", text: "Meanwhile" });
+  const saved = JSON.parse(shared.getItem(CHAT_LOG_KEY));
+  saved.entries.push(null);
+  shared.setItem(CHAT_LOG_KEY, JSON.stringify(saved));
+
+  assert.equal(a.setTurn(id, "1".repeat(16)), true);
+  assert.deepEqual(new ChatHistory({ storage: shared }).load(), {
+    entries: [
+      { who: "yidhari", text: "Spoken.", turn: "1".repeat(16) },
+      { who: "you", text: "Meanwhile" },
+    ],
+    damaged: false,
+  });
+});
+
+test("a shared log with only malformed entries does not resurrect a stale tab's messages", () => {
+  const shared = storage();
+  const history = new ChatHistory({ storage: shared, legacy: null });
+  history.add({ who: "you", text: "old" });
+  shared.setItem(CHAT_LOG_KEY, JSON.stringify({ version: 1, entries: [null] }));
+
+  assert.equal(history.add({ who: "you", text: "new" }), true);
+  assert.deepEqual(new ChatHistory({ storage: shared }).load(), {
+    entries: [{ who: "you", text: "new" }], damaged: false,
+  });
+});
+
+test("unparseable, unsupported or blocked shared logs keep the tab's local copy", () => {
+  for (const raw of ["{not json", '{"version":2,"entries":[]}', '{"version":1,"entries":{}}', "null", undefined]) {
+    const shared = storage();
+    const history = new ChatHistory({ storage: shared, legacy: null });
+    history.add({ who: "you", text: "local" });
+    if (raw === undefined) shared.getItem = blocked.getItem;
+    else shared.setItem(CHAT_LOG_KEY, raw);
+
+    assert.equal(history.add({ who: "you", text: "new" }), true);
+    const saved = JSON.parse(shared.items.get(CHAT_LOG_KEY));
+    assert.deepEqual(saved.entries.map((entry) => entry.text), ["local", "new"], String(raw));
+  }
+});
+
+test("a spoken turn is saved on the right entry after another tab wrote", () => {
+  const shared = storage();
+  const a = new ChatHistory({ storage: shared, legacy: null });
+  const b = new ChatHistory({ storage: shared, legacy: null });
+  a.load();
+  b.load();
+  a.add({ who: "agent", kind: "say", source: "A", text: "Spoken." });
+  const id = a.last().id;
+  b.add({ who: "you", text: "Meanwhile" });
+  assert.equal(a.setTurn(id, "1".repeat(16)), true);
+  assert.deepEqual(new ChatHistory({ storage: shared }).load().entries, [
+    { who: "agent", kind: "say", source: "A", text: "Spoken.", turn: "1".repeat(16) },
+    { who: "you", text: "Meanwhile" },
+  ]);
+});
+
+test("New chat in one tab is not undone by the other tab's next message", () => {
+  const shared = storage();
+  const a = new ChatHistory({ storage: shared, legacy: null });
+  const b = new ChatHistory({ storage: shared, legacy: null });
+  a.load();
+  b.load();
+  a.add({ who: "you", text: "old" });
+  b.add({ who: "you", text: "old too" });
+  a.clear();
+  b.add({ who: "you", text: "new" });
+  assert.deepEqual(new ChatHistory({ storage: shared }).load().entries.map((e) => e.text), ["new"]);
+});

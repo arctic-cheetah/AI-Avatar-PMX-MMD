@@ -13,7 +13,7 @@ const MAX_SOURCE = 40;
 const REPORT_STATUS = new Set(['progress', 'done', 'error']);
 const ASK_ID = /^[0-9a-f]{1,32}$/;
 const SUMMARY_LENGTH = 80;
-const RESTORED_NOTE = "Restored after a refresh · Yidhari won't remember these in new replies";
+const RESTORED_NOTE = "Restored from earlier · Yidhari won't remember these in new replies";
 const DAMAGED_NOTE = 'Part of the earlier chat could not be restored';
 
 /** The one message that starts a reply, whether the prompt was typed or spoken. */
@@ -103,9 +103,9 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
   /** A coding agent's open question; while set, the chat bar answers it. */
   let pendingAsk = null;
   /**
-   * Spoken turns (#152): turn ID → its bubble, its saved entry and its replay button.
+   * Spoken turns (#152): turn ID → its bubble, its saved entry's id and its replay button.
    * final is set once the turn is known to have no audio left.
-   * @type {Map<string, { line: HTMLElement, entry: object | null, button: HTMLButtonElement | null, final: boolean }>}
+   * @type {Map<string, { line: HTMLElement, entryId: string | null, saved: boolean, button: HTMLButtonElement | null, final: boolean }>}
    */
   const turns = new Map();
   let replayEnabled = true;
@@ -141,8 +141,8 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
   }
 
   /** Remember which bubble a spoken turn belongs to. */
-  function bindTurn(turn, line, entry = null) {
-    if (!turns.has(turn)) turns.set(turn, { line, entry, button: null, final: false });
+  function bindTurn(turn, line, entryId = null, saved = false) {
+    if (!turns.has(turn)) turns.set(turn, { line, entryId, saved, button: null, final: false });
   }
 
   /** Give a bubble its replay button, once. */
@@ -167,9 +167,9 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     const record = turns.get(turn);
     if (!record) return;
     addReplayButton(turn);
-    if (record.entry && record.entry.turn !== turn) {
-      record.entry.turn = turn;
-      history.save();
+    if (record.entryId && !record.saved) {
+      // By id: another tab may have saved entries since this one was added (#154).
+      record.saved = history.setTurn(record.entryId, turn);
     }
   }
 
@@ -238,7 +238,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
   function show(entry, turn = null) {
     const line = renderEntry(entry);
     const saved = history.add(entry) ? history.last() : null;
-    if (turn) bindTurn(turn, line, saved);
+    if (turn) bindTurn(turn, line, saved?.id ?? null);
   }
 
   /** A status line about restoring; shown only, never saved. */
@@ -256,7 +256,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
       history.add({ who: 'yidhari', text: replySource, ...(interrupted ? { interrupted: true } : {}), ...(spoken ? { turn: replyTurn } : {}) });
       // A clip that arrives after the end still saves the turn with this entry.
       const record = replyTurn && turns.get(replyTurn);
-      if (record) record.entry = history.last();
+      if (record) Object.assign(record, { entryId: history.last()?.id ?? null, saved: Boolean(spoken) });
     }
     reply = null; replySource = ''; replyTurn = null;
   }
@@ -507,7 +507,7 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
   saved.entries.forEach((entry, index) => {
     const line = renderEntry(entry, { restored: true });
     if (entry.turn) {
-      bindTurn(entry.turn, line, history.entries[index] ?? null);
+      bindTurn(entry.turn, line, history.entries[index]?.id ?? null, true);
       addReplayButton(entry.turn);
     }
   });

@@ -12,6 +12,8 @@
 export const CHAT_LOG_KEY = 'yidhari.chat-log.v1';
 export const MAX_ENTRIES = 200;
 export const MAX_CHARS = 1_000_000;
+/** Raw JSON file accepted on import (#192); guards before parsing. */
+export const MAX_CHAT_FILE_CHARS = 2_000_000;
 
 const WHO = new Set(['you', 'yidhari', 'agent', 'tool']);
 const AGENT_KIND = new Set(['say', 'ask', 'report']);
@@ -55,6 +57,58 @@ function clean(entry) {
     out.turn = entry.turn;
   }
   return out;
+}
+
+/** Entries without their internal ids, as shown and as written to a file. */
+function publicEntries(entries) {
+  return entries.map(({ id, ...entry }) => entry);
+}
+
+/** Drop the oldest entries beyond the count and character limits. */
+function trimEntries(entries, maxEntries, maxChars) {
+  const kept = [...entries];
+  let chars = kept.reduce((sum, entry) => sum + entry.text.length, 0);
+  while (kept.length > maxEntries || (chars > maxChars && kept.length > 0)) {
+    chars -= kept.shift().text.length;
+  }
+  return kept;
+}
+
+/**
+ * Serialise entries as a chat file (#192): the storage shape plus when it was saved.
+ * Internal entry ids are never written to the file.
+ */
+export function chatFile(entries, exportedAt = new Date()) {
+  const when = exportedAt instanceof Date ? exportedAt : new Date(exportedAt);
+  return JSON.stringify({
+    version: 1,
+    exportedAt: when.toISOString(),
+    entries: publicEntries(Array.isArray(entries) ? entries : []),
+  });
+}
+
+function parseEntries(text, maxEntries, maxChars) {
+  if (typeof text !== 'string' || !text.trim()) throw new Error('Chat file is empty.');
+  if (text.length > MAX_CHAT_FILE_CHARS) throw new Error('Chat file is too large.');
+  let saved;
+  try { saved = JSON.parse(text); } catch { throw new Error('Chat file is not valid JSON.'); }
+  if (!saved || saved.version !== 1 || !Array.isArray(saved.entries)) {
+    throw new Error('Unsupported chat file.');
+  }
+  const entries = saved.entries
+    .map((entry) => (entry && typeof entry === 'object' ? clean({ ...entry, id: undefined }) : null))
+    .filter(Boolean);
+  return { entries: trimEntries(entries, maxEntries, maxChars), damaged: entries.length !== saved.entries.length };
+}
+
+/**
+ * Parse a chat file (#192) as an untrusted import: entries are cleaned with the
+ * same rules as saved data, capped oldest-first, and returned without internal ids.
+ * @returns {{ entries: object[], damaged: boolean }}
+ */
+export function parseChatFile(text, { maxEntries = MAX_ENTRIES, maxChars = MAX_CHARS } = {}) {
+  const { entries, damaged } = parseEntries(text, maxEntries, maxChars);
+  return { entries: publicEntries(entries), damaged };
 }
 
 export class ChatHistory {
@@ -153,12 +207,26 @@ export class ChatHistory {
     } catch { return false; }
   }
 
+  /** The current log as a downloadable chat file (#192). */
+  exportFile(exportedAt = new Date()) {
+    this.sync();
+    return chatFile(this.entries, exportedAt);
+  }
+
+  /**
+   * Replace the log with a chat file's entries (#192), display only.
+   * Throws on an empty, oversize, non-JSON or unsupported file.
+   * @returns {{ entries: object[], damaged: boolean, saved: boolean }}
+   */
+  importFile(text) {
+    const { entries, damaged } = parseEntries(text, this.maxEntries, this.maxChars);
+    this.entries = entries;
+    return { entries: publicEntries(this.entries), damaged, saved: this.save() };
+  }
+
   /** Drop the oldest entries beyond the count and character limits. */
   trim() {
-    let chars = this.entries.reduce((sum, entry) => sum + entry.text.length, 0);
-    while (this.entries.length > this.maxEntries || (chars > this.maxChars && this.entries.length > 0)) {
-      chars -= this.entries.shift().text.length;
-    }
+    this.entries = trimEntries(this.entries, this.maxEntries, this.maxChars);
   }
 
   /** Write the log; on a quota error, drop the older half and try once more. */

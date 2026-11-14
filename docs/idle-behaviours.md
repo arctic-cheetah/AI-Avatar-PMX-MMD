@@ -146,7 +146,7 @@ panel picks it up by itself.
 | `look-around` | 6.5 % | 5 s | The eyes, head following, drift left, pause, drift right, pause, then back to the middle | 0.6 of the gaze range each way |
 | `shiver` | 3.3 % | 1.4 s | A little "brr": a 6 Hz tremble of the upper body and shoulders that fades in and out | 0.6° |
 | `hiccup` | 3.3 % | 1.0 s | A quick jolt: chest and shoulders hop, the head tips back a touch, and the eyes widen (`びっくり`), then she settles | 1.5° chest, 3° shoulders, eyes 0.6 |
-| `nodding-off` | 6.5 % | 4.2 s | The head droops slowly with heavy eyes, then jerks up with wide eyes and settles | 6° down, 2° up, eyes 0.5 |
+| `nodding-off` | 6.5 % | 4.6 s | The head droops slowly with heavy eyes, then jerks up with wide eyes and settles | 6° down, 3° up, eyes 0.5 |
 
 - **Shrug size:** shrugs were 6° at first, but that hid behind the always-on
   body sway. The user picked 12° from a 6/12/18/24° comparison. To keep every

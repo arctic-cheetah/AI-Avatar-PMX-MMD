@@ -415,6 +415,10 @@ Measured (Kokoro frames of 25 ms): "Hmm, let me think." as `h m m` was 3/4/3,
 drawn out to 250 ms of hum; as `mmm` 3/4/5, drawn out to 5/5/5; as `ˈʌm` 3
 frames of ʌ and 5 of m. Before "…" or "?" Kokoro already holds the last m for
 14–17 frames, so only the shorter sounds are drawn out there.
+Measured F0 of "Hmm?" after RVC (thinking mood; first, middle and last fifth of
+the voiced part): the usual rise went 228 → 295 → 283 Hz, falling back at the
+end; with the row's rise, 10 st gives 267 → 266 → 335 Hz and 12 st gives
+267 → 274 → 372 Hz (+5.8 st), still rising at the end.
 Listening: ⏳ the `həm` stretch and the higher "Hmm?" are not yet listened to (14 Nov 2026).
 
 Affection words keep away from the endearments ("sweetie", "precious",

@@ -18,7 +18,7 @@
 //   Live LLM speech, hand poses, hair/coat physics.
 //
 // Extension points:
-//   restArms()  — add elbow, wrist, or finger rotations here.
+//   restArms()  — elbow, wrist and finger rest rotations live in rest-pose.js.
 //   updateBlink — copy this pattern for other morph weights.
 //   applySway() — copy this pattern for other bone-motion layers.
 //   animate()   — keep per-frame work here, not in the loader callback.
@@ -40,6 +40,7 @@ import { LastSpeechReplay, dropQueuedReplay, replayQueueItems } from "./speech-r
 import { FillerSession } from "./filler-session.js";
 import { ThinkingPose, THINKING_POSE, headGazeScale } from "./thinking-pose.js";
 import { buildThinkingRig } from "./thinking-rig.js";
+import { RELAXED_REST, relaxArms } from "./rest-pose.js";
 import { GazeController, normalisePointer, clampEyePitch } from "./gaze-tracking.js";
 import { CameraGaze } from "./camera-gaze.js";
 import { CameraControls } from "./camera-controls.js";
@@ -498,6 +499,15 @@ function setupIdleMotion(object) {
     const bone = object.skeleton?.getBoneByName(name);
     if (bone) idleBones.push({ bone, rest: own ? bone.quaternion.clone() : null, pitch, roll });
   }
+  setupArmDrift(object);
+}
+
+/**
+ * Capture the arm drift bones (#193) on top of the arms' rest pose.
+ * @param {THREE.SkinnedMesh} object Loaded PMX mesh.
+ * @returns {void}
+ */
+function setupArmDrift(object) {
   // The thinking rig rewrites its arm bones from rest every frame; others keep their own rest.
   const rewritten = new Set(thinkingBones.map(({ bone }) => bone));
   armBones = [];
@@ -1016,8 +1026,14 @@ function hangBone(bone, worldTarget) {
   bone.quaternion.setFromUnitVectors(child.position.clone().normalize(), parentDown);
 }
 
+/** The arm and hand bones the rest pose sets, as restArms() lowered them (#199). */
+const ARM_REST_BONE = /^(?:右|左)(?:腕$|ひじ$|手首$|(?:親指|人指|中指|薬指|小指)[０１２３]$)/;
+/** @type {Map<THREE.Bone, THREE.Quaternion>} */
+let loweredArms = new Map();
+
 /**
- * Lower both upper arms from the T-pose while leaving elbows and fingers bound.
+ * Lower both upper arms from the T-pose, then relax the elbows, wrists and
+ * fingers (#199, see docs/rest-pose.md).
  * The target directions point mostly down, slightly outward and forward.
  * @param {THREE.SkinnedMesh} object Loaded PMX mesh.
  * @returns {void}
@@ -1033,6 +1049,23 @@ function restArms(object) {
     hangBone(right, new THREE.Vector3(-0.28, -1, 0.16));
   }
   object.updateMatrixWorld(true);
+  loweredArms = new Map((object.skeleton?.bones ?? []).filter((bone) => ARM_REST_BONE.test(bone.name))
+    .map((bone) => [bone, bone.quaternion.clone()]));
+  relaxArms(object);
+}
+
+/**
+ * Preview other rest sizes (#199): put the lowered arms back, relax them with
+ * `sizes`, and rebuild the layers that cache the arms' rest on top of it.
+ * @param {Partial<typeof RELAXED_REST>} [sizes] Radians; defaults to RELAXED_REST.
+ * @returns {void}
+ */
+function previewRest(sizes = RELAXED_REST) {
+  if (!mesh) return;
+  for (const [bone, rest] of loweredArms) bone.quaternion.copy(rest);
+  relaxArms(mesh, sizes);
+  setupThinkingPose(mesh);
+  setupArmDrift(mesh);
 }
 
 /**
@@ -1626,6 +1659,8 @@ function onModelLoaded(loaded, data) {
       relaxAfterSpeech();
     },
     frameCamera,
+    /** Reapply the relaxed rest pose with other sizes for comparison grids (#199). */
+    relax: previewRest,
     /**
      * Hold one morph combination still, above the mood loop, for visual checks.
      * @param {Record<string, number>} morphs PMX morph names and weights.

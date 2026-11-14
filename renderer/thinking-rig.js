@@ -47,16 +47,55 @@ function poseArm(mesh, side, target, bendHint) {
   return { elbow, wrist };
 }
 
-function poseHand(mesh, side, forward, normal, curlAmount) {
-  const get = (suffix) => mesh.skeleton.getBoneByName(side + suffix);
+/**
+ * The hand's world frame: the wrist-to-middle-finger direction and the palm
+ * normal (pointing out of the palm on both sides).
+ * @returns {{ finger: THREE.Vector3, palm: THREE.Vector3 } | null} null when a bone is missing.
+ */
+export function handFrame(mesh, side) {
+  const get = (suffix) => mesh.skeleton?.getBoneByName(side + suffix);
   const wrist = get("手首"), middle = get("中指１"), index = get("人指１"), little = get("小指１");
-  if (!wrist || !middle || !index || !little) return;
+  if (!wrist || !middle || !index || !little) return null;
   wrist.updateWorldMatrix(true, true);
   const origin = wrist.getWorldPosition(new THREE.Vector3());
   const finger = middle.getWorldPosition(new THREE.Vector3()).sub(origin).normalize();
   const across = index.getWorldPosition(new THREE.Vector3()).sub(little.getWorldPosition(new THREE.Vector3())).normalize();
   const palm = new THREE.Vector3().crossVectors(across, finger).normalize();
   if (side === "左") palm.negate();
+  return { finger, palm };
+}
+
+/**
+ * Curl every finger joint of one hand toward a palm normal, by an angle per finger.
+ * Axes are captured before any joint bends, so each joint curls relative to the palm.
+ * @param {THREE.Object3D} mesh
+ * @param {"右"|"左"} side
+ * @param {THREE.Vector3} palmWorld Palm normal in world space.
+ * @param {(digit: string) => number} angleFor Radians per joint for 親指, 人指, 中指, 薬指 or 小指.
+ * @returns {void}
+ */
+export function curlFingers(mesh, side, palmWorld, angleFor) {
+  const pattern = new RegExp(`^${side}(親指|人指|中指|薬指|小指)[１２３]$`);
+  const curls = (mesh.skeleton?.bones ?? []).filter((bone) => pattern.test(bone.name)).map((bone) => {
+    bone.updateWorldMatrix(true, false);
+    const child = bone.children.find((entry) => entry.isBone);
+    const localDirection = (child?.position ?? bone.position).clone().normalize();
+    const palmLocal = palmWorld.clone().applyQuaternion(bone.getWorldQuaternion(new THREE.Quaternion()).invert());
+    return { bone, angle: angleFor(pattern.exec(bone.name)[1]), axis: new THREE.Vector3().crossVectors(localDirection, palmLocal).normalize() };
+  });
+  for (const { bone, axis, angle } of curls) {
+    if (angle) bone.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(axis, angle));
+  }
+}
+
+/** The thumb curls this much of the other fingers' angle. */
+export const THUMB_CURL = 0.45;
+
+function poseHand(mesh, side, forward, normal, curlAmount) {
+  const wrist = mesh.skeleton.getBoneByName(`${side}手首`);
+  const frame = handFrame(mesh, side);
+  if (!frame) return;
+  const { finger, palm } = frame;
   const basis = (y, z) => {
     const x = new THREE.Vector3().crossVectors(y, z).normalize();
     z = new THREE.Vector3().crossVectors(x, y).normalize();
@@ -67,19 +106,7 @@ function poseHand(mesh, side, forward, normal, curlAmount) {
   const world = wrist.getWorldQuaternion(new THREE.Quaternion());
   wrist.quaternion.copy(wrist.parent.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(rotation).multiply(world));
   wrist.updateWorldMatrix(false, true);
-  const palmWorld = normal.clone().normalize();
-  // Capture axes before bending parents so each joint curls relative to the palm.
-  const curls = mesh.skeleton.bones.filter((bone) =>
-    new RegExp(`^${side}(?:親指|人指|中指|薬指|小指)[１２３]$`).test(bone.name)).map((bone) => {
-    const child = bone.children.find((entry) => entry.isBone);
-    const localDirection = (child?.position ?? bone.position).clone().normalize();
-    const palmLocal = palmWorld.clone().applyQuaternion(bone.getWorldQuaternion(new THREE.Quaternion()).invert());
-    return { bone, axis: new THREE.Vector3().crossVectors(localDirection, palmLocal).normalize() };
-  });
-  for (const { bone, axis } of curls) {
-    const amount = bone.name.includes("親指") ? curlAmount * 0.45 : curlAmount;
-    bone.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(axis, amount));
-  }
+  curlFingers(mesh, side, normal.clone().normalize(), (digit) => (digit === "親指" ? curlAmount * THUMB_CURL : curlAmount));
   wrist.updateWorldMatrix(false, true);
 }
 

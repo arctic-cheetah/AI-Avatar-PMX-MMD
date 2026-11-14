@@ -2,18 +2,18 @@
 //   globalThis.__morphGrid = {
 //     out: '/abs/path/assets/private/morph-grids/<name>.png',  // gitignored
 //     cols: 4,                                     // optional
-//     clip: { x: 240, y: 170, width: 400, height: 350 },  // optional: face
+//     clip: { x: 170, y: 170, width: 400, height: 350 },  // optional: face
 //     items: [['label', 'preset-name' | { morph: weight }, weight?], ...],
 //   };
 // then run this file with browser_run_code_unsafe. Each cell holds the combo
 // still (auto-blink off) for 1.3 s, captures the clip, and the cells are laid
 // out with their labels. Clips for 1280x800 after setup.js: face (default),
-// eyes and brows { x: 230, y: 170, width: 420, height: 230 },
-// mouth { x: 330, y: 380, width: 220, height: 130 }.
+// eyes and brows { x: 160, y: 170, width: 420, height: 230 },
+// mouth { x: 260, y: 380, width: 220, height: 130 }.
 async (page) => {
   const spec = await page.evaluate(() => globalThis.__morphGrid);
   if (!spec?.out || !Array.isArray(spec.items)) throw new Error('Set globalThis.__morphGrid = { out, items } first.');
-  const { out, items, cols = 4, clip = { x: 240, y: 170, width: 400, height: 350 } } = spec;
+  const { out, items, cols = 4, clip = { x: 170, y: 170, width: 400, height: 350 } } = spec;
   const shots = [];
   for (const [label, preset, weight = 1] of items) {
     await page.evaluate(([preset, weight]) => {

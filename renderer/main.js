@@ -52,7 +52,9 @@ import { addSeeThroughBrows, bindSeeThroughBrowsToggle } from "./see-through-bro
 import { installCollapsiblePanel } from "./collapsible-panel.js";
 import { FrameLoop, PopOut, popupWindow } from "./pop-out.js";
 import { IDLE_STATE_LABELS, IdleController, bindIdleSettings, idleBlocked } from "./idle-behaviour.js";
-import { ACTION_LABELS, FACE_MORPHS, IDLE_MOTION, IdleMotion, bindActionSettings, manualPlayBlocked } from "./idle-motion.js";
+import {
+  ACTION_LABELS, ARM_CHANNELS, FACE_MORPHS, IDLE_MOTION, IdleMotion, bindActionSettings, bindArmDriftSetting, manualPlayBlocked,
+} from "./idle-motion.js";
 import { fetchTurn, turnFile } from "./turn-replay.js";
 import { createAmmoLoader } from "./ammo-loader.js";
 import { filterPhysics } from "./physics-groups.js";
@@ -276,6 +278,8 @@ function actionCheckboxes(labels, container, prefix) {
   return boxes;
 }
 bindActionSettings(idleMotion, actionCheckboxes(ACTION_LABELS, "#actions", "action"));
+// Arm drift (#193) is always on while idle, not a picked action, so it has its own tick and key.
+bindArmDriftSetting(idleMotion, actionCheckboxes({ "arm-drift": "Arm drift" }, "#actions", "idle")["arm-drift"]);
 
 /**
  * One play button per action label (#164), disabled until refreshActionPlay
@@ -348,6 +352,22 @@ const IDLE_BONES = Object.freeze([
 ]);
 /** @type {{ bone: THREE.Bone, rest: THREE.Quaternion | null, pitch?: [string, number][], roll?: [string, number][] }[]} */
 let idleBones = [];
+/**
+ * Arm drift bones (#193). Her right arm is on the left of the screen. The
+ * upper arms turn in the shoulder's frame (x swings forward and back, z
+ * lifts outward); the elbows bend about their own y and the wrists turn
+ * about the forearm (their own x). Signs checked in front and side grids.
+ */
+const ARM_BONES = Object.freeze([
+  { name: "右腕", frame: "parent", x: [["armSwayLeft", 1]], z: [["armOutLeft", -1]] },
+  { name: "左腕", frame: "parent", x: [["armSwayRight", 1]], z: [["armOutRight", 1]] },
+  { name: "右ひじ", frame: "local", y: [["elbowLeft", 1]] },
+  { name: "左ひじ", frame: "local", y: [["elbowRight", -1]] },
+  { name: "右手首", frame: "local", x: [["wristLeft", 1]] },
+  { name: "左手首", frame: "local", x: [["wristRight", 1]] },
+]);
+/** @type {{ bone: THREE.Bone, rest: THREE.Quaternion | null, frame: string, x?: [string, number][], y?: [string, number][], z?: [string, number][] }[]} */
+let armBones = [];
 const idleEuler = new THREE.Euler();
 const idleQuat = new THREE.Quaternion();
 // Only conversation keeps her awake: sent chat, voice input and bridge events.
@@ -477,6 +497,33 @@ function setupIdleMotion(object) {
   for (const { name, pitch, roll, own } of IDLE_BONES) {
     const bone = object.skeleton?.getBoneByName(name);
     if (bone) idleBones.push({ bone, rest: own ? bone.quaternion.clone() : null, pitch, roll });
+  }
+  // The thinking rig rewrites its arm bones from rest every frame; others keep their own rest.
+  const rewritten = new Set(thinkingBones.map(({ bone }) => bone));
+  armBones = [];
+  for (const { name, ...axes } of ARM_BONES) {
+    const bone = object.skeleton?.getBoneByName(name);
+    if (bone) armBones.push({ bone, rest: rewritten.has(bone) ? null : bone.quaternion.clone(), ...axes });
+  }
+}
+
+/**
+ * Multiply the arm drift (#193) on top of the thinking pose, which owns the
+ * arms: the drift fades as the hand goes to the chin and returns as it drops.
+ * @returns {void}
+ */
+function applyArmDrift() {
+  const fade = 1 - thinkingPose.weight;
+  const sum = (parts = []) => fade * parts.reduce((total, [key, sign]) => total + (idlePose[key] ?? 0) * sign, 0);
+  for (const { bone, rest, frame, x, y, z } of armBones) {
+    if (rest) bone.quaternion.copy(rest);
+    const ax = sum(x);
+    const ay = sum(y);
+    const az = sum(z);
+    if (ax === 0 && ay === 0 && az === 0) continue;
+    idleQuat.setFromEuler(idleEuler.set(ax, ay, az, "XYZ"));
+    if (frame === "parent") bone.quaternion.premultiply(idleQuat);
+    else bone.quaternion.multiply(idleQuat);
   }
 }
 
@@ -1039,6 +1086,7 @@ function updateIdle(delta) {
   idlePose = globalThis.__yidhariIdlePose
     ? { glance: null, tilt: 0, chest: 0, shoulders: 0, shoulderLeft: 0, shoulderRight: 0, back: 0, headPitch: 0, yawn: 0, squint: 0, winkLeft: 0, winkRight: 0, mouthLift: 0, surprise: 0,
       shiver: 0, shiverWave: 0, smile: 0, browRaise: 0, hum: 0, bobPitch: 0, bobRoll: 0, lean: 0, shy: 0, exhale: 0,
+      armDrift: 0, ...Object.fromEntries(ARM_CHANNELS.map((key) => [key, 0])),
       ...globalThis.__yidhariIdlePose }
     : idleMotion.update(delta.eased, idle.state, idle.stateTime, idle.timing.sleepActionEvery);
   gaze.setIdle(idlePose.glance);
@@ -1918,6 +1966,7 @@ function animate() {
   applyGaze(delta);
   applySway(now / 1000, delta);
   applyIdleMotion();
+  applyArmDrift();
   applyPhysics(delta);
   audition?.update(delta);
   audition?.apply();

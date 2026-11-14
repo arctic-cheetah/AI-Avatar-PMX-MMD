@@ -8,6 +8,8 @@ import { Spring } from "./smoothing.js";
 import { IDLE_TIMING } from "./idle-behaviour.js";
 
 const DEG = Math.PI / 180;
+/** The arm drift's weight while asleep or waking (#193). */
+const SLEEPY_DRIFT = 0.6;
 
 /** Timings in seconds, angles in radians, glance sizes as normalised gaze targets. */
 export const IDLE_MOTION = Object.freeze({
@@ -118,6 +120,31 @@ export const IDLE_MOTION = Object.freeze({
   weightShift: Object.freeze({ duration: Object.freeze([4.5, 5.5]), rise: 1.2, lean: 3 * DEG, head: 0.5 }),
   /** Shy look-away: eyes and head drop to one side with a shy giggle. */
   shy: Object.freeze({ duration: 3.5, rise: 0.9, x: 0.5, y: 0.45, headPitch: 3 * DEG, tilt: 2 * DEG }),
+  /**
+   * Arm drift (#193): always on while idle, not an action. Sizes in radians;
+   * each channel mixes two sine waves (periods in seconds, weights in `mix`)
+   * that never line up, and the right of the screen runs `rightScale` slower
+   * on its own phases. `out` and `elbow` only go one way, so the arms never
+   * press into the body or bend past straight. `levels` is the drift's
+   * weight per idle state; `rate` is its spring.
+   */
+  armDrift: Object.freeze({
+    sway: 2.5 * DEG,
+    out: 2 * DEG,
+    elbow: 4 * DEG,
+    wrist: 3.5 * DEG,
+    periods: Object.freeze({
+      sway: Object.freeze([23, 37]),
+      out: Object.freeze([29, 47]),
+      elbow: Object.freeze([19, 31]),
+      wrist: Object.freeze([17, 43]),
+    }),
+    mix: Object.freeze([0.6, 0.4]),
+    rightScale: 1.13,
+    sleepy: SLEEPY_DRIFT,
+    levels: Object.freeze({ idle: 1, stretching: 1, sleepy: SLEEPY_DRIFT, waking: SLEEPY_DRIFT }),
+    rate: 2,
+  }),
   /** Spring rate for every angle, so interrupted motions ease back. */
   rate: 8,
   /** The eyes close faster than bones move, so a sneeze's squint keeps up. */
@@ -171,6 +198,42 @@ const LIMITS = Object.freeze({
   exhale: [0, 1],
   lean: [-IDLE_MOTION.weightShift.lean, IDLE_MOTION.weightShift.lean],
 });
+
+/** Arm drift parts and the IDLE_MOTION.armDrift size each one uses (#193). */
+const ARM_PARTS = Object.freeze({ armSway: "sway", armOut: "out", elbow: "elbow", wrist: "wrist" });
+const ONE_WAY = new Set(["out", "elbow"]);
+
+/** The eight arm drift angles, named by screen side like the shrugs. */
+export const ARM_CHANNELS = Object.freeze(Object.keys(ARM_PARTS).flatMap((part) => [`${part}Left`, `${part}Right`]));
+
+/**
+ * The arm drift angles at `clock` seconds, scaled by `amount` (0-1).
+ * A two-wave mix per channel stays within ±1, so each angle stays within its size.
+ * @param {number} clock Seconds of motion so far.
+ * @param {number} amount The drift's eased weight.
+ * @returns {Record<string, number>} Radians per ARM_CHANNELS name.
+ */
+export function armDriftAngles(clock, amount) {
+  const drift = IDLE_MOTION.armDrift;
+  const [a, b] = drift.mix;
+  const angles = {};
+  Object.entries(ARM_PARTS).forEach(([part, key], index) => {
+    const [first, second] = drift.periods[key];
+    for (const [side, scale, phase] of [["Left", 1, 1.3 * index], ["Right", drift.rightScale, 1.3 * index + 2.4]]) {
+      if (!(amount > 0)) {
+        angles[part + side] = 0;
+        continue;
+      }
+      const wave = a * Math.sin((2 * Math.PI * clock) / (first * scale) + phase)
+        + b * Math.sin((2 * Math.PI * clock) / (second * scale) + 1.7 * phase + 0.9);
+      const size = drift[key] * amount;
+      angles[part + side] = ONE_WAY.has(key) ? size * (0.5 + 0.5 * wave) : size * wave;
+    }
+  });
+  return angles;
+}
+
+export const ARM_DRIFT_KEY = "yidhari.arm-drift";
 
 const smoothstep = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
 const within = ([min, max], r) => min + (max - min) * r;
@@ -508,8 +571,16 @@ export class IdleMotion {
     /** @type {null | { kind: string, t: number, duration: number }} The action played from a panel button (#164). */
     this.manual = null;
     this.springs = Object.fromEntries(ANGLES.map((key) => [key, new Spring(0)]));
-    /** Seconds of motion so far; the shiver's wave runs on it. */
+    /** Seconds of motion so far; the shiver's wave and the arm drift run on it. */
     this.clock = 0;
+    /** Whether the arms drift while idle and asleep (#193). */
+    this.armDriftEnabled = true;
+    this.driftSpring = new Spring(0);
+  }
+
+  /** @param {boolean} enabled Turn the arm drift on or off; it eases either way. */
+  setArmDrift(enabled) {
+    this.armDriftEnabled = Boolean(enabled);
   }
 
   /**
@@ -591,6 +662,13 @@ export class IdleMotion {
     const { hum } = IDLE_MOTION;
     pose.bobPitch = pose.hum * hum.pitch * Math.sin(2 * Math.PI * hum.hz * this.clock);
     pose.bobRoll = pose.hum * hum.roll * Math.sin(2 * Math.PI * hum.swayHz * this.clock);
+    // The arm drift (#193) eases with the state and settles exactly to 0 when active.
+    const { armDrift } = IDLE_MOTION;
+    const level = this.armDriftEnabled ? (armDrift.levels[state] ?? 0) : 0;
+    this.driftSpring.step(level, dt, armDrift.rate);
+    this.driftSpring.clamp(0, 1);
+    pose.armDrift = this.driftSpring.settle(level, 1e-5);
+    Object.assign(pose, armDriftAngles(this.clock, pose.armDrift));
     return pose;
   }
 
@@ -663,6 +741,32 @@ export class IdleMotion {
     }
     return { kind, t: 0, ...ACTIONS[kind].create(this.random) };
   }
+}
+
+/**
+ * Bind the panel's Arm drift tick (#193): on by default, saved as "0"/"1".
+ * @param {IdleMotion} motion
+ * @param {{ checked: boolean, addEventListener(type: string, fn: () => void): void } | null} box
+ * @param {{ local?: Storage }} [options]
+ * @returns {void}
+ */
+export function bindArmDriftSetting(motion, box, { local } = {}) {
+  try {
+    local ??= globalThis.localStorage;
+  } catch { /* Storage access itself can throw. */ }
+  let enabled = true;
+  try {
+    enabled = local?.getItem(ARM_DRIFT_KEY) !== "0";
+  } catch { /* Blocked: on. */ }
+  motion.setArmDrift(enabled);
+  if (!box) return;
+  box.checked = enabled;
+  box.addEventListener("change", () => {
+    motion.setArmDrift(box.checked);
+    try {
+      local?.setItem(ARM_DRIFT_KEY, box.checked ? "1" : "0");
+    } catch { /* Session-only. */ }
+  });
 }
 
 /**

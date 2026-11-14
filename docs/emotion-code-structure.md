@@ -2,7 +2,7 @@
 
 The restored renderer separates semantic presets, animation, and authoring:
 
-- [expressions.json](../renderer/expressions.json): 50 mood names, intended-use
+- [expressions.json](../renderer/expressions.json): 56 mood names, intended-use
   descriptions and PMX weights. Neutral clears the mood, and the face then
   settles into the resting face (`calm` by default).
 - [expression-catalog.js](../renderer/expression-catalog.js): asynchronous loader

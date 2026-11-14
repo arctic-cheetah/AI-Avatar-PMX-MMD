@@ -13,7 +13,7 @@ This is a companion project, kept outside `my_code_pc` so it does not compete fo
 - ▶ **Replay any bubble:** every spoken chat bubble has its own replay button, even after a page refresh or bridge restart. Turns are kept on disk under a 500 MB cap (`--replay-cap-mb`), oldest first; deleted ones read *Too old to replay* — see [per-bubble replay](docs/agent-voice.md#replay-any-spoken-bubble).
 - 💾 **Chat log kept on close:** the on-screen chat comes back after a refresh or after closing the browser (`localStorage`, display only; her memory starts fresh). **New chat** clears it — see [chat log after a refresh or close](docs/conversation-history.md#chat-log-after-a-refresh-or-close).
 - 🎤 **Voice input:** click **🎤 Talk**, speak, click **■ Stop**. Local Whisper on the CPU turns it into a chat prompt; audio never leaves the machine ([docs/voice-input.md](docs/voice-input.md)).
-- 😊 **Moods:** the LLM adds tags such as `[soft-smile:0.6]`, which become facial expressions from a catalog of 50 presets.
+- 😊 **Moods:** the LLM adds tags such as `[soft-smile:0.6]`, which become facial expressions from a catalog of 56 presets.
 - 🤔 **Thinking face:** while the model reasons, she looks thoughtful, with an eyes-up gesture and a thought bubble.
 - 💭 **Optional spoken filler:** `--thinking-filler` prepares one “Hmm…” clip at startup and plays it once before the real answer.
 - 🎙️ **Voice:** each sentence is synthesised locally with Kokoro TTS (`--tts kokoro`), then converted to Yidhari's voice with an Applio RVC model. Edge TTS is still available with `--tts edge`.

@@ -1,6 +1,6 @@
 # Shared expression catalog
 
-[expressions.json](../renderer/expressions.json) is the source of truth for 50
+[expressions.json](../renderer/expressions.json) is the source of truth for 56
 presets. Each entry contains `description` and `morphs`, plus optional `aliases`
 and `ease`;
 neutral has an empty map. Original weights were preserved from the recovered
@@ -129,3 +129,34 @@ other calm faces are ordinary moods it can pick on purpose.
   the box) without saving, so the sliders and comparison grids show only their
   own morphs. A reload restores the saved setting. Moving a slider by hand
   leaves it alone, because sliders add on top of every channel.
+
+## New moods (#99 step 3)
+
+Six moods fill gaps in the catalog. They use only the model's existing 56
+vertex morphs, and each was compared in a grid with its closest existing mood
+before it was added. With see-through brows on, brow shapes now carry part of
+the emotion:
+
+| Preset | Morphs | Looks | Different from |
+| --- | --- | --- | --- |
+| `playful` | `ウィンク` 1, `にやり２` 0.6, `口角上げ` 0.3 | A wink with a smirk | `mischievous` keeps both eyes open |
+| `curious` | `上左` 0.6, `びっくり` 0.35, `う` 0.2 | Wide, interested eyes, one brow up, a small rounded mouth | `skeptical` is half-lidded doubt |
+| `amused` | `笑い` 0.7, `い２` 0.5, `口角上げ` 0.5 | A quiet chuckle: smiling eyes, small closed smile | `grin` opens the mouth |
+| `awed` | `上` 0.8, `びっくり` 0.6, `お` 0.35 | Wide eyes, raised brows, a small "oh" | `gasp` and `shocked` open the mouth wider |
+| `wistful` | `眼角下` 0.45, `じと目` 0.35, `困る` 0.35, `口角下げ` 0.15, `にこり` 0.25 | Bittersweet: softly lifted inner brows, downcast eyes, faint smile | `sad` has no smile; `thinking` pulls the mouth aside |
+| `proud` | `じと目` 0.4, `上` 0.55, `口角上げ` 0.6, `にやり` 0.2, `下眼上` 0.2 | Pleased with herself: relaxed lids, brows up, an even smile | `cocky` and `smug` are one-sided smirks; `happy` closes the eyes |
+
+Three other candidates were left out because, on this model, they look the
+same as an existing mood: `sympathetic` (like `tender`), `grateful` (like
+`relieved`) and `sheepish` (like `embarrassed`). A blush would set them apart.
+That becomes a material morph after the move to `@takahirox/three-mmd` (#127).
+
+**Voice.** `playful`, `amused` and `proud` speak with the energetic prosody
+and `wistful` with the low one. `awed` joins the surprise delivery ("wow",
+"whoa"), and `amused` joins the affection delivery. `curious` keeps neutral
+prosody. See [testing-kokoro.md](./testing-kokoro.md).
+
+**A wink as a mood.** `playful` writes `ウィンク` itself. The wink buttons'
+channel now combines with the mood's wink instead of overwriting it, and while
+one eye is shut by a wink, the idle blink still closes the open eye. See
+[Layer priority](./animation-transitions.md#layer-priority).

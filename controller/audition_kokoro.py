@@ -139,7 +139,7 @@ def main() -> None:
     parser.add_argument('--word-lifts', action=argparse.BooleanOptionalAction, default=True,
                         help='Lift endearments in address and the word before "!".')
     parser.add_argument('--word-lift-bend', type=float, default=4.0)
-    parser.add_argument('--endearment-bend', type=float, default=8.0)
+    parser.add_argument('--endearment-bend', type=float, default=9.0)
     parser.add_argument('--surprise-bend', type=float, default=5.0,
                         help='Semitones a surprised "what"/"really" rises (-12 to 12).')
     parser.add_argument('--hesitation-bend', type=float, default=-1.0,

@@ -128,6 +128,19 @@ tests cover it with a fake build.
 - **Rebuilds share one Ammo world.** `MMDPhysics` has no `dispose()`, so
   disposing removes the old rigid bodies and joints from the shared world.
   Rebuilding never creates another world, so toggling doesn't leak worlds.
+- **Disposing frees the old build's Ammo memory.** Ammo objects live on the
+  wasm heap, and JavaScript's garbage collector never frees them. Removing
+  bodies from the world is not enough: every chest or hip toggle would leak
+  the bodies, motion states, shapes, construction infos, joints and the old
+  `ResourceManager`'s pooled temporaries. `MMDPhysics` doesn't keep every one
+  of them (the construction infos and the box shapes' size vectors are
+  dropped), so `trackAmmo()` in `ammo-release.js` swaps in recording
+  constructors for those classes while `new MMDPhysics(...)` runs, then puts
+  the originals back. On dispose, `releaseAmmo()` removes the joints, then
+  the bodies, then calls `Ammo.destroy` once on each recorded object and
+  each pooled temporary. The world's own parts (dispatcher, broadphase,
+  solver) are never recorded, so the shared world survives. Destroying the
+  gravity vector made with the world is safe, since `setGravity` copies it.
 
 ### The spiral curl: one moving root, a rigid spiral
 
@@ -322,3 +335,11 @@ skipped when the PMX or `node_modules/three` is absent.
 `tests/renderer/physics-layer.test.mjs` covers the lifecycle table above with
 a fake build, `ammo-loader.test.mjs` covers the one-time script load and its
 errors, and `stored-toggle.test.mjs` covers default-off toggles.
+
+`tests/renderer/ammo-release.test.mjs` checks with a fake Ammo that tracking
+records only the per-build classes and always restores the constructors,
+and that release frees each object once, joints before bodies. A real-Ammo
+test loads three's `ammo.wasm.js` in Node, rebuilds a three-body chain 200
+times in one shared world, and measures where a fresh 4 KiB block lands.
+That address climbs over 100 KB without release and stays flat with it. It
+is skipped when `node_modules/three` is absent.

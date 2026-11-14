@@ -54,6 +54,7 @@ import { IDLE_STATE_LABELS, IdleController, bindIdleSettings, idleBlocked } from
 import { ACTION_LABELS, IDLE_MOTION, IdleMotion, bindActionSettings } from "./idle-motion.js";
 import { fetchTurn, turnFile } from "./turn-replay.js";
 import { createAmmoLoader } from "./ammo-loader.js";
+import { releaseAmmo, trackAmmo } from "./ammo-release.js";
 import { filterPhysics } from "./physics-groups.js";
 import { PhysicsLayer } from "./physics-layer.js";
 import { bindStoredToggle } from "./stored-toggle.js";
@@ -1652,7 +1653,7 @@ let physicsBones = [];
  * @returns {Promise<import("./physics-layer.js").PhysicsRun>}
  */
 async function buildPhysics(groups) {
-  const [, { object, data }] = await Promise.all([loadAmmo(), physicsModel]);
+  const [Ammo, { object, data }] = await Promise.all([loadAmmo(), physicsModel]);
   const rigBones = data.bones.map((bone) => ({ name: bone.name, parent: bone.parentIndex }));
   // The loader's copies, not the raw PMX: it turns 40 physics+bone (type 2)
   // chain bodies into type 1, which stops them vibrating against their parent.
@@ -1664,9 +1665,12 @@ async function buildPhysics(groups) {
   if (filtered.orphaned.length > 0) {
     console.warn(`Physics: dropped ${filtered.orphaned.length} bodies with no anchor left`, filtered.orphaned);
   }
-  const physics = new MMDPhysics(object, filtered.rigidBodies, filtered.constraints,
-    physicsWorld ? { world: physicsWorld } : {});
+  // Record the build's Ammo objects: the wasm heap is never garbage-collected.
+  const { result: physics, allocations } = trackAmmo(Ammo, () =>
+    new MMDPhysics(object, filtered.rigidBodies, filtered.constraints,
+      physicsWorld ? { world: physicsWorld } : {}));
   physicsWorld = physics.world;
+  let disposed = false;
   return {
     update: (delta) => physics.update(delta),
     reset: () => physics.reset(),
@@ -1676,8 +1680,10 @@ async function buildPhysics(groups) {
       physics.maxStepNum = maxStepNum;
     },
     dispose() {
-      for (const constraint of physics.constraints) physicsWorld.removeConstraint(constraint.constraint);
-      for (const body of physics.bodies) physicsWorld.removeRigidBody(body.body);
+      if (disposed) return; // a second Ammo.destroy would be a double free
+      disposed = true;
+      const { transforms, quaternions, vector3s } = physics.manager;
+      releaseAmmo(Ammo, physicsWorld, allocations, [...transforms, ...quaternions, ...vector3s]);
     },
   };
 }

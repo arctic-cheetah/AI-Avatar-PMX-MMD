@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  ACTIONS, ACTIONS_KEY, ACTION_LABELS, IDLE_MOTION, IdleMotion, bindActionSettings, bump, manualPlayBlocked,
+  ACTIONS, ACTIONS_KEY, ACTION_LABELS, FACE_MORPHS, IDLE_MOTION, IdleMotion, bindActionSettings, bump, manualPlayBlocked,
 } from "../../renderer/idle-motion.js";
 import { IDLE_TIMING } from "../../renderer/idle-behaviour.js";
 
@@ -61,7 +61,8 @@ function asleep(name, seconds = 5) {
   return { kind: motion.sleepAction, poses };
 }
 
-const isRest = (pose) => pose.glance === null && pose.yawn === 0 && pose.squint === 0 && ANGLES.every((k) => Math.abs(pose[k]) < 1e-9);
+const FACE = ["yawn", "squint", "winkLeft", "winkRight", "mouthLift", "surprise"];
+const isRest = (pose) => pose.glance === null && FACE.every((k) => pose[k] === 0) && pose.shiverWave === 0 && ANGLES.every((k) => Math.abs(pose[k]) < 1e-9);
 const peak = (poses, key) => Math.max(...poses.map((p) => Math.abs(p[key])));
 const signedPeak = (poses, key) => poses.reduce((best, p) => (Math.abs(p[key]) > Math.abs(best) ? p[key] : best), 0);
 
@@ -78,7 +79,8 @@ test("bump eases in, holds and eases out within its duration", () => {
 // ---- one registry (#149) ----
 
 test("one set of actions serves both idle and sleep, with the user's mix: shrugs stay rare", () => {
-  assert.deepEqual(NAMES, ["glance", "tilt-left", "tilt-right", "shrug-left", "shrug-right", "shrug-both", "sigh", "stretch-yawn", "nod", "sneeze"]);
+  assert.deepEqual(NAMES, ["glance", "tilt-left", "tilt-right", "shrug-left", "shrug-right", "shrug-both", "sigh", "stretch-yawn", "nod", "sneeze",
+    "wink-left", "wink-right", "look-around", "shiver", "hiccup", "nodding-off"]);
   // The sigh is fixed at 15 % (the user, 14 Nov 2026): new actions never take from it.
   assert.ok(Math.abs(ACTIONS.sigh.weight - 0.15) < 1e-12, "the sigh keeps 15 %");
   const total = Object.values(ACTIONS).reduce((sum, action) => sum + action.weight, 0);
@@ -86,7 +88,8 @@ test("one set of actions serves both idle and sleep, with the user's mix: shrugs
   // Every other action keeps the user's relative mix and shares the other 85 %:
   // glance 1, stretch-and-yawn 3, shrugs and the sneeze half a glance, tilts and the nod like a glance.
   const relative = { glance: 1, "tilt-left": 1, "tilt-right": 1, "shrug-left": 0.5, "shrug-right": 0.5,
-    "shrug-both": 0.5, "stretch-yawn": 3, nod: 1, sneeze: 0.5 };
+    "shrug-both": 0.5, "stretch-yawn": 3, nod: 1, sneeze: 0.5,
+    "wink-left": 0.5, "wink-right": 0.5, "look-around": 1, shiver: 0.5, hiccup: 0.5, "nodding-off": 1 };
   for (const [name, share] of Object.entries(relative)) {
     const expected = (share / relative.glance) * ACTIONS.glance.weight;
     assert.ok(Math.abs(ACTIONS[name].weight - expected) < 1e-9, `${name} keeps its share relative to a glance`);
@@ -215,7 +218,7 @@ test("every action comes up while idle over an hour, one at a time, within its l
 test("motions are smooth from frame to frame", () => {
   const motion = new IdleMotion({ random: seeded(3) });
   // The sneeze is meant to be quick; it has its own speed test below.
-  motion.setActions(NAMES.filter((name) => name !== "sneeze"));
+  motion.setActions(NAMES.filter((name) => !ACTIONS[name].quick));
   let previous = motion.update(0, "idle", 0);
   for (let i = 1; i < 300 * 60; i += 1) {
     const state = i < 200 * 60 ? "idle" : i < 200 * 60 + 192 ? "stretching" : "sleepy";
@@ -316,6 +319,12 @@ const SHOWS = {
   "stretch-yawn": (poses) => peak(poses, "yawn") > 0.9,
   nod: (poses) => Math.min(...poses.map((p) => p.headPitch)) < -IDLE_MOTION.nod.angle * 0.8,
   sneeze: (poses) => peak(poses, "squint") > 0.9 && Math.min(...poses.map((p) => p.headPitch)) < -3 * DEG,
+  "wink-left": (poses) => peak(poses, "winkLeft") > 0.9 && peak(poses, "winkRight") === 0,
+  "wink-right": (poses) => peak(poses, "winkRight") > 0.9 && peak(poses, "winkLeft") === 0,
+  "look-around": (poses) => poses.some((p) => p.glance && p.glance.x < -0.4) && poses.some((p) => p.glance && p.glance.x > 0.4),
+  shiver: (poses) => peak(poses, "shiverWave") > 0.3 * DEG,
+  hiccup: (poses) => peak(poses, "surprise") > 0.4 && peak(poses, "shoulders") > 1.5 * DEG,
+  "nodding-off": (poses) => Math.min(...poses.map((p) => p.headPitch)) < -4 * DEG && peak(poses, "surprise") > 0.3,
 };
 
 test("every action also plays while asleep", () => {
@@ -471,7 +480,7 @@ test("manual actions stay within their limits and move smoothly, in every state 
         assert.ok(Math.abs(pose.tilt) <= IDLE_MOTION.tilt.angle + 1e-9, `${state} ${name} tilt`);
         assert.ok(pose.yawn >= 0 && pose.yawn <= 1, `${state} ${name} yawn`);
         // The sneeze snap is meant to be quick: its own limit is 0.6° per frame.
-        const limit = (name === "sneeze" ? 0.6 : 0.25) * DEG;
+        const limit = (ACTIONS[name].quick ? 0.6 : 0.25) * DEG;
         for (const key of ANGLES) {
           assert.ok(Math.abs(pose[key] - previous[key]) < limit, `${state} ${name} ${key} jumped at frame ${i}`);
         }
@@ -624,4 +633,95 @@ test("a sneeze can be played from its Animation actions button", () => {
   assert.equal(motion.playing, "sneeze");
   const poses = play(motion, "active", IDLE_MOTION.sneeze.keys.at(-1));
   assert.ok(peak(poses, "squint") > 0.9);
+});
+
+// ---- #149 part 1: wink, look-around, shiver, hiccup, nodding off ----
+
+test("face channels drive the chosen morphs: happy-arc winks by screen side, a little smile, wide eyes", () => {
+  assert.deepEqual({ ...FACE_MORPHS.winkLeft }, { "ウィンク右": 1 }, "ウィンク右 closes the eye on the left of the screen");
+  assert.deepEqual({ ...FACE_MORPHS.winkRight }, { "ウィンク": 1 }, "ウィンク closes the eye on the right of the screen");
+  assert.deepEqual({ ...FACE_MORPHS.mouthLift }, { "口角上げ": 1 });
+  assert.deepEqual({ ...FACE_MORPHS.surprise }, { "びっくり": 1 });
+  assert.deepEqual({ ...FACE_MORPHS.squint }, { "まばたき": 1 });
+  assert.deepEqual({ ...FACE_MORPHS.yawn }, { ...IDLE_MOTION.yawn.morphs });
+});
+
+test("a playful wink closes one eye with a little smile and a tilt toward it, then opens", () => {
+  for (const [name, eye, other, sign] of [["wink-left", "winkLeft", "winkRight", 1], ["wink-right", "winkRight", "winkLeft", -1]]) {
+    const { kind, poses } = awake(name, 3);
+    assert.equal(kind, name);
+    assert.ok(peak(poses, eye) > 0.9, `${name} closes its eye`);
+    assert.ok(poses.every((p) => p[other] === 0), `${name} leaves the other eye open`);
+    const lift = peak(poses, "mouthLift");
+    assert.ok(lift > 0.4 && lift <= 0.5 + 1e-9, `${name} smiles a little (${lift.toFixed(2)})`);
+    assert.equal(Math.sign(signedPeak(poses, "tilt")), sign, `${name} tilts toward the winking eye`);
+    assert.ok(poses.at(-1)[eye] < 0.01 && Math.abs(poses.at(-1).tilt) < 0.05 * DEG, `${name} opens again`);
+  }
+});
+
+test("look-around: the eyes drift left, then right, then back to the middle", () => {
+  const { kind, poses } = awake("look-around", 7);
+  assert.equal(kind, "look-around");
+  const xs = poses.map((p) => (p.glance ? p.glance.x * p.glance.weight : 0));
+  const leftAt = xs.findIndex((x) => x < -0.4);
+  const rightAt = xs.findIndex((x) => x > 0.4);
+  assert.ok(leftAt >= 0 && rightAt > leftAt, "left first, then right");
+  assert.ok(Math.abs(xs.at(-1)) < 0.01, "back to the middle");
+  for (let i = 1; i < xs.length; i += 1) assert.ok(Math.abs(xs[i] - xs[i - 1]) < 0.03, `drifts smoothly at frame ${i}`);
+});
+
+test("a little shiver: a fast small tremble that fades in and out", () => {
+  const { kind, poses } = awake("shiver", 3);
+  assert.equal(kind, "shiver");
+  const wave = poses.map((p) => p.shiverWave);
+  let crossings = 0;
+  for (let i = 1; i < wave.length; i += 1) if (Math.sign(wave[i]) !== Math.sign(wave[i - 1]) && wave[i] !== 0) crossings += 1;
+  assert.ok(crossings >= 8, `trembles back and forth (${crossings} crossings)`);
+  assert.ok(peak(poses, "shiverWave") <= IDLE_MOTION.shiver.angle + 1e-9, "little");
+  assert.ok(Math.abs(wave.at(-1)) < 1e-6, "stops");
+  for (let i = 1; i < wave.length; i += 1) assert.ok(Math.abs(wave[i] - wave[i - 1]) < 0.6 * DEG, `no jump at frame ${i}`);
+});
+
+test("a hiccup: a quick little jolt up with wide eyes, then she settles", () => {
+  const { kind, poses } = awake("hiccup", 2.5);
+  assert.equal(kind, "hiccup");
+  const shouldersAt = poses.findIndex((p) => p.shoulders > 1.5 * DEG);
+  assert.ok(shouldersAt >= 0 && shouldersAt / 60 < 0.4, `jolts quickly (${(shouldersAt / 60).toFixed(2)} s)`);
+  assert.ok(peak(poses, "surprise") > 0.4, "eyes widen");
+  assert.ok(peak(poses, "chest") > 0.8 * DEG, "the chest jumps");
+  assert.ok(poses.at(-1).shoulders < 0.05 * DEG && poses.at(-1).surprise < 0.01, "settles");
+});
+
+test("nodding off: the head droops slowly with heavy eyes, then jerks up wide awake", () => {
+  const { kind, poses } = awake("nodding-off", 6);
+  assert.equal(kind, "nodding-off");
+  const lowest = poses.reduce((best, p, i) => (p.headPitch < poses[best].headPitch ? i : best), 0);
+  assert.ok(poses[lowest].headPitch < -4 * DEG, "droops forward");
+  assert.ok(lowest / 60 > 1.8, `slowly (${(lowest / 60).toFixed(2)} s)`);
+  assert.ok(poses[lowest].squint > 0.3, "eyes heavy while drooping");
+  const after = poses.slice(lowest);
+  assert.ok(Math.max(...after.map((p) => p.headPitch)) > 1 * DEG, "jerks up");
+  assert.ok(peak(after, "surprise") > 0.3, "wide awake for a moment");
+  assert.ok(isRest(poses.at(-1)) || ANGLES.every((k) => Math.abs(poses.at(-1)[k]) < 0.05 * DEG), "settles");
+});
+
+test("the quick actions are flagged and stay under 0.6° per frame; the rest stay calm", () => {
+  const quick = NAMES.filter((name) => ACTIONS[name].quick);
+  assert.deepEqual(quick, ["sneeze", "shiver", "hiccup", "nodding-off"]);
+  for (const name of quick) {
+    const { poses } = awake(name, 6);
+    for (let i = 1; i < poses.length; i += 1) {
+      for (const key of ANGLES) assert.ok(Math.abs(poses[i][key] - poses[i - 1][key]) < 0.6 * DEG, `${name} ${key} at ${i}`);
+      for (const key of FACE) assert.ok(Math.abs(poses[i][key] - poses[i - 1][key]) < 0.12, `${name} ${key} at ${i}`);
+    }
+  }
+});
+
+test("every new action has a panel label", () => {
+  assert.equal(ACTION_LABELS["wink-left"], "Wink left");
+  assert.equal(ACTION_LABELS["wink-right"], "Wink right");
+  assert.equal(ACTION_LABELS["look-around"], "Look around");
+  assert.equal(ACTION_LABELS.shiver, "Little shiver");
+  assert.equal(ACTION_LABELS.hiccup, "Hiccup");
+  assert.equal(ACTION_LABELS["nodding-off"], "Nodding off");
 });

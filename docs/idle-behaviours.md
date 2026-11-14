@@ -269,8 +269,8 @@ top of it.
 | `wristLeft/Right` | `右手首` / `左手首` | Turns softly about the forearm | ±3.5° |
 
 - **Slow and never on a loop.** Each channel adds two sine waves with
-  periods of 17–47 s that do not divide evenly. The right of the screen runs
-  13 % slower and on its own phases, so the two arms are never mirrored or
+  periods of 17–47 s (up to 53 s on the right) that do not divide evenly.
+  The right of the screen runs 13 % slower and on its own phases, so the two arms are never mirrored or
   in step. One frame moves each angle by less than 0.02°.
 - **Eased with the idle state.** `IdleMotion.update()` returns the drift's
   weight as `armDrift` and the eight angles, already scaled by it. A spring

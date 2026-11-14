@@ -104,9 +104,17 @@
       <p id="physics-status" class="note" role="status"></p>
       <label class="check"><input id="cursor-gaze-toggle" type="checkbox" checked disabled>Cursor gaze tracking · 視線追従</label>
       <label class="check"><input id="camera-gaze-toggle" type="checkbox" disabled>Camera gaze tracking · カメラ追従</label>
+      <div class="camera-device-controls">
+        <label for="camera-device">Tracking camera</label>
+        <div class="camera-device-row">
+          <select id="camera-device" aria-describedby="camera-device-note gaze-status"><option value="">System default camera</option></select>
+          <button id="camera-device-refresh" type="button" title="Refresh the camera list without starting capture">Refresh</button>
+        </div>
+        <p id="camera-device-note" class="note">Choose a camera, then enable tracking. Names may appear after permission is granted.</p>
+        <p id="gaze-status" class="note" role="status"></p>
+      </div>
       <label class="check" title="When a mood clears, rest in the calm preset instead of the bare mesh's slight smile."><input id="resting-face-toggle" type="checkbox" checked disabled>Calm resting face · 落ち着き</label>
       <label class="check" title="Draw the brows faintly over the bangs so brow expressions show."><input id="see-through-brows-toggle" type="checkbox" checked disabled>See-through brows · 透け眉</label>
-      <p id="gaze-status" class="note" role="status"></p>
       <label class="check" title="After a quiet while she idles, then turns sleepy; any activity wakes her."><input id="idle-toggle" type="checkbox" checked>Idle behaviours · 待機動作</label>
       <div class="slider-row idle-timing">
         <label for="idle-after">Idle after (s)</label>

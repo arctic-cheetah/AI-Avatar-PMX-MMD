@@ -9,12 +9,42 @@ const CDN = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
 const MODEL =
   "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
 
+async function loadLandmarker() {
+  const { FaceLandmarker, FilesetResolver } = await import(/* @vite-ignore */ `${CDN}/vision_bundle.mjs`);
+  const fileset = await FilesetResolver.forVisionTasks(`${CDN}/wasm`);
+  return FaceLandmarker.createFromOptions(fileset, {
+    baseOptions: { modelAssetPath: MODEL }, runningMode: "VIDEO", numFaces: 1,
+  });
+}
+
+function cameraError(error) {
+  switch (error?.name) {
+    case "NotAllowedError":
+    case "SecurityError":
+      return "Camera permission denied · allow camera access in the browser, then try again.";
+    case "NotFoundError":
+      return "No camera found · connect a camera, refresh the list and select another camera.";
+    case "OverconstrainedError":
+      return "Selected camera unavailable · refresh the list and select another camera.";
+    default:
+      return "Camera busy or unavailable · close other camera apps or select another camera.";
+  }
+}
+
 export class CameraGaze {
   /**
    * @param {(target:{x:number,y:number})=>void} onTarget Fresh face target callback.
    */
-  constructor(onTarget) {
+  constructor(onTarget, {
+    mediaDevices = globalThis.navigator?.mediaDevices,
+    createVideo = () => document.createElement("video"),
+    loadLandmarker: load = loadLandmarker,
+    onEnded = () => {},
+  } = {}) {
     this.onTarget = onTarget;
+    Object.assign(this, { mediaDevices, createVideo, loadLandmarker: load, onEnded });
+    this.generation = 0;
+    this.loading = null;
     this.stream = null;
     this.video = null;
     this.landmarker = null;
@@ -41,51 +71,79 @@ export class CameraGaze {
     return Boolean(this.stream);
   }
 
+  /** The browser's actual device ID, also for system-default capture. */
+  get activeDeviceId() {
+    return this.stream?.getVideoTracks()[0]?.getSettings().deviceId ?? "";
+  }
+
   /**
    * Start the webcam and per-frame face detection.
-   * @returns {Promise<void>} Rejects with a user-readable Error on failure.
+   * Release the previous camera first. Only the newest request may publish a
+   * stream or detection loop; permission prompts cannot be cancelled by JS.
+   * @param {string} [deviceId] Empty uses the system's user-facing default.
+   * @returns {Promise<boolean>} False if superseded/stopped; rejects on failure.
    */
-  async start() {
-    if (this.stream) return;
-    if (!navigator.mediaDevices?.getUserMedia) throw new Error("Camera not available in this browser.");
+  async start(deviceId = "") {
+    this.stop();
+    const generation = this.generation;
+    if (!this.mediaDevices?.getUserMedia) throw new Error("Camera not available · use HTTPS or localhost in a supported browser.");
+    let failure = "";
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+      const stream = await this.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 480 },
+          ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: "user" }) },
         audio: false,
       });
-    } catch {
-      throw new Error("Camera permission denied.");
-    }
-    this.video = document.createElement("video");
-    this.video.playsInline = true;
-    this.video.srcObject = this.stream;
-    await this.video.play();
-    try {
+      if (generation !== this.generation) {
+        for (const track of stream.getTracks()) track.stop();
+        return false;
+      }
+      this.stream = stream;
+      for (const track of stream.getVideoTracks()) {
+        track.addEventListener("ended", () => {
+          if (generation !== this.generation) return;
+          this.stop();
+          this.onEnded("Camera disconnected or stopped · select another camera and enable tracking again.");
+        }, { once: true });
+      }
+      failure = "Could not play the camera video · select another camera or try again.";
+      const video = this.createVideo();
+      this.video = video;
+      video.muted = true;
+      video.playsInline = true;
+      video.srcObject = stream;
+      await video.play();
+      if (generation !== this.generation) return false;
+      failure = "Could not load the face tracker. Check your connection and try again.";
       if (!this.landmarker) {
-        const { FaceLandmarker, FilesetResolver } = await import(/* @vite-ignore */ `${CDN}/vision_bundle.mjs`);
-        const fileset = await FilesetResolver.forVisionTasks(`${CDN}/wasm`);
-        this.landmarker = await FaceLandmarker.createFromOptions(fileset, {
-          baseOptions: { modelAssetPath: MODEL },
-          runningMode: "VIDEO",
-          numFaces: 1,
+        // Share loading across a switch; a failed download can be retried.
+        this.loading ??= this.loadLandmarker().then((tracker) => {
+          this.landmarker = tracker;
+        }).finally(() => {
+          this.loading = null;
         });
+        await this.loading;
       }
-    } catch {
+      if (generation !== this.generation) return false;
+      const tick = () => {
+        if (generation !== this.generation) return;
+        if (video.currentTime !== this.lastVideoTime) {
+          this.lastVideoTime = video.currentTime;
+          const result = this.landmarker.detectForVideo(video, performance.now());
+          const landmarks = result?.faceLandmarks?.[0];
+          if (landmarks?.length) this.onTarget(faceTarget(landmarks));
+        }
+      };
+      failure = "Camera tracking failed · turn tracking on to try again or select another camera.";
+      this.loop = new FrameLoop(tick, this.frames);
+      this.loop.start();
+      tick();
+      return true;
+    } catch (error) {
+      if (generation !== this.generation) return false;
       this.stop();
-      throw new Error("Could not load the face tracker. Check your connection and try again.");
+      throw new Error(failure || cameraError(error));
     }
-    const tick = () => {
-      if (!this.stream) return;
-      if (this.video && this.video.currentTime !== this.lastVideoTime) {
-        this.lastVideoTime = this.video.currentTime;
-        const result = this.landmarker.detectForVideo(this.video, performance.now());
-        const landmarks = result?.faceLandmarks?.[0];
-        if (landmarks?.length) this.onTarget(faceTarget(landmarks));
-      }
-    };
-    this.loop = new FrameLoop(tick, this.frames);
-    this.loop.start();
-    tick();
   }
 
   /**
@@ -93,11 +151,15 @@ export class CameraGaze {
    * @returns {void}
    */
   stop() {
+    this.generation++;
     this.loop?.stop();
     this.loop = null;
     for (const track of this.stream?.getTracks() ?? []) track.stop();
     this.stream = null;
-    if (this.video) this.video.srcObject = null;
+    if (this.video) {
+      this.video.pause();
+      this.video.srcObject = null;
+    }
     this.video = null;
     this.lastVideoTime = -1;
   }

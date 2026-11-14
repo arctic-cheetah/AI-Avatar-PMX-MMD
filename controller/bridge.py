@@ -1232,8 +1232,14 @@ def build_parser():
     parser.add_argument(
         "--affection-bend",
         type=float,
-        default=3.0,
+        default=5.0,
         help='Semitones of a fond word\'s warm rise-fall ("sooo cute", -12 to 12).',
+    )
+    parser.add_argument(
+        "--affection-intensifier-bend",
+        type=float,
+        default=7.0,
+        help='Semitones of the fond "so"/"too" before a fond word (-12 to 12).',
     )
     parser.add_argument(
         "--endearment-bend",
@@ -1368,6 +1374,7 @@ def speech_settings(args):
         surprise_bend=args.surprise_bend,
         affection_bend=args.affection_bend,
         hesitation_bend=args.hesitation_bend,
+        affection_intensifier_bend=args.affection_intensifier_bend,
         question_rise_bend=args.question_rise_bend,
         quote_voice=args.quote_voice and not plain,
         dynamic_emphasis=args.dynamic_emphasis and not plain,

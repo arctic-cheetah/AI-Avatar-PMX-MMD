@@ -21,10 +21,11 @@ class AffectionRowTests(unittest.TestCase):
         self.assertTrue({'cute', 'adorable', 'sweet', 'lovely'} <= AFFECTION_WORDS)
         self.assertTrue({'so', 'too'} <= AFFECTION_INTENSIFIERS)
         self.assertTrue({'tender', 'happy', 'joyful', 'soft-smile', 'lovestruck', 'shy'} <= AFFECTIONATE_MOODS)
-        for row in (word_row, intensifier):
+        # Listening (14 Nov 2026): the fond "sooo" sounds more genuine a little higher than the word.
+        for row, bend in ((word_row, 'affection_bend'), (intensifier, 'affection_intensifier_bend')):
             with self.subTest(words=sorted(row.words)):
                 self.assertEqual((row.moods, row.bend, row.peak, row.stretch, row.standalone),
-                                 (AFFECTIONATE_MOODS, 'affection_bend', None, True, False))
+                                 (AFFECTIONATE_MOODS, bend, None, True, False))
         self.assertIsNone(word_row.before)
         self.assertEqual(intensifier.before, AFFECTION_WORDS)
 
@@ -69,12 +70,12 @@ class SynthesiseAffectionTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_fond_words_get_a_warm_rise_fall_and_are_stretched(self):
         sent = await self.run_segment(ApplioSettings(tts_provider='kokoro'), 'That is so cute!')
-        self.assertEqual(sent['delivered'], ((2, 3.0, None, True), (3, 3.0, None, True)))
+        self.assertEqual(sent['delivered'], ((2, 7.0, None, True), (3, 5.0, None, True)))
         self.assertNotIn(3, sent.get('lifts', ()))  # one bend per word: the row's, not the ! lift
 
     async def test_an_elongated_so_is_spoken_as_so_and_delivered(self):
         sent = await self.run_segment(ApplioSettings(tts_provider='kokoro'), 'Sooo cute!')
-        self.assertEqual(sent['delivered'], ((0, 3.0, None, True), (1, 3.0, None, True)))
+        self.assertEqual(sent['delivered'], ((0, 7.0, None, True), (1, 5.0, None, True)))
         self.assertEqual(sent['elongated'], ((0, 0.125),))
         self.assertNotIn('drawls', sent)
 
@@ -90,8 +91,11 @@ class SynthesiseAffectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sent['endearments'], (4,))
 
     async def test_bend_follows_the_setting(self):
-        sent = await self.run_segment(ApplioSettings(tts_provider='kokoro', affection_bend=5.0), 'That is cute.')
-        self.assertEqual(sent['delivered'], ((2, 5.0, None, True),))
+        sent = await self.run_segment(ApplioSettings(tts_provider='kokoro', affection_bend=4.0), 'That is cute.')
+        self.assertEqual(sent['delivered'], ((2, 4.0, None, True),))
+        sent = await self.run_segment(ApplioSettings(tts_provider='kokoro', affection_intensifier_bend=8.0),
+                                      'So cute!')
+        self.assertEqual(sent['delivered'], ((0, 8.0, None, True), (1, 5.0, None, True)))
 
     async def test_off_with_dynamic_emphasis_plain_voice_or_another_mood(self):
         self.assertNotIn('delivered', await self.run_segment(
@@ -104,12 +108,15 @@ class SynthesiseAffectionTests(unittest.IsolatedAsyncioTestCase):
 
 class AffectionSettingsTests(unittest.TestCase):
     def test_default_range_and_flags(self):
-        self.assertEqual(ApplioSettings().affection_bend, 3.0)
-        for value in (-12.1, 12.1, float('nan')):
-            with self.subTest(value=value), self.assertRaises(ValueError):
-                ApplioSettings(applio_dir=Path('/nonexistent'), affection_bend=value).check()
-        settings = speech_settings(build_parser().parse_args(['--speech', '--affection-bend', '4']))
-        self.assertEqual(settings.affection_bend, 4.0)
+        # Listening (14 Nov 2026): 5 st over 3 st for the word; the intensifier sits 2 st above it.
+        self.assertEqual((ApplioSettings().affection_bend, ApplioSettings().affection_intensifier_bend), (5.0, 7.0))
+        for name in ('affection_bend', 'affection_intensifier_bend'):
+            for value in (-12.1, 12.1, float('nan')):
+                with self.subTest(name=name, value=value), self.assertRaises(ValueError):
+                    ApplioSettings(applio_dir=Path('/nonexistent'), **{name: value}).check()
+        settings = speech_settings(build_parser().parse_args(
+            ['--speech', '--affection-bend', '4', '--affection-intensifier-bend', '6']))
+        self.assertEqual((settings.affection_bend, settings.affection_intensifier_bend), (4.0, 6.0))
 
 
 if __name__ == '__main__':

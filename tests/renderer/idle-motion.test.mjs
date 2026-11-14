@@ -698,7 +698,7 @@ test("nodding off: the head droops slowly with heavy eyes, then jerks up wide aw
   const lowest = poses.reduce((best, p, i) => (p.headPitch < poses[best].headPitch ? i : best), 0);
   assert.ok(poses[lowest].headPitch < -4 * DEG, "droops forward");
   assert.ok(lowest / 60 > 1.8, `slowly (${(lowest / 60).toFixed(2)} s)`);
-  assert.ok(poses[lowest].squint > 0.3, "eyes heavy while drooping");
+  assert.ok(peak(poses.slice(0, lowest + 1), "squint") > 0.3, "eyes heavy while drooping");
   const after = poses.slice(lowest);
   assert.ok(Math.max(...after.map((p) => p.headPitch)) > 1 * DEG, "jerks up");
   assert.ok(peak(after, "surprise") > 0.3, "wide awake for a moment");

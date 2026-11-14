@@ -151,7 +151,7 @@ class ApplioSettings:
     affection_bend: float = 5.0  # a fond word's warm rise-fall: 5 of 3/5 st sounded best (14 Nov 2026, #83)
     affection_intensifier_bend: float = 7.0  # the "sooo" in "sooo cute", a little higher (14 Nov 2026)
     replay_cap_mb: int = 500  # spoken turns kept on disk for bubble replay; oldest go first (#152)
-    endearment_bend: float = 8.0  # an endearment's own lift: 8 of 4/6/8 st sounded best (9 Nov 2026, #83)
+    endearment_bend: float = 9.0  # an endearment's own lift: 8 of 4/6/8 st sounded best (9 Nov 2026, #83)
     dynamic_emphasis: bool = True  # Kokoro: deeper, drawn-out "buuut"; brighter *word* (listened 9 Nov 2026, #83)
     drawl_bend: float = -2.0  # semitones at a drawl's dip (slightly deeper; listened 8 Nov 2026)
     drawl_hold: float = 0.0  # off: short vowels break up when held; only used without drawl_stretch

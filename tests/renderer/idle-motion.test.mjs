@@ -79,11 +79,19 @@ test("bump eases in, holds and eases out within its duration", () => {
 
 test("one set of actions serves both idle and sleep, with the user's mix: shrugs stay rare", () => {
   assert.deepEqual(NAMES, ["glance", "tilt-left", "tilt-right", "shrug-left", "shrug-right", "shrug-both", "sigh", "stretch-yawn", "nod", "sneeze"]);
-  // The user's mix (12 Nov 2026): glances 10 %, stretch-and-yawn 30 %, shrugs rare.
-  const mix = { glance: 0.1, "tilt-left": 0.1, "tilt-right": 0.1, "shrug-left": 0.05, "shrug-right": 0.05,
-    "shrug-both": 0.05, sigh: 0.1, "stretch-yawn": 0.3, nod: 0.1, sneeze: 0.05 }; // a rare light sneeze (#149)
+  // The sigh is fixed at 15 % (the user, 14 Nov 2026): new actions never take from it.
+  assert.ok(Math.abs(ACTIONS.sigh.weight - 0.15) < 1e-12, "the sigh keeps 15 %");
+  const total = Object.values(ACTIONS).reduce((sum, action) => sum + action.weight, 0);
+  assert.ok(Math.abs(total - 1) < 1e-9, "chances add up to 1");
+  // Every other action keeps the user's relative mix and shares the other 85 %:
+  // glance 1, stretch-and-yawn 3, shrugs and the sneeze half a glance, tilts and the nod like a glance.
+  const relative = { glance: 1, "tilt-left": 1, "tilt-right": 1, "shrug-left": 0.5, "shrug-right": 0.5,
+    "shrug-both": 0.5, "stretch-yawn": 3, nod: 1, sneeze: 0.5 };
+  for (const [name, share] of Object.entries(relative)) {
+    const expected = (share / relative.glance) * ACTIONS.glance.weight;
+    assert.ok(Math.abs(ACTIONS[name].weight - expected) < 1e-9, `${name} keeps its share relative to a glance`);
+  }
   for (const [name, action] of Object.entries(ACTIONS)) {
-    assert.ok(Math.abs(action.weight - mix[name]) < 1e-9, `${name} has its ${mix[name] * 100} % chance`);
     assert.equal(typeof action.create, "function", name);
     assert.equal(typeof action.apply, "function", name);
   }

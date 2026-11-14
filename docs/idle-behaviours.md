@@ -137,9 +137,10 @@ panel picks it up by itself.
 | `shrug-left` | 5 % | 2.4–3.0 s | The shoulder on the left of the screen (`右肩`) lifts, then drops | 12° |
 | `shrug-right` | 5 % | 2.4–3.0 s | The shoulder on the right of the screen (`左肩`) | 12° |
 | `shrug-both` | 5 % | 2.4–3.0 s | Both `肩` together | 12° |
-| `sigh` | 15 % | 1.1 s in, 1.7 s out | Chest (`上半身2` pitch) and both `肩` lift, then fall | 2° chest, 2.5° shoulders |
+| `sigh` | 10 % | 1.1 s in, 1.7 s out | Chest (`上半身2` pitch) and both `肩` lift, then fall | 2° chest, 2.5° shoulders |
 | `stretch-yawn` | 30 % | 3.2 s | Back arches (`上半身`), head tips back (`首`/`頭`), shoulders lift, and she yawns | 5° back, 7° head, 6° shoulders, yawn 1 |
 | `nod` | 10 % | 3.2 s | A dozing nod: `首`/`頭` dip forward slowly, then lift | 6° |
+| `sneeze` | 5 % | 2.2 s | A light sneeze: breathe in with the head tipped back, the chest rising and the mouth a little open (0.9 s), then a quick forward snap with the eyes squeezed shut (`まばたき`) and the mouth closed, then rest | 4° back, 5° forward, 1.5° chest, mouth 0.3 |
 
 - **Shrug size:** shrugs were 6° at first, but that hid behind the always-on
   body sway. The user picked 12° from a 6/12/18/24° comparison. To keep every
@@ -154,6 +155,14 @@ panel picks it up by itself.
   glance, tilt-left and sigh ticked, the chances are 10 : 10 : 15 out of 35.
   With nothing ticked she stays still. The choice is saved as
   `yidhari.actions`.
+- **Light sneeze** (#149, 14 November 2026): keyframed with eased
+  segments (`IDLE_MOTION.sneeze`) and then the usual springs. The snap is
+  meant to be quick, so it may move up to 0.6° per 60 fps frame, where the
+  calm actions stay under 0.25°. Its eye closure drives `まばたき` through
+  a new `squint` channel, and its mouth reuses the yawn's `あ`/`お` channel at
+  0.3. It takes 5 % of picks; the sigh went from 15 % to 10 % to make room.
+  Like every action, it has a checkbox in **Actions** and a button in
+  **Animation actions**.
 - **Slower glances:** a glance used to jump to its target at the gaze
   spring's speed (about 0.3 s), which the user found too fast. Now its weight
   eases in and out (`bump`, 0.9 s ramps), and the gaze blends from the

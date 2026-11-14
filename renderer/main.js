@@ -340,7 +340,7 @@ const IDLE_BONES = Object.freeze([
   { name: "上半身", pitch: [["back", -1]] },
   { name: "上半身2", pitch: [["chest", -1]], roll: [["shiverWave", 1]] },
   { name: "首", pitch: [["headPitch", -0.4]] },
-  { name: "頭", pitch: [["headPitch", -0.6]], roll: [["tilt", 1]] },
+  { name: "頭", pitch: [["headPitch", -0.6], ["bobPitch", 1]], roll: [["tilt", 1], ["bobRoll", 1]] },
   // Her left shoulder is on the right of the screen (#149 shrugs are named by screen side).
   { name: "左肩", roll: [["shoulders", -1], ["shoulderRight", -1], ["shiverWave", -0.8]], own: true },
   { name: "右肩", roll: [["shoulders", 1], ["shoulderLeft", 1], ["shiverWave", 0.8]], own: true },
@@ -1046,7 +1046,7 @@ function updateIdle(delta) {
   // A held pose lets previews and comparison grids show one motion on demand.
   idlePose = globalThis.__yidhariIdlePose
     ? { glance: null, tilt: 0, chest: 0, shoulders: 0, shoulderLeft: 0, shoulderRight: 0, back: 0, headPitch: 0, yawn: 0, squint: 0, winkLeft: 0, winkRight: 0, mouthLift: 0, surprise: 0,
-      shiver: 0, shiverWave: 0,
+      shiver: 0, shiverWave: 0, smile: 0, browRaise: 0, hum: 0, bobPitch: 0, bobRoll: 0,
       ...globalThis.__yidhariIdlePose }
     : idleMotion.update(delta.eased, idle.state, idle.stateTime, idle.timing.sleepActionEvery);
   gaze.setIdle(idlePose.glance);

@@ -32,8 +32,9 @@ AWW_WORD = re.compile(r'a+w{2,}h*', re.IGNORECASE)
 # Any LLM spelling of "aww" (Awwww, Aaww, aWWW, Awwh); a plain "aw" is left alone.
 AWW_FAMILY = re.compile(r'\b(a)(?:a*w{2,}h*|a+w+h*|w+h+)\b', re.IGNORECASE)
 AWW_PHONEMES = re.compile('ɔːʊ?wə')
-# espeak says hums wrongly: Hmm → həm ("hum"), Mmm → ˌɛmˌɛmˈɛm, Hm → ˌeɪtʃˈɛm. A hum is closed-lip
-# m sounds: spelled hmm, the h sounded like "camel" (listening, 14 Nov 2026), so h becomes m.
+# espeak says hums wrongly: Hmm → həm ("hum"), Mmm → ˌɛmˌɛmˈɛm, Hm → ˌeɪtʃˈɛm. Listening (14 Nov 2026):
+# spelled hmm it sounded like "camel" and mmm still sounded off; Kokoro's "Umm" (ˈʌm) sounds right.
+HMM_PHONEMES = 'ˈʌm'
 HUM_WORD = re.compile(r'hm{1,3}|m{2,3}', re.IGNORECASE)
 WORD_EDGES = '.,!?…;:"\'()[]—–-*“”‘’'
 SPAN_PUNCTUATION = frozenset(',.!?…;:—"\'()')
@@ -140,7 +141,7 @@ def respell_phonemes(text: str, phonemes: str) -> str:
     """Fix espeak's aww and hums; other words are untouched.
 
     "aw-wuh" for aww/awww becomes one long ɔːɔː, and a hum (hm, hmm, mm, mmm) is
-    said as m sounds only (hm → mm, hmm → mmm), keeping the punctuation around it.
+    said like "umm" (hm, hmm → ˈʌm) or as m sounds (mm, mmm), keeping the punctuation around it.
 
     Only applied when the phoneme words line up with the text's spoken words.
     """
@@ -157,7 +158,8 @@ def respell_phonemes(text: str, phonemes: str) -> str:
             token = tokens[index]
             lead = len(token) - len(token.lstrip(WORD_EDGES))
             tail = len(token.rstrip(WORD_EDGES))
-            tokens[index] = token[:lead] + 'm' * len(core) + token[tail:]
+            hum = HMM_PHONEMES if core[:1] in 'hH' else 'm' * len(core)
+            tokens[index] = token[:lead] + hum + token[tail:]
     return ' '.join(tokens)
 
 

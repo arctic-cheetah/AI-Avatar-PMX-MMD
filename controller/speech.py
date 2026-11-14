@@ -62,6 +62,12 @@ SKEPTICAL_MOODS = frozenset({
 QUOTE_PEAK = 0.5  # a quotation's pitch dip is deepest in its middle
 SURPRISE_WORDS = frozenset({"what", "really", "seriously", "wow", "whoa"})
 SURPRISED_MOODS = frozenset({"surprised", "shocked", "gasp", "excited", "wtf-dude"})
+# Fond words said warmly and drawn out ("sooo cute"); endearments such as "sweetie" keep their own lift.
+AFFECTION_WORDS = frozenset({"cute", "adorable", "sweet", "lovely", "beautiful", "gorgeous", "wonderful"})
+AFFECTION_INTENSIFIERS = frozenset({"so", "too"})  # only right before an affection word
+AFFECTIONATE_MOODS = frozenset({
+    "tender", "happy", "joyful", "soft-smile", "lovestruck", "shy", "excited", "grin", "serene",
+})
 # Elongated spellings (#83): espeak reads "whaaat" letter by letter (wˈæææt, heard as "whyat").
 # Each run of one letter is tried as 1-3 letters and checked against a lexicon (#121 review).
 LETTER_RUN = re.compile(r"([^\W\d_])\1+")
@@ -138,6 +144,7 @@ class ApplioSettings:
     word_lifts: bool = True  # Kokoro: lift endearments in address and the word before ! (#84)
     word_lift_bend: float = 4.0  # semitones at the lift's peak
     surprise_bend: float = 5.0  # a surprised word's rise ("whaaat"); not yet listened to (#83)
+    affection_bend: float = 3.0  # a fond word's warm rise-fall ("sooo cute"); not yet listened to (#83)
     replay_cap_mb: int = 500  # spoken turns kept on disk for bubble replay; oldest go first (#152)
     endearment_bend: float = 8.0  # an endearment's own lift: 8 of 4/6/8 st sounded best (9 Nov 2026, #83)
     dynamic_emphasis: bool = True  # Kokoro: deeper, drawn-out "buuut"; brighter *word* (listened 9 Nov 2026, #83)
@@ -201,6 +208,8 @@ class ApplioSettings:
             raise ValueError("word_lift_bend must be between -12 and 12 semitones.")
         if not math.isfinite(self.surprise_bend) or abs(self.surprise_bend) > 12.0:
             raise ValueError("surprise_bend must be between -12 and 12 semitones.")
+        if not math.isfinite(self.affection_bend) or abs(self.affection_bend) > 12.0:
+            raise ValueError("affection_bend must be between -12 and 12 semitones.")
         if not math.isfinite(self.endearment_bend) or abs(self.endearment_bend) > 12.0:
             raise ValueError("endearment_bend must be between -12 and 12 semitones.")
         if not math.isfinite(self.drawl_bend) or abs(self.drawl_bend) > 12.0:
@@ -397,10 +406,15 @@ class Delivery:
     # Only when said on its own: before ?!,…;: or an elongated spelling ("whaaat"); not "What do…".
     # Keeps intensifier "really" ("I'm really happy!") and relative "what" out (#123 review).
     standalone: bool = False
+    before: frozenset[str] | None = None  # only right before one of these words ("so" in "so cute")
 
 
 # The first row that matches a word wins. Docs: docs/testing-kokoro.md §2g.
 DELIVERIES: tuple[Delivery, ...] = (
+    # Before the drawls, so a fond "So cute!" is warm rather than a deeper "Sooo…".
+    Delivery("affection", AFFECTION_INTENSIFIERS, moods=AFFECTIONATE_MOODS, bend="affection_bend",
+             before=AFFECTION_WORDS),  # "sooo cute", "too sweet"
+    Delivery("affection", AFFECTION_WORDS, moods=AFFECTIONATE_MOODS, bend="affection_bend"),
     Delivery("drawl", DRAWL_OPENERS, opener_only=True),  # "Buuut…", "Wellll…"
     Delivery("drawl", ATTITUDE_WORDS, moods=SKEPTICAL_MOODS),  # sarcastic "suuure"
     Delivery("surprise", SURPRISE_WORDS, moods=SURPRISED_MOODS, bend="surprise_bend",
@@ -417,12 +431,15 @@ def delivered_words(
     ``elongated`` are word indices written drawn out ("whaaat"); they count as said on their own.
     """
     found = {}
-    for index, word in enumerate(spoken_words(text)):
+    words = spoken_words(text)
+    for index, word in enumerate(words):
         core = word.strip(WORD_EDGES).lower()
         alone = word.rstrip(CLOSING)[-1:] in "?!,…;:" or index in elongated
+        after = words[index + 1].strip(WORD_EDGES).lower() if index + 1 < len(words) else None
         for row in rows:
             if (core in row.words and (row.moods is None or expression in row.moods)
-                    and (index == 0 or not row.opener_only) and (alone or not row.standalone)):
+                    and (index == 0 or not row.opener_only) and (alone or not row.standalone)
+                    and (row.before is None or after in row.before)):
                 found[index] = row
                 break
     return found

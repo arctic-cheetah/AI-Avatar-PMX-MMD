@@ -44,13 +44,111 @@ export const IDLE_MOTION = Object.freeze({
     /** Morphs the squint channel drives: eyes squeezed shut. */
     eyes: Object.freeze({ "まばたき": 1 }),
   }),
+  /** Playful wink (#149 part 1): close, hold, open; a little smile and a tilt toward the eye. */
+  wink: Object.freeze({
+    keys: Object.freeze([0, 0.2, 1.0, 1.4]),
+    close: Object.freeze([0, 1, 1, 0]),
+    tilt: Object.freeze([0, 3 * DEG, 3 * DEG, 0]),
+    mouthLift: Object.freeze([0, 0.5, 0.5, 0]),
+  }),
+  /** Look-around: the gaze drifts left, pauses, drifts right, pauses, then back. */
+  lookAround: Object.freeze({
+    keys: Object.freeze([0, 1.0, 1.8, 3.2, 4.0, 5.0]),
+    x: Object.freeze([0, -0.6, -0.6, 0.6, 0.6, 0]),
+    y: Object.freeze([0, 0.05, 0.05, 0, 0, 0]),
+    rise: 0.8,
+  }),
+  /** A little shiver: a fast tremble, its size eased in and out. */
+  shiver: Object.freeze({ angle: 0.6 * DEG, hz: 6, duration: 1.4, rise: 0.3 }),
+  /** A hiccup: a quick hop of the chest and shoulders with wide eyes. */
+  hiccup: Object.freeze({
+    keys: Object.freeze([0, 0.12, 0.35, 1.0]),
+    chest: Object.freeze([0, 2 * DEG, 0.5 * DEG, 0]),
+    shoulders: Object.freeze([0, 3 * DEG, 1 * DEG, 0]),
+    headPitch: Object.freeze([0, 2 * DEG, 0.5 * DEG, 0]),
+    surprise: Object.freeze([0, 0.6, 0.3, 0]),
+  }),
+  /** Nodding off: droop slowly with heavy eyes, then jerk up wide awake. */
+  noddingOff: Object.freeze({
+    keys: Object.freeze([0, 2.4, 2.55, 2.85, 3.3, 4.6]),
+    headPitch: Object.freeze([0, -6 * DEG, -6 * DEG, 3 * DEG, 2 * DEG, 0]),
+    squint: Object.freeze([0, 0.6, 0.6, 0, 0, 0]),
+    surprise: Object.freeze([0, 0, 0, 0.5, 0.3, 0]),
+  }),
+  /** Humming bob (#149 part 2): a head bob to a beat, a slower sway and a soft smile. */
+  hum: Object.freeze({ duration: 4, rise: 0.8, pitch: 1.2 * DEG, roll: 1 * DEG, hz: 1.6, swayHz: 0.8, smile: 0.35 }),
+  /** Contented smile: ease in, hold, ease out, the head tipped a touch forward. */
+  contented: Object.freeze({
+    keys: Object.freeze([0, 0.6, 2.4, 3.0]),
+    smile: Object.freeze([0, 1, 1, 0]),
+    headPitch: Object.freeze([0, -1 * DEG, -1 * DEG, 0]),
+  }),
+  /** Eyebrow raise: a curious "oh?" with a small tilt and the head back a touch. */
+  browRaise: Object.freeze({
+    keys: Object.freeze([0, 0.25, 1.2, 1.6]),
+    browRaise: Object.freeze([0, 1, 1, 0]),
+    tilt: Object.freeze([0, 2 * DEG, 2 * DEG, 0]),
+    headPitch: Object.freeze([0, 1 * DEG, 1 * DEG, 0]),
+  }),
+  /** Deep breath: a slower, fuller sigh; the eyes relax on the way out. */
+  deepBreath: Object.freeze({
+    keys: Object.freeze([0, 2.0, 2.4, 4.8]),
+    chest: Object.freeze([0, 2 * DEG, 2 * DEG, 0]),
+    shoulders: Object.freeze([0, 4 * DEG, 4 * DEG, 0]),
+    headPitch: Object.freeze([0, 1.5 * DEG, 1.5 * DEG, 0]),
+    squint: Object.freeze([0, 0, 0.35, 0]),
+    exhale: Object.freeze([0, 0.15, 0.35, 0]),
+  }),
+  /** The sigh's breathing mouth: a little open breathing in, more breathing out. */
+  sighMouth: Object.freeze({ in: 0.15, out: 0.35, open: 0.3 }),
+  /** Sniffle (#149 part 3): two quick sniffs, the head tipping up each time. */
+  sniffle: Object.freeze({
+    keys: Object.freeze([0, 0.18, 0.4, 0.62, 0.84, 1.6]),
+    headPitch: Object.freeze([0, 1.5 * DEG, 0, 1.5 * DEG, 0, 0]),
+    chest: Object.freeze([0, 0.8 * DEG, 0, 0.8 * DEG, 0, 0]),
+    squint: Object.freeze([0, 0.25, 0.05, 0.25, 0.05, 0]),
+  }),
+  /**
+   * Neck roll: one slow, even circle of the head. It starts a quarter turn in
+   * (phase), so back, both sides and forward all come at full size inside the
+   * ease: about 3.3 degrees each way on the head bone (the user, 14 Nov 2026).
+   */
+  neckRoll: Object.freeze({ duration: 5, rise: 0.6, pitch: 5.5 * DEG, roll: 4 * DEG, phase: -Math.PI / 4 }),
+  /** Weight shift: lean to one side and hold; the head tilts back to stay level. */
+  weightShift: Object.freeze({ duration: Object.freeze([4.5, 5.5]), rise: 1.2, lean: 3 * DEG, head: 0.5 }),
+  /** Shy look-away: eyes and head drop to one side with a shy giggle. */
+  shy: Object.freeze({ duration: 3.5, rise: 0.9, x: 0.5, y: 0.45, headPitch: 3 * DEG, tilt: 2 * DEG }),
   /** Spring rate for every angle, so interrupted motions ease back. */
   rate: 8,
   /** The eyes close faster than bones move, so a sneeze's squint keeps up. */
   squintRate: 30,
 });
 
-const ANGLES = ["tilt", "chest", "shoulders", "shoulderLeft", "shoulderRight", "back", "headPitch", "yawn", "squint"];
+const ANGLES = ["tilt", "chest", "shoulders", "shoulderLeft", "shoulderRight", "back", "headPitch", "shiver", "hum", "lean",
+  "yawn", "squint", "winkLeft", "winkRight", "mouthLift", "surprise", "smile", "browRaise", "shy", "exhale"];
+
+/**
+ * Face channels (#149): an action writes a 0-1 weight per channel, and the
+ * renderer adds these morphs on top of the mood. Winks are named by the side
+ * of the screen, checked in a grid of the model: ウィンク右 closes the eye on
+ * the left of the screen.
+ */
+export const FACE_MORPHS = Object.freeze({
+  yawn: IDLE_MOTION.yawn.morphs,
+  squint: IDLE_MOTION.sneeze.eyes,
+  winkLeft: Object.freeze({ "ウィンク右": 1 }),
+  winkRight: Object.freeze({ "ウィンク": 1 }),
+  mouthLift: Object.freeze({ "口角上げ": 1 }),
+  surprise: Object.freeze({ "びっくり": 1 }),
+  /** Soft smiling eyes (the user's pick B, #149 part 2). */
+  smile: Object.freeze({ "笑い": 0.5, "にこり": 0.6, "口角上げ": 0.6 }),
+  /** A curious eyebrow raise (the user's pick G). */
+  browRaise: Object.freeze({ "上": 0.8, "びっくり": 0.3 }),
+  /** A shy giggle (the user's pick C, #149 part 3); the model has no blush morph. */
+  shy: Object.freeze({ "笑い": 0.35, "困る": 0.4 }),
+  /** Breathing mouth for the sigh and the deep breath (the user's idea: お). */
+  exhale: Object.freeze({ "お": 1 }),
+});
 const LIMITS = Object.freeze({
   tilt: [-IDLE_MOTION.tilt.angle, IDLE_MOTION.tilt.angle],
   chest: [0, IDLE_MOTION.sigh.chest],
@@ -61,6 +159,17 @@ const LIMITS = Object.freeze({
   headPitch: [-IDLE_MOTION.nod.angle, IDLE_MOTION.stretch.headPitch],
   yawn: [0, 1],
   squint: [0, 1],
+  winkLeft: [0, 1],
+  winkRight: [0, 1],
+  mouthLift: [0, 1],
+  surprise: [0, 1],
+  shiver: [0, IDLE_MOTION.shiver.angle],
+  hum: [0, 1],
+  smile: [0, 1],
+  browRaise: [0, 1],
+  shy: [0, 1],
+  exhale: [0, 1],
+  lean: [-IDLE_MOTION.weightShift.lean, IDLE_MOTION.weightShift.lean],
 });
 
 const smoothstep = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
@@ -128,6 +237,18 @@ const shrug = (left, right) => ({
 
 const NOD = 3.2;
 
+/** A playful wink by screen side: close one eye, smile a little, tilt toward it. */
+const wink = (eye, sign) => ({
+  create: () => ({ duration: IDLE_MOTION.wink.keys.at(-1) }),
+  apply: (motion, target) => {
+    const { wink: w } = IDLE_MOTION;
+    target[eye] = keyed(motion.t, w.keys, w.close);
+    target.tilt = sign * keyed(motion.t, w.keys, w.tilt);
+    target.mouthLift = keyed(motion.t, w.keys, w.mouthLift);
+    return null;
+  },
+});
+
 /** The value of keyframed `values` at `t`, eased between keys; 0 outside. */
 function keyed(t, keys, values) {
   if (!(t > 0) || t >= keys.at(-1)) return 0;
@@ -135,6 +256,14 @@ function keyed(t, keys, values) {
   while (keys[i] <= t) i += 1;
   const f = smoothstep((t - keys[i - 1]) / (keys[i] - keys[i - 1]));
   return values[i - 1] + (values[i] - values[i - 1]) * f;
+}
+
+/** Write every keyed channel of `spec` (all but `keys`) into `target`. */
+function keyedPose(t, spec, target) {
+  for (const [key, values] of Object.entries(spec)) {
+    if (key !== "keys") target[key] = keyed(t, spec.keys, values);
+  }
+  return null;
 }
 
 /** The sigh's fixed chance (the user, 14 Nov 2026): new actions never take from it. */
@@ -173,6 +302,9 @@ const ACTION_TABLE = {
       const breath = sighCurve(motion.t);
       target.chest = breath * IDLE_MOTION.sigh.chest;
       target.shoulders = breath * IDLE_MOTION.sigh.shoulders;
+      const { inhale, exhale } = IDLE_MOTION.sigh;
+      const mouth = IDLE_MOTION.sighMouth;
+      target.exhale = keyed(motion.t, [0, inhale, inhale + mouth.open, inhale + exhale], [0, mouth.in, mouth.out, 0]);
       return null;
     },
   }),
@@ -202,6 +334,113 @@ const ACTION_TABLE = {
       }
       return null;
     },
+    quick: true,
+  }),
+  "wink-left": Object.freeze({ share: 0.5, ...wink("winkLeft", 1) }),
+  "wink-right": Object.freeze({ share: 0.5, ...wink("winkRight", -1) }),
+  "look-around": Object.freeze({
+    share: 1,
+    create: () => ({ duration: IDLE_MOTION.lookAround.keys.at(-1) }),
+    apply: (motion) => {
+      const { lookAround } = IDLE_MOTION;
+      return {
+        x: keyed(motion.t, lookAround.keys, lookAround.x),
+        y: keyed(motion.t, lookAround.keys, lookAround.y),
+        weight: bump(motion.t, motion.duration, lookAround.rise),
+      };
+    },
+  }),
+  shiver: Object.freeze({
+    share: 0.5,
+    quick: true,
+    create: () => ({ duration: IDLE_MOTION.shiver.duration }),
+    apply: (motion, target) => {
+      const { shiver } = IDLE_MOTION;
+      target.shiver = shiver.angle * bump(motion.t, shiver.duration, shiver.rise);
+      return null;
+    },
+  }),
+  hiccup: Object.freeze({
+    share: 0.5,
+    quick: true,
+    create: () => ({ duration: IDLE_MOTION.hiccup.keys.at(-1) }),
+    apply: (motion, target) => keyedPose(motion.t, IDLE_MOTION.hiccup, target),
+  }),
+  "nodding-off": Object.freeze({
+    share: 1,
+    quick: true,
+    create: () => ({ duration: IDLE_MOTION.noddingOff.keys.at(-1) }),
+    apply: (motion, target) => keyedPose(motion.t, IDLE_MOTION.noddingOff, target),
+  }),
+  "humming-bob": Object.freeze({
+    share: 1,
+    create: () => ({ duration: IDLE_MOTION.hum.duration }),
+    apply: (motion, target) => {
+      const { hum } = IDLE_MOTION;
+      const amount = bump(motion.t, hum.duration, hum.rise);
+      target.hum = amount;
+      target.smile = hum.smile * amount;
+      return null;
+    },
+  }),
+  "contented-smile": Object.freeze({
+    share: 1,
+    create: () => ({ duration: IDLE_MOTION.contented.keys.at(-1) }),
+    apply: (motion, target) => keyedPose(motion.t, IDLE_MOTION.contented, target),
+  }),
+  "eyebrow-raise": Object.freeze({
+    share: 0.5,
+    create: () => ({ duration: IDLE_MOTION.browRaise.keys.at(-1) }),
+    apply: (motion, target) => keyedPose(motion.t, IDLE_MOTION.browRaise, target),
+  }),
+  "deep-breath": Object.freeze({
+    share: 1,
+    create: () => ({ duration: IDLE_MOTION.deepBreath.keys.at(-1) }),
+    apply: (motion, target) => keyedPose(motion.t, IDLE_MOTION.deepBreath, target),
+  }),
+  sniffle: Object.freeze({
+    share: 0.5,
+    quick: true,
+    create: () => ({ duration: IDLE_MOTION.sniffle.keys.at(-1) }),
+    apply: (motion, target) => keyedPose(motion.t, IDLE_MOTION.sniffle, target),
+  }),
+  "neck-roll": Object.freeze({
+    share: 0.5,
+    create: () => ({ duration: IDLE_MOTION.neckRoll.duration }),
+    apply: (motion, target) => {
+      const { neckRoll } = IDLE_MOTION;
+      const amount = bump(motion.t, neckRoll.duration, neckRoll.rise);
+      const angle = (2 * Math.PI * motion.t) / neckRoll.duration + neckRoll.phase;
+      target.headPitch = amount * neckRoll.pitch * Math.sin(angle);
+      target.tilt = amount * neckRoll.roll * Math.cos(angle);
+      return null;
+    },
+  }),
+  "weight-shift": Object.freeze({
+    share: 1,
+    create: (random) => {
+      const dir = random() < 0.5 ? -1 : 1;
+      return { dir, duration: within(IDLE_MOTION.weightShift.duration, random()) };
+    },
+    apply: (motion, target) => {
+      const { weightShift } = IDLE_MOTION;
+      const lean = motion.dir * weightShift.lean * bump(motion.t, motion.duration, weightShift.rise);
+      target.lean = lean;
+      target.tilt = -weightShift.head * lean;
+      return null;
+    },
+  }),
+  "shy-look-away": Object.freeze({
+    share: 0.5,
+    create: (random) => ({ dir: random() < 0.5 ? -1 : 1, duration: IDLE_MOTION.shy.duration }),
+    apply: (motion, target) => {
+      const { shy } = IDLE_MOTION;
+      const amount = bump(motion.t, shy.duration, shy.rise);
+      target.shy = amount;
+      target.headPitch = -shy.headPitch * amount;
+      target.tilt = motion.dir * shy.tilt * amount;
+      return { x: motion.dir * shy.x, y: shy.y, weight: amount };
+    },
   }),
 };
 
@@ -228,6 +467,20 @@ export const ACTION_LABELS = Object.freeze({
   "stretch-yawn": "Stretch & yawn",
   nod: "Dozing nod",
   sneeze: "Light sneeze",
+  "wink-left": "Wink left",
+  "wink-right": "Wink right",
+  "look-around": "Look around",
+  shiver: "Little shiver",
+  hiccup: "Hiccup",
+  "nodding-off": "Nodding off",
+  "humming-bob": "Humming bob",
+  "contented-smile": "Contented smile",
+  "eyebrow-raise": "Eyebrow raise",
+  "deep-breath": "Deep breath",
+  sniffle: "Sniffle",
+  "neck-roll": "Neck roll",
+  "weight-shift": "Weight shift",
+  "shy-look-away": "Shy look-away",
 });
 
 export const ACTIONS_KEY = "yidhari.actions";
@@ -255,6 +508,8 @@ export class IdleMotion {
     /** @type {null | { kind: string, t: number, duration: number }} The action played from a panel button (#164). */
     this.manual = null;
     this.springs = Object.fromEntries(ANGLES.map((key) => [key, new Spring(0)]));
+    /** Seconds of motion so far; the shiver's wave runs on it. */
+    this.clock = 0;
   }
 
   /**
@@ -321,13 +576,21 @@ export class IdleMotion {
       for (const key of ANGLES) target[key] = 0;
       glance = ACTIONS[this.manual.kind].apply(this.manual, target);
     }
+    this.clock += dt;
     const pose = { glance };
     for (const key of ANGLES) {
       const spring = this.springs[key];
-      spring.step(target[key], dt, key === "squint" ? IDLE_MOTION.squintRate : IDLE_MOTION.rate);
+      // Eyes and mouth corners move quicker than bones; the yawn keeps its slow, tuned ease.
+      spring.step(target[key], dt, Object.hasOwn(FACE_MORPHS, key) && key !== "yawn" ? IDLE_MOTION.squintRate : IDLE_MOTION.rate);
       spring.clamp(...LIMITS[key]);
       pose[key] = spring.settle(target[key], 1e-6);
     }
+    // The shiver's size is eased by its spring; its fast wave is added here, after it.
+    pose.shiverWave = pose.shiver * Math.sin(2 * Math.PI * IDLE_MOTION.shiver.hz * this.clock);
+    // The humming bob's beat and sway, sized by its spring-eased amount, likewise.
+    const { hum } = IDLE_MOTION;
+    pose.bobPitch = pose.hum * hum.pitch * Math.sin(2 * Math.PI * hum.hz * this.clock);
+    pose.bobRoll = pose.hum * hum.roll * Math.sin(2 * Math.PI * hum.swayHz * this.clock);
     return pose;
   }
 

@@ -131,16 +131,30 @@ panel picks it up by itself.
 
 | Action | Chance | Length | What moves | Size |
 | --- | --- | --- | --- | --- |
-| `glance` | 9.4 % | 2.2–3.2 s | Eyes, head following at 45 %, drift to one side and back, eased in and out over 0.9 s | 0.45–0.75 of the gaze range sideways, ±0.15 up/down |
-| `tilt-left` | 9.4 % | 2–3.5 s | `頭` rolls toward the left of the screen | 5° |
-| `tilt-right` | 9.4 % | 2–3.5 s | `頭` rolls toward the right of the screen | 5° |
-| `shrug-left` | 4.7 % | 2.4–3.0 s | The shoulder on the left of the screen (`右肩`) lifts, then drops | 12° |
-| `shrug-right` | 4.7 % | 2.4–3.0 s | The shoulder on the right of the screen (`左肩`) | 12° |
-| `shrug-both` | 4.7 % | 2.4–3.0 s | Both `肩` together | 12° |
-| `sigh` | **15 % (fixed)** | 1.1 s in, 1.7 s out | Chest (`上半身2` pitch) and both `肩` lift, then fall | 2° chest, 2.5° shoulders |
-| `stretch-yawn` | 28.3 % | 3.2 s | Back arches (`上半身`), head tips back (`首`/`頭`), shoulders lift, and she yawns | 5° back, 7° head, 6° shoulders, yawn 1 |
-| `nod` | 9.4 % | 3.2 s | A dozing nod: `首`/`頭` dip forward slowly, then lift | 6° |
-| `sneeze` | 4.7 % | 2.2 s | A light sneeze: breathe in with the head tipped back, the chest rising and the mouth a little open (0.9 s), then a quick forward snap with the eyes squeezed shut (`まばたき`) and the mouth closed, then rest | 4° back, 5° forward, 1.5° chest, mouth 0.3 |
+| `glance` | 4.5 % | 2.2–3.2 s | Eyes, head following at 45 %, drift to one side and back, eased in and out over 0.9 s | 0.45–0.75 of the gaze range sideways, ±0.15 up/down |
+| `tilt-left` | 4.5 % | 2–3.5 s | `頭` rolls toward the left of the screen | 5° |
+| `tilt-right` | 4.5 % | 2–3.5 s | `頭` rolls toward the right of the screen | 5° |
+| `shrug-left` | 2.2 % | 2.4–3.0 s | The shoulder on the left of the screen (`右肩`) lifts, then drops | 12° |
+| `shrug-right` | 2.2 % | 2.4–3.0 s | The shoulder on the right of the screen (`左肩`) | 12° |
+| `shrug-both` | 2.2 % | 2.4–3.0 s | Both `肩` together | 12° |
+| `sigh` | **15 % (fixed)** | 1.1 s in, 1.7 s out | Chest (`上半身2` pitch) and both `肩` lift, then fall; the mouth parts a little breathing in and opens with `お` breathing out | 2° chest, 2.5° shoulders, `お` 0.15 in, 0.35 out |
+| `stretch-yawn` | 13.4 % | 3.2 s | Back arches (`上半身`), head tips back (`首`/`頭`), shoulders lift, and she yawns | 5° back, 7° head, 6° shoulders, yawn 1 |
+| `nod` | 4.5 % | 3.2 s | A dozing nod: `首`/`頭` dip forward slowly, then lift | 6° |
+| `sneeze` | 2.2 % | 2.2 s | A light sneeze: breathe in with the head tipped back, the chest rising and the mouth a little open (0.9 s), then a quick forward snap with the eyes squeezed shut (`まばたき`) and the mouth closed, then rest | 4° back, 5° forward, 1.5° chest, mouth 0.3 |
+| `wink-left` | 2.2 % | 1.4 s | A playful wink: the eye on the left of the screen closes in a happy arc (`ウィンク右`), the mouth corners lift a little (`口角上げ` 0.5), and the head tilts toward it | 3° tilt |
+| `wink-right` | 2.2 % | 1.4 s | The same with the eye on the right of the screen (`ウィンク`) | 3° tilt |
+| `look-around` | 4.5 % | 5 s | The eyes, head following, drift left, pause, drift right, pause, then back to the middle | 0.6 of the gaze range each way |
+| `shiver` | 2.2 % | 1.4 s | A little "brr": a 6 Hz tremble of the upper body and shoulders that fades in and out | 0.6° |
+| `hiccup` | 2.2 % | 1.0 s | A quick jolt: chest and shoulders hop, the head tips back a touch, and the eyes widen (`びっくり`), then she settles | 1.5° chest, 3° shoulders, eyes 0.6 |
+| `nodding-off` | 4.5 % | 4.6 s | The head droops slowly with heavy eyes, then jerks up with wide eyes and settles | 6° down, 3° up, eyes 0.5 |
+| `humming-bob` | 4.5 % | 4 s | A gentle head bob to a 1.6 Hz beat with a slower 0.8 Hz sway and a soft smile, as if humming along | 1.2° bob, 1° sway, smile 0.35 |
+| `contented-smile` | 4.5 % | 3 s | A soft, contented smile (`smile`) eases in, holds about 2 s, eases out, with the head tipped 1° forward | smile 1 |
+| `eyebrow-raise` | 2.2 % | 1.6 s | A curious "oh?": both brows up with slightly wider eyes (`browRaise`) and a small head tilt | brows 1, 2° tilt |
+| `deep-breath` | 4.5 % | 4.8 s | A slower, fuller sigh: 2 s in, a short hold, 2.4 s out, with the head back a touch, the mouth parting a little breathing in and opening with `お` breathing out, and the eyes relaxing on the way out | 2° chest, 4° shoulders, 1.5° head, `お` 0.15 in, 0.35 out |
+| `sniffle` | 2.2 % | 1.4 s | Two quick little sniffs: the head tips up 1.5° each time, the chest lifts and the eyes narrow a little | 1.5° head, 0.8° chest, eyes 0.25 |
+| `neck-roll` | 2.2 % | 5 s | One slow, even circle of the head (back, side, forward, side): it starts a quarter turn in, so all four extremes come at full size inside the 0.6 s ease. About ±3.3° each way on the head bone (the user asked for ±3–4°, 14 November 2026) | 5.5° pitch (head and neck), 4° tilt |
+| `weight-shift` | 4.5 % | 4.5–5.5 s | The upper body leans to a random side (`lean` on `上半身`; positive leans toward the left of the screen, like `tilt`, checked on the model) and holds, the head tilting back half as much to stay level, then returns | 3° lean, 1.5° head |
+| `shy-look-away` | 2.2 % | 3.5 s | Eyes and head drop down and to a random side, the head dips, with a shy giggle (`shy`), then back | gaze 0.5 sideways, 0.45 down, 3° head |
 
 - **Shrug size:** shrugs were 6° at first, but that hid behind the always-on
   body sway. The user picked 12° from a 6/12/18/24° comparison. To keep every
@@ -151,7 +165,12 @@ panel picks it up by itself.
   (`share` in `ACTIONS`), and together they fill the other 85 %:
   - a glance, each tilt and the nod count 1;
   - stretch-and-yawn counts 3;
-  - each shrug and the sneeze count ½.
+  - each shrug and the sneeze count ½;
+  - the part 1 actions (14 November 2026): look-around and nodding off count 1, each wink, the shiver and the hiccup count ½.
+  - the part 2 actions: humming bob, contented smile and deep breath count 1, the eyebrow raise ½.
+  - the part 3 actions: weight shift counts 1; sniffle, neck roll and shy look-away count ½.
+
+  As new actions arrive, every chance except the sigh's shrinks. Stretch-and-yawn is now 13.4 %, down from the user's earlier 30 %. The user chose to leave it shared (14 November 2026).
 
   This keeps the user's earlier picks in proportion: glance 10 % to
   stretch-and-yawn 30 %, with shrugs rare. Equal chances were tried and
@@ -164,6 +183,24 @@ panel picks it up by itself.
   glance, tilt-left and sigh ticked, they keep their 9.4 : 9.4 : 15 proportions.
   With nothing ticked she stays still. The choice is saved as
   `yidhari.actions`.
+- **Face channels** (`FACE_MORPHS`): actions write a 0–1 weight per channel,
+  and the renderer adds its morphs on top of the mood:
+  - `yawn` → `あ`/`お`;
+  - `squint` → `まばたき`;
+  - `winkLeft` → `ウィンク右`, `winkRight` → `ウィンク` (named by screen side, checked in a grid);
+  - `mouthLift` → `口角上げ`;
+  - `surprise` → `びっくり`;
+  - `smile` → `笑い` 0.5 + `にこり` 0.6 + `口角上げ` 0.6 (soft smiling eyes, the user's pick B);
+  - `browRaise` → `上` 0.8 + `びっくり` 0.3 (curious, the user's pick G);
+  - `shy` → `笑い` 0.35 + `困る` 0.4 (a shy giggle, the user's pick C; the model has no blush morph);
+  - `exhale` → `お` (the breathing mouth of the sigh and the deep breath; the user's idea).
+
+  Face channels ease with a quicker spring (rate 30) than the bones (rate 8).
+- **Quick actions:** the sneeze, shiver, hiccup, nodding off and sniffle are flagged `quick`.
+  They may move up to 0.6° per 60 fps frame; every other action stays under
+  0.25°. The shiver is a fast wave that the bone springs would smooth away. So
+  only its size goes through a spring, and the wave (`shiverWave`) is added on
+  top, rolling `上半身2` and both shoulders.
 - **Light sneeze** (#149, 14 November 2026): keyframed with eased
   segments (`IDLE_MOTION.sneeze`) and then the usual springs. The snap is
   meant to be quick, so it may move up to 0.6° per 60 fps frame, where the

@@ -47,6 +47,7 @@ async def audition(args) -> None:
                              affection_intensifier_bend=args.affection_intensifier_bend,
                              question_rise_bend=args.question_rise_bend,
                              quote_voice=args.quote_voice, quote_bend=args.quote_bend,
+                             quote_pace=args.quote_pace,
                              dynamic_emphasis=args.dynamic_emphasis, drawl_bend=args.drawl_bend,
                              drawl_hold=args.drawl_hold, drawl_stretch=args.drawl_stretch,
                              rvc_threads=args.rvc_threads)
@@ -152,6 +153,8 @@ def main() -> None:
     parser.add_argument('--question-rise-bend', type=float, default=9.0)
     parser.add_argument('--quote-voice', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--quote-bend', type=float, default=-2.0)
+    parser.add_argument('--quote-pace', type=float, default=0.8,
+                        help="A quotation's speed as a factor of the sentence's (0.5 to 1.5; 1 turns it off).")
     parser.add_argument('--dynamic-emphasis', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--drawl-bend', type=float, default=-2.0)
     parser.add_argument('--drawl-hold', type=float, default=0.0)

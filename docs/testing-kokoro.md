@@ -324,9 +324,25 @@ emphasis pause before its first word and one gentle pitch dip of
 `--quote-bend` semitones (default −2, ±12) across all of its words, bent into
 the F0 curve like the contours in §2e. Unbalanced quotes are ignored.
 
-A different pace for just the quoted words is not included yet. The stock
-model takes one speed per sentence, but a patched copy can take one per token
-(see §2h), so a quotation's pace can follow once that lands.
+**Quotation pace (#83):** the quoted words are also said at their own pace,
+`--quote-pace` times the sentence's speed (default 0.8, a little slower; 0.5–1.5;
+1 turns it off). Kokoro does this itself with per-token speed (§2h, `paces`), so
+the pace multiplies the sentence's pace (mood, punctuation and the global pace,
+#92) and the quote is always a little slower than the words around it. It needs
+the per-token model; without it the quote is said at the sentence's pace and the
+clip reports `paceSkipped: no-model`. Clip metrics report `paced`, the
+quotations said at their own pace. Listening (14 Nov 2026): 0.8 was perfect,
+chosen over 0.9 and 1.0.
+
+| Line (Kokoro source, soft-smile) | pace 1.0 | 0.9 | 0.8 |
+| --- | ---: | ---: | ---: |
+| She said "I love it" and smiled. | 2.50 s | 2.55 s | 2.63 s |
+| You told me, "Take your time," and I did. | 3.32 s | 3.48 s | 3.62 s |
+| He just said “whatever” and left. | 2.65 s | 2.65 s | 2.75 s |
+
+Kokoro rounds each token to whole 25 ms frames, so a one-word quote at 0.9 can
+come out unchanged. The second pass costs about +0.4 s of Kokoro time for each
+sentence with a quotation (0.40–0.48 s → 0.80–0.95 s).
 
 ```bash
 .venv/bin/python -m controller.audition_kokoro --quote-voice \
@@ -587,6 +603,12 @@ needs both halves slowed.
    pass, so the drawl dip follows the longer word.
 5. **Drawls** send `stretch` with `--drawl-stretch` (default 0.125 s) instead of
    `--drawl-hold`. `--drawl-stretch 0` falls back to the old hold settings.
+6. **Request field** `paces: [[first word, last word, factor], …]` (at most 4
+   ranges, factor 0.5–1.5) gives every token of those words, and the spaces
+   between them, that speed factor. Quotations send it (§2f). It shares the
+   stretch's second pass, and a sound that is also stretched keeps its stretch
+   factor, because multiplying both could draw it out past 5 frames. Results:
+   `paced` counts the ranges paced; `paceSkipped` is `no-model` or `misaligned`.
 
 ```bash
 .venv/bin/python -m controller.audition_kokoro --dynamic-emphasis --mood skeptical \

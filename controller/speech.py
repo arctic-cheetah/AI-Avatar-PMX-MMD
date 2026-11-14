@@ -146,6 +146,8 @@ class ApplioSettings:
     word_lift_bend: float = 4.0  # semitones at the lift's peak
     surprise_bend: float = 5.0  # a surprised word's rise ("whaaat"); not yet listened to (#83)
     hesitation_bend: float = -1.0  # a thinking "hmmm"/"umm" dips slightly; not yet listened to (#83)
+    # "Hmm?" rises to its end: the usual 9 st rise, falling after 70 %, was no question (14 Nov 2026)
+    hesitation_question_bend: float = 12.0
     affection_bend: float = 5.0  # a fond word's warm rise-fall: 5 of 3/5 st sounded best (14 Nov 2026, #83)
     affection_intensifier_bend: float = 7.0  # the "sooo" in "sooo cute", a little higher (14 Nov 2026)
     replay_cap_mb: int = 500  # spoken turns kept on disk for bubble replay; oldest go first (#152)
@@ -213,6 +215,8 @@ class ApplioSettings:
             raise ValueError("surprise_bend must be between -12 and 12 semitones.")
         if not math.isfinite(self.hesitation_bend) or abs(self.hesitation_bend) > 12.0:
             raise ValueError("hesitation_bend must be between -12 and 12 semitones.")
+        if not math.isfinite(self.hesitation_question_bend) or abs(self.hesitation_question_bend) > 12.0:
+            raise ValueError("hesitation_question_bend must be between -12 and 12 semitones.")
         if not math.isfinite(self.affection_bend) or abs(self.affection_bend) > 12.0:
             raise ValueError("affection_bend must be between -12 and 12 semitones.")
         if not math.isfinite(self.affection_intensifier_bend) or abs(self.affection_intensifier_bend) > 12.0:
@@ -414,6 +418,9 @@ class Delivery:
     # Keeps intensifier "really" ("I'm really happy!") and relative "what" out (#123 review).
     standalone: bool = False
     before: frozenset[str] | None = None  # only right before one of these words ("so" in "so cute")
+    # ApplioSettings field with the row's own rise when the word ends a question, rising to its end
+    # ("Hmm?"); None: the usual question rise wins and the word is only drawn out ("Really?").
+    question_bend: str | None = None
 
 
 # The first row that matches a word wins. Docs: docs/testing-kokoro.md §2g.
@@ -426,7 +433,8 @@ DELIVERIES: tuple[Delivery, ...] = (
     Delivery("drawl", ATTITUDE_WORDS, moods=SKEPTICAL_MOODS),  # sarcastic "suuure"
     Delivery("surprise", SURPRISE_WORDS, moods=SURPRISED_MOODS, bend="surprise_bend",
              peak=QUESTION_PEAK, standalone=True),  # "Whaaat?", "Reeeally?" rising
-    Delivery("hesitation", HESITATION_WORDS, bend="hesitation_bend"),  # "Hmmm…", "Ummm"
+    Delivery("hesitation", HESITATION_WORDS, bend="hesitation_bend",
+             question_bend="hesitation_question_bend"),  # "Hmmm…", "Ummm", a rising "Hmm?"
 )
 
 
@@ -979,10 +987,18 @@ async def synthesise(
                     else:
                         options.pop(key, None)
             rows = {i: row for i, row in found.items() if row.family != "drawl" and i not in drawls}
-            if rows:  # a question's own rise wins; the word is then only drawn out
+            if rows:  # a question's own rise wins and the word is only drawn out, unless the row has its own
+                own_rise = {i for i, row in rows.items() if row.question_bend and i in options.get("rises", ())}
+                if own_rise:
+                    kept = tuple(i for i in options["rises"] if i not in own_rise)
+                    if kept:
+                        options["rises"] = kept
+                    else:
+                        options.pop("rises")
                 rising = options.get("rises", ())
                 options["delivered"] = tuple(
-                    (i, None, None, row.stretch) if i in rising
+                    (i, getattr(settings, row.question_bend), 1.0, row.stretch) if i in own_rise
+                    else (i, None, None, row.stretch) if i in rising
                     else (i, getattr(settings, row.bend), row.peak, row.stretch)
                     for i, row in sorted(rows.items())
                 )

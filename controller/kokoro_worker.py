@@ -32,10 +32,10 @@ AWW_WORD = re.compile(r'a+w{2,}h*', re.IGNORECASE)
 # Any LLM spelling of "aww" (Awwww, Aaww, aWWW, Awwh); a plain "aw" is left alone.
 AWW_FAMILY = re.compile(r'\b(a)(?:a*w{2,}h*|a+w+h*|w+h+)\b', re.IGNORECASE)
 AWW_PHONEMES = re.compile('ɔːʊ?wə')
-# espeak says hums wrongly: Hmm → həm ("hum"), Mmm → ˌɛmˌɛmˈɛm, Hm → ˌeɪtʃˈɛm. Listening (14 Nov 2026):
-# spelled hmm it sounded like "camel" and mmm still sounded off; Kokoro's "Umm" (ˈʌm) sounds right.
-HMM_PHONEMES = 'ˈʌm'
-HUM_WORD = re.compile(r'hm{1,3}|m{2,3}', re.IGNORECASE)
+# espeak spells some hums out: Mmm → ˌɛmˌɛmˈɛm, Hm → ˌeɪtʃˈɛm. Its own Hmm (həm) is already the hmm
+# sound (listening, 14 Nov 2026, after hmm, mmm and ˈʌm respellings sounded off), so Hm is said like it.
+HMM_PHONEMES = 'həm'
+HUM_WORD = re.compile(r'hm|m{2,3}', re.IGNORECASE)
 WORD_EDGES = '.,!?…;:"\'()[]—–-*“”‘’'
 SPAN_PUNCTUATION = frozenset(',.!?…;:—"\'()')
 MAX_EMPHASIS = 3          # emphasised words per sentence
@@ -141,7 +141,7 @@ def respell_phonemes(text: str, phonemes: str) -> str:
     """Fix espeak's aww and hums; other words are untouched.
 
     "aw-wuh" for aww/awww becomes one long ɔːɔː, and a hum (hm, hmm, mm, mmm) is
-    said like "umm" (hm, hmm → ˈʌm) or as m sounds (mm, mmm), keeping the punctuation around it.
+    said like espeak's own "Hmm" (hm → həm) or as m sounds (mm, mmm), keeping the punctuation around it.
 
     Only applied when the phoneme words line up with the text's spoken words.
     """

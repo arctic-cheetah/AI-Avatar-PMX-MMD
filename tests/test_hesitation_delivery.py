@@ -2,8 +2,9 @@
 
 espeak spells hums letter by letter or adds a vowel: "Hmm" → həm ("hum"),
 "Mmm" → ˌɛmˌɛmˈɛm ("em-em-em"), "Hm" → ˌeɪtʃˈɛm ("aitch-em"). Spelled `hmm`, the h
-made it sound like "camel" (listening, 14 Nov 2026), so every hum is said with
-closed lips: the h becomes another m (hm → mm, hmm → mmm).
+made it sound like "camel", and a closed-lip mmm still sounded off (listening,
+14 Nov 2026). Kokoro's "Umm" (ˈʌm) sounds right, so hm and hmm are said as ˈʌm;
+mm and mmm stay closed-lip m sounds ("Mmm, yummy.").
 """
 from pathlib import Path
 import unittest
@@ -19,13 +20,14 @@ import test_contours  # the module, not its TestCase class, so its tests do not 
 class HumPhonemeTests(unittest.TestCase):
     def test_hums_are_spoken_as_their_letters(self):
         cases = [
-            # Listening (14 Nov 2026): "hmm" with its h sounded like "camel"; a hum is closed-lip mmm.
-            ('Hmm, let me think.', 'həm, lˈɛt mˌiː θˈɪŋk.', 'mmm, lˈɛt mˌiː θˈɪŋk.'),
+            # Listening (14 Nov 2026): "hmm" with its h sounded like "camel", and "mmm" still sounded
+            # off; Kokoro's "Umm" (ˈʌm) is how hmm, hm and hmm? should sound.
+            ('Hmm, let me think.', 'həm, lˈɛt mˌiː θˈɪŋk.', 'ˈʌm, lˈɛt mˌiː θˈɪŋk.'),
             ('Mmm, yummy.', 'ˌɛmˌɛmˈɛm, jˈʌmi.', 'mmm, jˈʌmi.'),
-            ('Hm.', 'ˌeɪtʃˈɛm.', 'mm.'),
+            ('Hm.', 'ˌeɪtʃˈɛm.', 'ˈʌm.'),
             ('Mm.', 'ˌɛmˈɛm.', 'mm.'),
-            ('Well… hmm?', 'wˈɛl… həm?', 'wˈɛl… mmm?'),
-            ('"Hmm," she said.', '“həm,” ʃiː sˈɛd.', '“mmm,” ʃiː sˈɛd.'),
+            ('Well… hmm?', 'wˈɛl… həm?', 'wˈɛl… ˈʌm?'),
+            ('"Hmm," she said.', '“həm,” ʃiː sˈɛd.', '“ˈʌm,” ʃiː sˈɛd.'),
         ]
         for text, phonemes, expected in cases:
             with self.subTest(text=text):
@@ -57,7 +59,7 @@ class SynthesizeHumTests(unittest.TestCase):
         synthesizer = test_contours.AwwPronunciationTests.synthesizer(self, 'həm.')
         synthesizer.synthesize('Hmm.', 'out.wav')
         args, kwargs = synthesizer.model.create.call_args
-        self.assertEqual((args[0], kwargs['is_phonemes']), ('mmm.', True))
+        self.assertEqual((args[0], kwargs['is_phonemes']), ('ˈʌm.', True))
 
 
 class HesitationRowTests(unittest.TestCase):

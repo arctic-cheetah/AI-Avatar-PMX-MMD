@@ -74,7 +74,7 @@ class NarrationStageTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_redaction_tag_allowlist_and_speech_cap_still_apply(self):
         narration = ("[unknown][happy:2] Fixed /etc/passwd. "
-                     "[relieved] See https://example.com. "
+                     "[relieved] See https://example.com now. "
                      "password=hunter2 is hidden. Fourth sentence.")
         self.assertEqual(await self.report(narration), "queued")
         await settle()
@@ -114,7 +114,7 @@ class NarrationStageTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.router.handle({"tool": "report", "text": "Full result"}), "queued")
         await settle()
         self.assertEqual(self.calls, [])
-        self.assertIn("details are in the chat", self.speech.spoken[0][0][0])
+        self.assertIn("details are in the chat", " ".join(s[0] for s in self.speech.spoken[0]))
 
     async def test_text_only_still_shows_full_report(self):
         self.stage.worker = None
@@ -123,6 +123,15 @@ class NarrationStageTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.sent[0]["text"], "# Full result\n\nPassed.")
         self.assertEqual(self.calls, [])
         self.assertEqual(self.speech.spoken, [])
+
+    async def test_large_single_summary_chunk_respects_character_limit(self):
+        async def llm(messages, on_reasoning=None):
+            yield "a" * (MAX_SUMMARY_CHARS + 100)
+
+        self.stage.llm = llm
+        await self.router.handle({"tool": "report", "text": "Summarise this."})
+        await settle()
+        self.assertEqual(len(self.speech.spoken[0][0][0]), MAX_SUMMARY_CHARS)
 
 
 class NarrationMcpTests(unittest.IsolatedAsyncioTestCase):
@@ -168,6 +177,38 @@ class AgentModeStartupTests(unittest.TestCase):
 
 
 class AgentModeConnectionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_agent_tools_and_ask_answers_work_without_an_upstream(self):
+        sent, results = [], []
+        router = AgentRouter(CATALOG)
+        speech = FakeSpeech()
+
+        class Socket:
+            async def send(self, raw):
+                sent.append(json.loads(raw))
+
+            async def __aiter__(self):
+                for call in [{"tool": "set_mood", "name": "thinking"},
+                             {"tool": "say", "text": "Checking."},
+                             {"tool": "report", "text": "Written report"}]:
+                    results.append(await router.handle(call))
+                    await settle()
+                ask = asyncio.create_task(router.handle({"tool": "ask", "question": "Continue?"}))
+                await settle()
+                question = next(e for e in sent if e.get("kind") == "ask")
+                yield json.dumps({"type": "answer", "id": question["id"], "text": "Yes please"})
+                results.append(await ask)
+                await settle()
+
+        args = Namespace(mode="agent", agent_router=router, speech_worker=object(),
+                         report_fallback="summarise")  # Runtime still forces a fixed fallback.
+        with patch("controller.agent.speak_segments", speech), \
+             patch("controller.bridge.llama_chunks", Mock()) as llm:
+            await bridge.handle_connection(Socket(), args, CATALOG)
+        llm.assert_not_called()
+        self.assertEqual(results, ["ok", "queued", "queued", "Yes please"])
+        texts = [text for turn in speech.spoken for text, _, _ in turn]
+        self.assertEqual(texts, ["Checking.", "All done.", "The details are in the chat.", "Continue?"])
+
     async def test_browser_chat_cannot_reach_llm_or_demo(self):
         sent = []
 
@@ -193,6 +234,9 @@ class AgentModeConnectionTests(unittest.IsolatedAsyncioTestCase):
         demo.assert_not_called()
         self.assertEqual(len([e for e in sent if e["type"] == "error"]), 2)
         self.assertFalse(any(e["type"] == "start" for e in sent))
+        # The renderer handles error as terminal; a following end would erase
+        # the explanatory status with "Complete".
+        self.assertFalse(any(e["type"] == "end" for e in sent))
         self.assertTrue(all("agent-only" in e["text"] for e in sent if e["type"] == "error"))
         self.assertIn({"type": "reset"}, sent)
 

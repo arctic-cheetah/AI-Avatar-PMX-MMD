@@ -1,4 +1,4 @@
-"""Streaming text/expression bridge; demo and any OpenAI-compatible LLM."""
+"""Streaming text/expression bridge; agent-only, demo or OpenAI-compatible LLM."""
 
 from __future__ import annotations
 
@@ -708,8 +708,12 @@ async def handle_connection(socket, args, catalog):
     if router is not None:
         from controller.agent import Stage
 
+        fallback = (
+            "fixed" if args.mode == "agent"
+            else getattr(args, "report_fallback", None) or "summarise"
+        )
         llm = None
-        if args.mode == "llm":
+        if args.mode == "llm" and fallback == "summarise":
             # Report summaries use the same upstream as chat: local llama-server or a cloud LLM.
             def llm(messages, on_reasoning=None):
                 return llama_chunks(
@@ -720,7 +724,7 @@ async def handle_connection(socket, args, catalog):
                     headers=getattr(args, "llm_headers", None),
                 )
 
-        stage = Stage(send, worker, catalog, llm)
+        stage = Stage(send, worker, catalog, llm, report_fallback=fallback)
         router.attach(stage)
 
     async def chat_chunks(prompt, on_reasoning, reply):
@@ -923,6 +927,13 @@ async def handle_connection(socket, args, catalog):
             except (ValueError, TypeError):
                 LOG.warning("Dropped invalid browser request")
                 continue
+            if request["type"] == "start" and args.mode == "agent":
+                await send({
+                    "type": "error",
+                    "text": "Chat is unavailable in agent-only mode. "
+                    "Use your MCP host or restart with --mode llm.",
+                })
+                continue
             if greeting is not None and not greeting.done():
                 # A chat reply or new chat takes the voice from the greeting.
                 greeting.cancel()
@@ -1014,10 +1025,13 @@ async def run(args):
                 await args.speech_worker.close()
             raise SystemExit(f"bridge: error: {error}") from None
         print(f"Agent socket: {args.agent_socket}", flush=True)
-        if args.mode == "llm" and getattr(args, "llm_external", False):
+        if (
+            args.mode == "llm" and getattr(args, "llm_external", False)
+            and getattr(args, "report_fallback", None) != "fixed"
+        ):
             print(
-                "Agent reports are summarised by the external LLM: report text "
-                "(obvious secrets redacted) leaves this machine.",
+                "Agent reports without spoken_text are summarised by the external LLM: "
+                "report text (obvious secrets redacted) leaves this machine.",
                 flush=True,
             )
 
@@ -1066,7 +1080,13 @@ async def run(args):
 
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mode", choices=["demo", "llm"], default="demo")
+    parser.add_argument("--mode", choices=["demo", "llm", "agent"], default="demo",
+                        help="agent: MCP voice/presentation only, with no chat or summary LLM.")
+    parser.add_argument(
+        "--report-fallback", choices=("summarise", "fixed"), default=None,
+        help="Missing report narration: summarise with the chat LLM, or speak a fixed line. "
+        "Default: fixed in agent mode, summarise otherwise (fixed if no LLM is available).",
+    )
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--llama-url", default="http://127.0.0.1:8080")
     parser.add_argument("--model", default=None)
@@ -1407,6 +1427,14 @@ def speech_settings(args):
 
 def main():
     args = build_parser().parse_args()
+    if args.mode == "agent":
+        if args.report_fallback == "summarise" or args.tools or args.web_search:
+            raise SystemExit("bridge: error: agent-only mode cannot use LLM summaries, "
+                             "--tools or --web-search")
+        args.agent = True
+    args.report_fallback = args.report_fallback or (
+        "fixed" if args.mode == "agent" else "summarise"
+    )
     if args.agent and args.agent_socket is None:
         from controller.agent import default_socket_path
 

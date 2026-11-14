@@ -61,7 +61,7 @@ function asleep(name, seconds = 5) {
   return { kind: motion.sleepAction, poses };
 }
 
-const FACE = ["yawn", "squint", "winkLeft", "winkRight", "mouthLift", "surprise", "smile", "browRaise", "shy"];
+const FACE = ["yawn", "squint", "winkLeft", "winkRight", "mouthLift", "surprise", "smile", "browRaise", "shy", "exhale"];
 const isRest = (pose) => pose.glance === null && FACE.every((k) => pose[k] === 0) && pose.shiverWave === 0 && ANGLES.every((k) => Math.abs(pose[k]) < 1e-9);
 const peak = (poses, key) => Math.max(...poses.map((p) => Math.abs(p[key])));
 const signedPeak = (poses, key) => poses.reduce((best, p) => (Math.abs(p[key]) > Math.abs(best) ? p[key] : best), 0);
@@ -873,4 +873,43 @@ test("part 3 actions have panel labels", () => {
   assert.equal(ACTION_LABELS["neck-roll"], "Neck roll");
   assert.equal(ACTION_LABELS["weight-shift"], "Weight shift");
   assert.equal(ACTION_LABELS["shy-look-away"], "Shy look-away");
+});
+
+// ---- #149 part 3 follow-up: a bigger, balanced neck roll; a breathing mouth ----
+
+test("the neck roll is noticeable and even: about ±3-4° each way at full size", () => {
+  const { poses } = awake("neck-roll", IDLE_MOTION.neckRoll.duration + 1.5);
+  const pitches = poses.map((p) => p.headPitch);
+  const tilts = poses.map((p) => p.tilt);
+  const headBone = 0.6; // the head bone takes 60 % of headPitch, the neck 40 %
+  const up = Math.max(...pitches) * headBone, down = -Math.min(...pitches) * headBone;
+  const left = Math.max(...tilts), right = -Math.min(...tilts);
+  for (const [name, value] of Object.entries({ up, down, left, right })) {
+    assert.ok(value >= 3 * DEG && value <= 4.5 * DEG, `${name} ${(value / DEG).toFixed(2)}° on the head`);
+  }
+  assert.ok(Math.abs(up - down) < 0.3 * DEG, "back and forward match");
+  assert.ok(Math.abs(left - right) < 0.3 * DEG, "both sides match");
+});
+
+test("the sigh's mouth parts a little on the breath in and opens with お on the breath out", () => {
+  assert.deepEqual({ ...FACE_MORPHS.exhale }, { "お": 1 });
+  const { inhale, exhale } = IDLE_MOTION.sigh;
+  const { poses } = awake("sigh", inhale + exhale + 1);
+  const during = (from, to) => poses.slice(Math.round(from * 60), Math.round(to * 60));
+  const breathIn = peak(during(0, inhale), "exhale");
+  const breathOut = peak(during(inhale, inhale + exhale), "exhale");
+  assert.ok(breathIn > 0.08 && breathIn < 0.25, `parts a little breathing in (${breathIn.toFixed(2)})`);
+  assert.ok(breathOut > 0.3 && breathOut <= 0.4, `opens more breathing out (${breathOut.toFixed(2)})`);
+  assert.ok(poses.at(-1).exhale < 0.01, "closes again");
+});
+
+test("the deep breath breathes in, then out through an open mouth", () => {
+  const { keys } = IDLE_MOTION.deepBreath;
+  const { poses } = awake("deep-breath", keys.at(-1) + 1.5);
+  const during = (from, to) => poses.slice(Math.round(from * 60), Math.round(to * 60));
+  const breathIn = peak(during(0, keys[1]), "exhale");
+  const breathOut = peak(during(keys[2], keys.at(-1)), "exhale");
+  assert.ok(breathIn > 0.08 && breathIn < 0.25, `parts a little breathing in (${breathIn.toFixed(2)})`);
+  assert.ok(breathOut > 0.3 && breathOut <= 0.4, `opens more breathing out (${breathOut.toFixed(2)})`);
+  assert.ok(poses.at(-1).exhale < 0.01, "closes again");
 });

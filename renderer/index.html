@@ -116,15 +116,19 @@
         <label for="sleep-action-every" title="While asleep, do one of the ticked actions, at random, this often. 0 = none.">Sleep action every (min)</label>
         <input id="sleep-action-every" type="number" min="0" max="60" step="0.5" value="2" inputmode="decimal">
       </div>
-      <fieldset id="actions" class="sleep-actions">
-        <legend>Actions · 仕草 (idle and asleep)</legend>
-      </fieldset>
       <p id="idle-status" class="note" role="status"></p>
       <div id="wink-controls" class="toolbar" role="group" aria-label="Wink previews">
         <button id="sway-button" type="button" aria-pressed="true" disabled>⏸ sway</button>
         <button id="wink-left-button" data-wink="left" type="button" aria-pressed="false" disabled>[wink-left] · ウィンク</button>
         <button id="wink-right-button" data-wink="right" type="button" aria-pressed="false" disabled>[wink-right] · ウィンク右</button>
       </div>
+    </section>
+    <section aria-labelledby="actions-heading">
+      <h2 id="actions-heading">Actions · 仕草</h2>
+      <p class="note">Tick the actions she may do while idle and while asleep; each is picked at random by its chance.</p>
+      <fieldset id="actions" class="sleep-actions">
+        <legend>Idle and asleep</legend>
+      </fieldset>
     </section>
     <section aria-labelledby="action-play-heading">
       <h2 id="action-play-heading">Animation actions · 仕草再生</h2>

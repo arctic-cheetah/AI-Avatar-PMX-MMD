@@ -4,6 +4,8 @@ const SECTIONS = [
   ["speech", "speech-heading", "Speech test", true],
   ["presets", "presets-heading", "Mood presets", true],
   ["channels", "channels-heading", "Independent channels", true],
+  ["actions", "actions-heading", "Actions", true],
+  ["action-play", "action-play-heading", "Animation actions", true],
   ["audition", "audition-heading", "Morph audition", true],
   ["candidates", "candidates-heading", "Candidates", true],
 ];

@@ -126,7 +126,7 @@ class QuotePaceRequestTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_quotes_are_paced_by_kokoro(self):
         tts, reply = await self.exchange(ApplioSettings(tts_provider='kokoro'))
-        self.assertEqual(tts['paces'], [[2, 4, 0.9]])
+        self.assertEqual(tts['paces'], [[2, 4, 0.8]])
         self.assertEqual(reply['paced'], 1)
         self.assertEqual(reply['quotes'], 1)  # the pitch dip is unchanged
 
@@ -138,7 +138,8 @@ class QuotePaceRequestTests(unittest.IsolatedAsyncioTestCase):
 
 class QuotePaceSettingsTests(unittest.TestCase):
     def test_default_range_and_flags(self):
-        self.assertEqual(ApplioSettings().quote_pace, 0.9)
+        # Listening (14 Nov 2026): 0.8 was perfect, over 0.9 and 1.0.
+        self.assertEqual(ApplioSettings().quote_pace, 0.8)
         for value in (0.49, 1.51, float('nan')):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 ApplioSettings(applio_dir=Path('/nonexistent'), quote_pace=value).check()

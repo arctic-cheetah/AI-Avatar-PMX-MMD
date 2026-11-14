@@ -337,7 +337,7 @@ function refreshActionPlay() {
  * the shoulders have no other writer, so they keep their own rest.
  */
 const IDLE_BONES = Object.freeze([
-  { name: "上半身", pitch: [["back", -1]] },
+  { name: "上半身", pitch: [["back", -1]], roll: [["lean", 1]] },
   { name: "上半身2", pitch: [["chest", -1]], roll: [["shiverWave", 1]] },
   { name: "首", pitch: [["headPitch", -0.4]] },
   { name: "頭", pitch: [["headPitch", -0.6], ["bobPitch", 1]], roll: [["tilt", 1], ["bobRoll", 1]] },
@@ -1046,7 +1046,7 @@ function updateIdle(delta) {
   // A held pose lets previews and comparison grids show one motion on demand.
   idlePose = globalThis.__yidhariIdlePose
     ? { glance: null, tilt: 0, chest: 0, shoulders: 0, shoulderLeft: 0, shoulderRight: 0, back: 0, headPitch: 0, yawn: 0, squint: 0, winkLeft: 0, winkRight: 0, mouthLift: 0, surprise: 0,
-      shiver: 0, shiverWave: 0, smile: 0, browRaise: 0, hum: 0, bobPitch: 0, bobRoll: 0,
+      shiver: 0, shiverWave: 0, smile: 0, browRaise: 0, hum: 0, bobPitch: 0, bobRoll: 0, lean: 0, shy: 0,
       ...globalThis.__yidhariIdlePose }
     : idleMotion.update(delta.eased, idle.state, idle.stateTime, idle.timing.sleepActionEvery);
   gaze.setIdle(idlePose.glance);

@@ -98,14 +98,27 @@ export const IDLE_MOTION = Object.freeze({
     headPitch: Object.freeze([0, 1.5 * DEG, 1.5 * DEG, 0]),
     squint: Object.freeze([0, 0, 0.35, 0]),
   }),
+  /** Sniffle (#149 part 3): two quick sniffs, the head tipping up each time. */
+  sniffle: Object.freeze({
+    keys: Object.freeze([0, 0.18, 0.4, 0.62, 0.84, 1.6]),
+    headPitch: Object.freeze([0, 1.5 * DEG, 0, 1.5 * DEG, 0, 0]),
+    chest: Object.freeze([0, 0.8 * DEG, 0, 0.8 * DEG, 0, 0]),
+    squint: Object.freeze([0, 0.25, 0.05, 0.25, 0.05, 0]),
+  }),
+  /** Neck roll: one slow circle of the head, eased in and out. */
+  neckRoll: Object.freeze({ duration: 4.5, rise: 0.9, pitch: 4 * DEG, roll: 4 * DEG }),
+  /** Weight shift: lean to one side and hold; the head tilts back to stay level. */
+  weightShift: Object.freeze({ duration: Object.freeze([4.5, 5.5]), rise: 1.2, lean: 3 * DEG, head: 0.5 }),
+  /** Shy look-away: eyes and head drop to one side with a shy giggle. */
+  shy: Object.freeze({ duration: 3.5, rise: 0.9, x: 0.5, y: 0.45, headPitch: 3 * DEG, tilt: 2 * DEG }),
   /** Spring rate for every angle, so interrupted motions ease back. */
   rate: 8,
   /** The eyes close faster than bones move, so a sneeze's squint keeps up. */
   squintRate: 30,
 });
 
-const ANGLES = ["tilt", "chest", "shoulders", "shoulderLeft", "shoulderRight", "back", "headPitch", "shiver", "hum",
-  "yawn", "squint", "winkLeft", "winkRight", "mouthLift", "surprise", "smile", "browRaise"];
+const ANGLES = ["tilt", "chest", "shoulders", "shoulderLeft", "shoulderRight", "back", "headPitch", "shiver", "hum", "lean",
+  "yawn", "squint", "winkLeft", "winkRight", "mouthLift", "surprise", "smile", "browRaise", "shy"];
 
 /**
  * Face channels (#149): an action writes a 0-1 weight per channel, and the
@@ -124,6 +137,8 @@ export const FACE_MORPHS = Object.freeze({
   smile: Object.freeze({ "笑い": 0.5, "にこり": 0.6, "口角上げ": 0.6 }),
   /** A curious eyebrow raise (the user's pick G). */
   browRaise: Object.freeze({ "上": 0.8, "びっくり": 0.3 }),
+  /** A shy giggle (the user's pick C, #149 part 3); the model has no blush morph. */
+  shy: Object.freeze({ "笑い": 0.35, "困る": 0.4 }),
 });
 const LIMITS = Object.freeze({
   tilt: [-IDLE_MOTION.tilt.angle, IDLE_MOTION.tilt.angle],
@@ -143,6 +158,8 @@ const LIMITS = Object.freeze({
   hum: [0, 1],
   smile: [0, 1],
   browRaise: [0, 1],
+  shy: [0, 1],
+  lean: [-IDLE_MOTION.weightShift.lean, IDLE_MOTION.weightShift.lean],
 });
 
 const smoothstep = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
@@ -368,6 +385,50 @@ const ACTION_TABLE = {
     create: () => ({ duration: IDLE_MOTION.deepBreath.keys.at(-1) }),
     apply: (motion, target) => keyedPose(motion.t, IDLE_MOTION.deepBreath, target),
   }),
+  sniffle: Object.freeze({
+    share: 0.5,
+    quick: true,
+    create: () => ({ duration: IDLE_MOTION.sniffle.keys.at(-1) }),
+    apply: (motion, target) => keyedPose(motion.t, IDLE_MOTION.sniffle, target),
+  }),
+  "neck-roll": Object.freeze({
+    share: 0.5,
+    create: () => ({ duration: IDLE_MOTION.neckRoll.duration }),
+    apply: (motion, target) => {
+      const { neckRoll } = IDLE_MOTION;
+      const amount = bump(motion.t, neckRoll.duration, neckRoll.rise);
+      const angle = (2 * Math.PI * motion.t) / neckRoll.duration;
+      target.headPitch = amount * neckRoll.pitch * Math.sin(angle);
+      target.tilt = amount * neckRoll.roll * Math.cos(angle);
+      return null;
+    },
+  }),
+  "weight-shift": Object.freeze({
+    share: 1,
+    create: (random) => {
+      const dir = random() < 0.5 ? -1 : 1;
+      return { dir, duration: within(IDLE_MOTION.weightShift.duration, random()) };
+    },
+    apply: (motion, target) => {
+      const { weightShift } = IDLE_MOTION;
+      const lean = motion.dir * weightShift.lean * bump(motion.t, motion.duration, weightShift.rise);
+      target.lean = lean;
+      target.tilt = -weightShift.head * lean;
+      return null;
+    },
+  }),
+  "shy-look-away": Object.freeze({
+    share: 0.5,
+    create: (random) => ({ dir: random() < 0.5 ? -1 : 1, duration: IDLE_MOTION.shy.duration }),
+    apply: (motion, target) => {
+      const { shy } = IDLE_MOTION;
+      const amount = bump(motion.t, shy.duration, shy.rise);
+      target.shy = amount;
+      target.headPitch = -shy.headPitch * amount;
+      target.tilt = motion.dir * shy.tilt * amount;
+      return { x: motion.dir * shy.x, y: shy.y, weight: amount };
+    },
+  }),
 };
 
 const SHARED = Object.values(ACTION_TABLE).reduce((sum, action) => sum + (action.share ?? 0), 0);
@@ -403,6 +464,10 @@ export const ACTION_LABELS = Object.freeze({
   "contented-smile": "Contented smile",
   "eyebrow-raise": "Eyebrow raise",
   "deep-breath": "Deep breath",
+  sniffle: "Sniffle",
+  "neck-roll": "Neck roll",
+  "weight-shift": "Weight shift",
+  "shy-look-away": "Shy look-away",
 });
 
 export const ACTIONS_KEY = "yidhari.actions";

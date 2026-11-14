@@ -489,9 +489,10 @@ function setupIdleMotion(object) {
 }
 
 /**
- * Open the mouth for the idle yawn (#71), on top of the mood and speech
- * morphs written this frame. Speech blocks idle, so the yawn has eased shut
- * before visemes take the mouth.
+ * Add the idle actions' face channels (#71, #149) on top of the mood, speech
+ * and wink-button morphs written this frame; it runs after updateWinks(),
+ * which sets the wink morphs outright. Speech blocks idle, so the yawn has
+ * eased shut before visemes take the mouth.
  * @returns {void}
  */
 function applyYawn() {
@@ -1918,8 +1919,8 @@ function animate() {
   expressions?.update(delta);
   syncThinkingState();
   speech?.update(delta);
-  applyYawn();
   updateWinks(delta);
+  applyYawn();
   updateBlink(now / 1000);
   applyThinkingPose(delta);
   applyGaze(delta);

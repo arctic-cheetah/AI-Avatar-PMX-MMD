@@ -42,6 +42,7 @@ import { ThinkingPose, THINKING_POSE, headGazeScale } from "./thinking-pose.js";
 import { buildThinkingRig } from "./thinking-rig.js";
 import { GazeController, normalisePointer, clampEyePitch } from "./gaze-tracking.js";
 import { CameraGaze } from "./camera-gaze.js";
+import { CameraControls } from "./camera-controls.js";
 import { SWAY, SwayController, swayAnglesAt } from "./body-sway.js";
 import { Spring, TIMING, frameDelta } from "./smoothing.js";
 import { composeBlink, eyeClosure } from "./facial-layers.js";
@@ -357,6 +358,15 @@ const noteActivity = () => {
   idleMotion.stop();
 };
 const cameraGaze = new CameraGaze((target) => gaze.setCamera(target, cameraGazeToggle.checked));
+const cameraControls = new CameraControls({
+  camera: cameraGaze,
+  toggle: cameraGazeToggle,
+  select: document.querySelector("#camera-device"),
+  refresh: document.querySelector("#camera-device-refresh"),
+  status: gazeStatus,
+  onEnabled: (enabled) => gaze.setCamera(null, enabled),
+});
+window.addEventListener("pagehide", () => cameraControls.interrupted(""));
 
 /**
  * Only the window that shows the canvas has matching pointer coordinates,
@@ -386,23 +396,6 @@ function centreCursor(event) {
 window.addEventListener("pointermove", followCursor);
 window.addEventListener("pointerleave", centreCursor);
 cursorGazeToggle.addEventListener("change", () => gaze.setCursor({ x: 0, y: 0 }, cursorGazeToggle.checked));
-cameraGazeToggle.addEventListener("change", async () => {
-  gaze.setCamera({ x: 0, y: 0 }, cameraGazeToggle.checked);
-  if (!cameraGazeToggle.checked) {
-    cameraGaze.stop();
-    gazeStatus.textContent = "";
-    return;
-  }
-  gazeStatus.textContent = "Starting camera…";
-  try {
-    await cameraGaze.start();
-    gazeStatus.textContent = "Camera on · processed locally, nothing is recorded or sent.";
-  } catch (error) {
-    cameraGazeToggle.checked = false;
-    gaze.setCamera(null, false);
-    gazeStatus.textContent = error.message;
-  }
-});
 
 /**
  * Capture the eye/neck/head bones and their rest quaternions for gaze.
@@ -417,8 +410,7 @@ function setupGaze(object) {
   }
   const hasEyes = gazeBones.some(({ name }) => name === "左目" || name === "右目");
   cursorGazeToggle.disabled = !hasEyes;
-  cameraGazeToggle.disabled = !hasEyes;
-  if (!hasEyes) gazeStatus.textContent = "This model has no eye bones, so gaze tracking is unavailable.";
+  cameraControls.setAvailable(hasEyes);
 }
 
 /**

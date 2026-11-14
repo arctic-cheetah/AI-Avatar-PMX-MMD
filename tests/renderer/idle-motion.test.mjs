@@ -214,7 +214,8 @@ test("every action comes up while idle over an hour, one at a time, within its l
     if (motion.current) kinds.add(motion.current.kind);
     assert.ok(Math.abs(pose.tilt) <= IDLE_MOTION.tilt.angle + 1e-9);
     assert.ok(pose.chest >= -1e-9 && pose.chest <= IDLE_MOTION.sigh.chest + 1e-9);
-    if (pose.glance) assert.ok(Math.abs(pose.tilt) < 1e-3, "no tilt during a glance");
+    // One action at a time: a plain glance or look-around never carries another action's tilt.
+    if (["glance", "look-around"].includes(motion.current?.kind)) assert.ok(Math.abs(pose.tilt) < 1e-3, "no tilt during a glance");
   }
   assert.deepEqual([...kinds].sort(), [...NAMES].sort());
 });

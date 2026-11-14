@@ -145,7 +145,7 @@ class ApplioSettings:
     word_lifts: bool = True  # Kokoro: lift endearments in address and the word before ! (#84)
     word_lift_bend: float = 4.0  # semitones at the lift's peak
     surprise_bend: float = 5.0  # a surprised word's rise ("whaaat"); not yet listened to (#83)
-    hesitation_bend: float = -1.0  # a thinking "hmmm"/"umm" dips slightly; not yet listened to (#83)
+    hesitation_bend: float = -1.0  # a thinking "hmmm"/"umm" dips slightly; approved by listening (14 Nov 2026, #83)
     # "Hmm?" rises to its end: the usual 9 st rise, falling after 70 %, was no question (14 Nov 2026)
     hesitation_question_bend: float = 10.0  # 10 of 10/12 st (14 Nov 2026)
     affection_bend: float = 5.0  # a fond word's warm rise-fall: 5 of 3/5 st sounded best (14 Nov 2026, #83)

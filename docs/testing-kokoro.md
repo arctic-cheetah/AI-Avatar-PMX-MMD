@@ -439,7 +439,8 @@ the voiced part): the usual rise went 228 → 295 → 283 Hz, falling back at th
 end; with the row's rise, 10 st gives 267 → 266 → 335 Hz and 12 st gives
 267 → 274 → 372 Hz (+5.8 st), still rising at the end. Said like "Umm" at
 10 st: 229 → 256 → 336 Hz (+6.6 st), drawn out over its ʌ.
-Listening: ⏳ the "Umm"-like "Hmm?" is not yet listened to (14 Nov 2026).
+Listening (14 Nov 2026): approved as "perfect": the plain "Hmm", "Hm" and the
+rising "Hmm?" said like "Umm" (10 st), with the −1 st dip.
 
 Affection words keep away from the endearments ("sweetie", "precious",
 "cutie" keep their own `--endearment-bend` lift in address), and "Aww" keeps its

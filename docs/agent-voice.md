@@ -11,12 +11,16 @@ Built in steps:
 | Step | Tools                  | Status          |
 | ---- | ---------------------- | --------------- |
 | A    | `say`, `set_mood`      | ✅ this guide   |
-| B    | `report` (summariser)  | ✅ this guide   |
+| B    | `report` (direct narration or summariser) | ✅ this guide |
 | C    | `ask`, Stop and Notification hooks | ✅ this guide |
 
-`say` and `set_mood` never call an LLM. `report` summaries use the same upstream
-as chat (`--llama-url`, `--model`, `--api-key-env`), so they work with the local
-llama-server and with a cloud or proxy LLM ([external-llm.md](external-llm.md)).
+`say`, `ask`, `set_mood`, and reports with supplied `spoken_text` never call an
+LLM. `--mode agent` provides the MCP voice/presentation layer without any chat
+or summarisation LLM configuration ([#56](https://github.com/arctic-cheetah/AI-Avatar-PMX-MMD/issues/56)).
+Optional report summaries use the same upstream as chat (`--llama-url`,
+`--model`, `--api-key-env`), locally or through a cloud/proxy
+([external-llm.md](external-llm.md)). TTS and voice conversion still need their
+speech models; Edge TTS still uses its external service if selected.
 
 ## How a call flows
 
@@ -47,9 +51,8 @@ the agent socket is a Unix domain socket that only your user can open.
    .venv/bin/python -m pip install -r requirements.txt
    ```
 
-2. Start the renderer and the bridge with `--agent`. Run both from the same
-   checkout, in two terminals. `--agent` adds to the usual bridge flags, so
-   pick the LLM you want for chat and report summaries:
+2. Start the renderer and bridge from the same checkout, in two terminals.
+   Choose agent-only mode, or add `--agent` to the usual chat bridge flags:
 
    ```bash
    # Terminal 1: renderer (add --stt for the 🎤 Talk button)
@@ -57,6 +60,9 @@ the agent socket is a Unix domain socket that only your user can open.
    ```
 
    ```bash
+   # Terminal 2: MCP voice only, no chat/summarisation LLM or API key needed:
+   .venv/bin/python controller/bridge.py --mode agent --speech --tts kokoro
+
    # Terminal 2, local llama-server on 127.0.0.1:8080, with voice:
    .venv/bin/python controller/bridge.py --mode llm --agent --speech --tts kokoro
 
@@ -65,8 +71,8 @@ the agent socket is a Unix domain socket that only your user can open.
    .venv/bin/python controller/bridge.py --mode llm --agent --speech --tts kokoro \
      --llama-url https://your-proxy.example/v1 --model your-model-name
 
-   # ...or text only, without voice (bubbles and moods only):
-   .venv/bin/python controller/bridge.py --mode llm --agent
+   # ...or agent-only presentation without speech (bubbles and moods only):
+   .venv/bin/python controller/bridge.py --mode agent
    ```
 
    The bridge prints `Agent socket: /run/user/1000/yidhari/agent.sock`.
@@ -74,8 +80,12 @@ the agent socket is a Unix domain socket that only your user can open.
    **Connected · ready**. To check the socket before you connect an agent, run
    the one-line `say` test under [Troubleshooting](#troubleshooting).
 
-   With llama-server, start it with `-np 2` so a report summary does not wait
-   behind a chat reply.
+   Agent-only mode enables the agent socket automatically. Ordinary browser
+   chat requests return an explanatory error; they never call a model or play
+   demo replies. `ask` answers, fixed page-open greetings, expressions, replay
+   and **New chat** remain available. `--tools`, `--web-search` and
+   `--report-fallback summarise` are rejected in this mode. For optional
+   llama-server summaries, use `-np 2` so a summary need not wait behind chat.
 
 3. Connect your coding agent (once per machine). Each host starts
    `mcp_server.py` itself; you never run it by hand. Use absolute paths, and
@@ -172,7 +182,9 @@ the agent socket is a Unix domain socket that only your user can open.
    - Call `say` with one short spoken sentence when you start a task and when
      you finish it. Plain speech only: no code, paths, hashes or URLs.
    - When a task finishes or fails, call `report` with your full final message
-     and `kind` `done` or `error`.
+     in `text`, concise narration in `spoken_text`, and `kind` `done` or `error`.
+     Narration has at most 600 characters including mood tags and 1–3 short
+     sentences; use exactly two alternating moods for multi-phrase narration.
    - When you need my decision, call `ask` with a short question and wait for
      the reply; treat `no answer` as "not now".
    - Call `set_mood` with `thinking` while you work for a long time.
@@ -193,7 +205,7 @@ Options for `mcp_server.py`: `--name` is the label on her chat bubbles (default
 | Tool       | Arguments                                     | What she does                                     | Result                                   |
 | ---------- | --------------------------------------------- | ------------------------------------------------- | ---------------------------------------- |
 | `say`      | `text` (≤ 500 chars), optional `mood`, `weight` | Logs the text in the chat, then speaks it as written | `queued` at once; never waits for playback |
-| `report`   | `text` (≤ 16 KiB), `kind`: `progress`, `done` (default) or `error` | Logs the full text in a collapsible bubble; the LLM rewrites it as 1–3 spoken sentences with moods | `queued` at once |
+| `report`   | `text` (≤ 16384 chars), optional `spoken_text` (≤ 600 chars), `kind`: `progress`, `done` (default) or `error` | Logs the full text; speaks supplied narration directly, or uses the configured missing-narration fallback | `queued` at once |
 | `ask`      | `question` (≤ 500 chars), optional `timeout` (s, default 120, max 600) | Logs and speaks the question; your next chat message (typed or spoken) is the answer | Your reply (≤ 4000 chars), or `no answer` after the timeout |
 | `set_mood` | `name`, optional `weight`                     | Sets her resting face without speaking            | `ok`                                     |
 
@@ -214,21 +226,125 @@ enum lists only the new names; see
 
 ## Report summaries
 
-The bridge sends the full report to the chat log at once, then asks the LLM for
-a short spoken version. The summariser prompt asks for 1–3 sentences (about 60
-words), no code, paths, hashes, URLs or tables ("the details are in the chat"
-instead), no facts absent from the report, and a calm mood for errors. It also
-tells the model that the report is data, not instructions.
+The bridge sends the full report to the chat log at once. With `spoken_text`,
+it speaks that narration directly, without a summariser call or a thinking
+expression for summarisation. The written report is never replaced by narration.
+For example, call the MCP `report` tool with:
+
+```json
+{
+  "text": "## Validation\n\nAll tests pass. The fix is ready for review.",
+  "kind": "done",
+  "spoken_text": "[happy] All tests pass. [relieved] The fix is ready for review."
+}
+```
+
+On the agent socket, include `"tool": "report"` and optionally `"source"` too.
+Older clients can continue omitting narration:
+
+```json
+{"text": "All tests pass. The fix is ready for review.", "kind": "done"}
+```
+
+Missing narration (omitted or `null`) follows this policy:
+
+| Bridge configuration | Behaviour without narration |
+| --- | --- |
+| `--mode agent` | Fixed acknowledgement for `progress`, `done` or `error`; no LLM calls |
+| `--mode llm --agent` | Existing LLM summary behaviour; fixed acknowledgement on failure/empty output |
+| `--mode llm --agent --report-fallback fixed` | Fixed acknowledgement; companion chat still uses its LLM |
+| `--mode demo --agent` | Fixed acknowledgement, because there is no summary LLM |
+
+`--report-fallback summarise` explicitly selects the legacy policy outside
+agent-only mode. Supplied narration always takes precedence over either policy.
+Empty, non-text or oversized narration returns an error before queueing; it
+does not fall through to an LLM. Text is cleaned before its length is checked,
+as with `say`. Invalid/unknown inline mood tags are dropped, valid intensities
+are clamped, and obvious secrets/code/paths are redacted by the existing speech
+pipeline. Supplying narration does not bypass those safeguards.
+
+Both direct and summarised narration are bounded to 600 characters including
+tags and at most three speech segments. A sentence or a mid-sentence mood
+change can end a segment, so keep narration to 1–3 short sentences and avoid
+unnecessary mood changes. Prompt/tool guidance shares the runtime limit
+definitions in [agent.py](../controller/agent.py). Old clients and hooks keep
+working with the mode's documented fallback; no host-specific adapters are
+required. Restart the MCP host/session to pick up the new tool schema.
+
+When selected, the summariser asks for no facts absent from the report and
+treats the report as data, not instructions.
 
 - The summary never touches chat history and uses no tools.
-- She shows `thinking` while the summary is written. The bridge reads at most
-  600 characters of it and speaks at most 3 sentences.
+- She shows `thinking` while the LLM summary is written. The bridge reads at
+  most 600 characters and speaks at most three segments.
 - With no LLM (`--mode demo`), or when the LLM fails, she speaks a fixed line
   for the kind, for example "All done. The details are in the chat."
 - Without `--speech`, the report appears in the chat log only.
 - In the chat log the report is collapsed under a plain-text summary line;
   opening it shows the full text as Markdown
   ([chat-markdown.md](chat-markdown.md)).
+
+### Reproducing latency measurements
+
+[tools/report_latency.py](../tools/report_latency.py) runs paired legacy-summary
+and direct-narration trials in an isolated speech lane, leaving the live
+avatar socket alone. It warms the worker once, alternates trial order, checks
+that direct narration makes zero LLM calls, and saves JSON results and clips
+under the gitignored `assets/private/speech/56/latency/` directory.
+
+```bash
+# Full TTS + RVC + alignment, using your configured summary LLM and speech flags:
+.venv/bin/python tools/report_latency.py --llama-url http://127.0.0.1:8080 \
+  --tts kokoro --samples 3
+
+# Controlled comparison: real Kokoro audio, identical narration, simulated LLM delay:
+.venv/bin/python tools/report_latency.py --source-only --summary-delay 0.5 --samples 3
+```
+
+The timed interval is report acceptance to the first audio-ready event. Full
+mode includes TTS, RVC and alignment; `--source-only` stops at the Kokoro WAV
+and excludes RVC/alignment. Neither measures browser fetch, decoding or audible
+playback. With a real summary LLM, generated wording can differ, affecting TTS
+time; simulated-delay trials hold the narration constant and are explicitly
+labelled. Model startup/warm-up is excluded. This is different from the existing
+`firstClipSeconds` log, which starts after summarisation.
+
+Measured for #56 with three paired trials, warm Kokoro ONNX on CPU (two
+threads), identical narration, and a **simulated 0.5 s summary delay**:
+
+| Path | Median to first source WAV | LLM calls per trial |
+| --- | --- | --- |
+| Legacy summary route | 0.970 s | 1 simulated call |
+| Direct narration | 0.466 s | 0 |
+
+The measured saving was 0.504 s. This controlled result verifies removal of
+the injected summary delay; it is not a production LLM latency claim. Applio
+was absent in the measurement environment, so RVC, alignment and audible
+browser playback were not measured. Use the full-mode command above on the
+voice installation for that comparison.
+
+### #56 validation evidence
+
+- Red phase: the first 14 behaviour tests ran before implementation and failed
+  on missing narration forwarding/validation, missing agent startup mode, and
+  unexpected summary calls (12 assertion failures and 4 errors, including
+  subtests). Two test expectations were corrected during green: URL redaction
+  consumes adjacent punctuation, and the fixed acknowledgement has two clips.
+- Agent, MCP, bridge and external-LLM regression checks:
+  `.venv/bin/python -m unittest tests.test_agent tests.test_agent_narration tests.test_bridge tests.test_external_llm -q`.
+  All 97 tests pass. New coverage also verifies agent-mode `say`, `report`, `ask` answers and
+  `set_mood`, plus a summary arriving as one oversized upstream chunk.
+- The original summary prompt asked for ten sentences while the runtime and
+  existing test expected three. Shared report guidance now matches the cap.
+- The broad Python run initially ran 533 tests (four skips) with two existing
+  endearment-lift failures: `ApplioSettings.endearment_bend` is 9, while tests
+  expect 8. The voice implementation and those tests are unchanged by #56.
+- `node --test tests/renderer/*.test.mjs` passed 33 of 34 test files under
+  Node 18.19.1. The unchanged chat-history test uses the newer object form of
+  the mock-timers API; this runtime requires an array. A focused run confirms
+  that API error. Renderer code is unchanged by #56.
+- Focused bridge-client and bubble-replay renderer checks pass:
+  `node --test tests/renderer/bridge-client.test.mjs tests/renderer/bubble-replay.test.mjs`.
 
 Measured 29 October 2026 against local qwen3.8-27b (Vulkan, reasoning on, one
 slot): a 600-character report took **27–31 s** to summarise. Most of that is
@@ -244,14 +360,16 @@ llama-server with `-np 2` lets them run side by side (each slot gets half of
 
 ## Redaction before speech
 
-Everything she speaks for an agent (`say` text and `report` summaries) passes
+Everything she speaks for an agent (`say` text, report narration and summaries) passes
 through `redact()` before text-to-speech. It replaces fenced and inline code,
 private key blocks, links, `Bearer` tokens, `password=`/`token:`-style
 assignments, common API key formats (`sk-…`, `ghp_…`, `github_pat_…`, `xox?-…`,
 `AKIA…`, JWTs), other long mixed letter-and-digit strings, file paths and commit
 hashes with plain words such as "a secret" or "a path". The same redaction is
 applied to the report text sent to the summariser. Redaction is best effort.
-The chat log keeps the original text, which never leaves the machine.
+The chat log keeps the original text. With direct narration or a fixed fallback,
+the report is not sent to a summarisation LLM. With an external summary LLM,
+the redacted report leaves the machine; redaction is best effort.
 
 `set_mood` sets her **rest mood**: applied now if she is not speaking, and used
 instead of neutral when her speech ends. A new chat reply clears it.
@@ -335,6 +453,8 @@ agent speaks through the newest one.
 - An agent item waits while a chat reply is running, including its speech.
 - A chat message from you (or **New chat**) cancels agent speech: the item
   speaking now and every queued agent item. Their text stays in the chat log.
+- In agent-only mode, browser chat is rejected without interrupting agent
+  speech; **New chat** still cancels and clears it.
 - Without `--speech`, `say` shows the bubble and applies its mood only.
 
 ## Replay last speech

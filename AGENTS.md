@@ -44,6 +44,13 @@ Yidhari avatar alongside written replies:
   long work.
 - `report` — when a task finishes or fails, send the full final message; the
   avatar shows it and speaks a short summary.
+- When the connected `report` schema exposes `spoken_text`, supply the concise
+  narration there alongside the full written `text` to avoid an extra LLM
+  summary pass. Keep narration within 600 characters including mood tags and
+  1–3 short sentences (at most three speech segments). Older connected tools
+  without this argument retain their configured fallback; do not send an
+  unsupported argument. Agent-only startup is `--mode agent` and requires no
+  chat/summarisation LLM; missing narration speaks a fixed acknowledgement.
 - `ask` — when a decision is needed from the user; it speaks the question and
   returns their typed or spoken reply, or `no answer` after a timeout.
 

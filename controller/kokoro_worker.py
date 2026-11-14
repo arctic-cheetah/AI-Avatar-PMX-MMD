@@ -39,6 +39,12 @@ UMM_PHONEMES = 'ˈʌm'
 HMM_WORD = re.compile(r'hm{1,3}', re.IGNORECASE)
 MM_WORD = re.compile(r'm{2,3}', re.IGNORECASE)
 WORD_EDGES = '.,!?…;:"\'()[]—–-*“”‘’'
+# Whole words espeak (en-us) gets wrong → phonemes chosen by listening (#188, docs/testing-kokoro.md §2i).
+PRONUNCIATIONS = {
+    # kəmpˈæɹɪsən: "cat" vowel and a 50 ms r, heard as cut short (15 Nov 2026)
+    'comparison': 'kəmpˈɛɹːɪsən',
+    'comparisons': 'kəmpˈɛɹːɪsənz',
+}
 SPAN_PUNCTUATION = frozenset(',.!?…;:—"\'()')
 MAX_EMPHASIS = 3          # emphasised words per sentence
 MAX_EMPHASIS_PAUSE = 0.3  # seconds
@@ -149,12 +155,17 @@ def hum_phonemes(word: str) -> str | None:
     return 'm' * len(core) if MM_WORD.fullmatch(core) else None
 
 
-def needs_respelling(text: str) -> bool:
-    return any(AWW_WORD.fullmatch(word.strip(WORD_EDGES)) or hum_phonemes(word) for word in text.split())
+def _table_phonemes(word: str, lang: str) -> str | None:
+    return PRONUNCIATIONS.get(word.strip(WORD_EDGES).lower()) if lang == 'en-us' else None
 
 
-def respell_phonemes(text: str, phonemes: str) -> str:
-    """Fix espeak's aww and hums; other words are untouched.
+def needs_respelling(text: str, lang: str = 'en-us') -> bool:
+    return any(AWW_WORD.fullmatch(word.strip(WORD_EDGES)) or hum_phonemes(word) or _table_phonemes(word, lang)
+               for word in text.split())
+
+
+def respell_phonemes(text: str, phonemes: str, lang: str = 'en-us') -> str:
+    """Fix espeak's aww, hums and PRONUNCIATIONS words (American only); other words are untouched.
 
     "aw-wuh" for aww/awww becomes one long ɔːɔː, and a hum (hm, hmm, mm, mmm) is
     said like espeak's own "Hmm" (hm → həm) or as m sounds (mm, mmm), keeping the punctuation around it.
@@ -170,7 +181,7 @@ def respell_phonemes(text: str, phonemes: str) -> str:
         core = word.strip(WORD_EDGES)
         if AWW_WORD.fullmatch(core):
             tokens[index] = AWW_PHONEMES.sub('ɔːɔː', tokens[index])
-        elif (hum := hum_phonemes(word)) is not None:
+        elif (hum := hum_phonemes(word) or _table_phonemes(word, lang)) is not None:
             token = tokens[index]
             lead = len(token) - len(token.lstrip(WORD_EDGES))
             tail = len(token.rstrip(WORD_EDGES))
@@ -623,8 +634,8 @@ class Synthesizer:
         paced, pace_skipped = 0, 'misaligned'
         timed = bool(emphasis or spans or holds or stretch or paces)
         phonemes = (self.model.tokenizer.phonemize(text, lang)
-                    if timed or needs_respelling(text) else None)
-        spoken = respell_phonemes(text, phonemes) if phonemes else None
+                    if timed or needs_respelling(text, lang) else None)
+        spoken = respell_phonemes(text, phonemes, lang) if phonemes else None
         if timed and phonemes and aligned(text, phonemes):
             def create_timed():
                 return self.model.create_timed(

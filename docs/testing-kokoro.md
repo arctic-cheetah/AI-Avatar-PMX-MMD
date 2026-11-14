@@ -392,7 +392,7 @@ reported as `delivered` in clip metrics, counting each row word that was bent
 or drawn out.
 **Hums (hesitation):** espeak spells some hums letter by letter: "Mmm" as
 `ˌɛmˌɛmˈɛm` ("em-em-em") and "Hm" as `ˌeɪtʃˈɛm` ("aitch-em"). The Kokoro worker
-says "Hm" like espeak's own "Hmm" (`həm`), and mm and mmm as closed-lip m sounds
+says "Hm" like "Umm" (`ˈʌm`), and mm and mmm as closed-lip m sounds
 (`mm`, `mmm`), with or without other voice options, like the "Aww" fix (§2e).
 "Hmm" itself is left as espeak says it, except before "?": a questioning hm or
 hmm is said like "Umm" (`ˈʌm?`). A word with no vowel draws out its hum
@@ -412,7 +412,8 @@ closed-lip `mmm` still sounded off; Kokoro's "Umm" (`ˈʌm`) was tried next; the
 espeak's own `həm`, as heard in live speech, turned out to be the hmm sound
 already, so it is kept. "Hmm?" with the usual rise did not sound like a
 question, hence its higher rise. Then `həm?` with that rise had a "th" sound,
-so a questioning hmm is said like "Umm", and 10 st was kept over 12 st.
+so a questioning hmm is said like "Umm", and 10 st was kept over 12 st. A plain
+"Hm" is said like "Umm" as well.
 Measured (Kokoro frames of 25 ms): "Hmm, let me think." as `h m m` was 3/4/3,
 drawn out to 250 ms of hum; as `mmm` 3/4/5, drawn out to 5/5/5; as `ˈʌm` 3
 frames of ʌ and 5 of m. Before "…" or "?" Kokoro already holds the last m for

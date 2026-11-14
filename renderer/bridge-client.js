@@ -97,6 +97,9 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
   const chatMic = document.querySelector('#chat-mic');
   const chatLog = document.querySelector('#chat-log');
   const chatNew = document.querySelector('#chat-new');
+  const chatSave = document.querySelector('#chat-save');
+  const chatImport = document.querySelector('#chat-import');
+  const chatImportFile = document.querySelector('#chat-import-file');
   let socket;
   let busy = false;
   let reply = null;
@@ -261,6 +264,24 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     const line = renderEntry(entry);
     const saved = history.add(entry) ? history.last() : null;
     if (turn) bindTurn(turn, line, saved?.id ?? null);
+  }
+
+  /** Show an imported log (#192): display only, exactly like a refresh restore. */
+  function showImported({ damaged }) {
+    turns.clear();
+    greetingLine = null;
+    chatLog.replaceChildren();
+    history.entries.forEach((entry) => {
+      const { id, ...shown } = entry;
+      const line = renderEntry(shown, { restored: true });
+      if (shown.turn) {
+        bindTurn(shown.turn, line, id ?? null, true);
+        addReplayButton(shown.turn);
+      }
+    });
+    if (damaged) addNote(DAMAGED_NOTE);
+    addNote(RESTORED_NOTE);
+    status.textContent = 'Chat imported · display only';
   }
 
   /** A status line about restoring; shown only, never saved. */
@@ -482,6 +503,31 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
   });
   chatNew.addEventListener('click', () => {
     if (socket?.readyState === WebSocket.OPEN) socket.send(resetFrame(chatTurns()));
+  });
+  chatSave?.addEventListener?.('click', () => {
+    try {
+      const blob = new Blob([history.exportFile()], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `yidhari-chat-${new Date().toISOString().slice(0, 10)}.json`;
+      anchor.click?.();
+      URL.revokeObjectURL?.(url);
+      status.textContent = 'Chat saved as JSON';
+    } catch { status.textContent = 'Could not save the chat as JSON'; }
+  });
+  chatImport?.addEventListener?.('click', () => chatImportFile?.click?.());
+  chatImportFile?.addEventListener?.('change', async () => {
+    const file = chatImportFile.files?.[0];
+    chatImportFile.value = '';
+    if (!file) return;
+    if (reply) { status.textContent = 'Finish the current reply before importing a chat.'; return; }
+    if (typeof win?.confirm === 'function' && !win.confirm('Replace the current chat with the imported one?')) return;
+    try {
+      showImported(history.importFile(await file.text()));
+    } catch (error) {
+      status.textContent = error instanceof Error ? error.message : 'Could not import that chat file.';
+    }
   });
   chatBar.addEventListener('submit', (event) => {
     event.preventDefault();

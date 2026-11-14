@@ -60,6 +60,9 @@
         <div id="chat-box-bar">
           <button id="chat-drag" type="button" aria-label="Drag chat box" hidden>Chat</button>
           <button id="chat-new" type="button" disabled title="Clear the chat and Yidhari's memory of it">New chat</button>
+          <button id="chat-save" type="button" title="Download the current chat as a JSON file (plaintext — store it like a transcript)">Save chat</button>
+          <button id="chat-import" type="button" title="Restore a chat saved as JSON (display only; Yidhari won't remember it)">Import chat</button>
+          <input id="chat-import-file" type="file" accept=".json,application/json" hidden>
           <button id="chat-float" type="button" aria-pressed="false" title="Float the chat over the portrait">Float</button>
         </div>
         <div id="chat-log" role="log" aria-label="Conversation" aria-live="polite"></div>

@@ -65,6 +65,7 @@ SURPRISED_MOODS = frozenset({"surprised", "shocked", "gasp", "excited", "wtf-dud
 # Fond words said warmly and drawn out ("sooo cute"); endearments such as "sweetie" keep their own lift.
 AFFECTION_WORDS = frozenset({"cute", "adorable", "sweet", "lovely", "beautiful", "gorgeous", "wonderful"})
 AFFECTION_INTENSIFIERS = frozenset({"so", "too"})  # only right before an affection word
+HESITATION_WORDS = frozenset({"hmm", "hm", "umm", "um", "uh", "er", "erm"})  # in any mood; "mmm" is pleasure
 AFFECTIONATE_MOODS = frozenset({
     "tender", "happy", "joyful", "soft-smile", "lovestruck", "shy", "excited", "grin", "serene",
 })
@@ -144,6 +145,7 @@ class ApplioSettings:
     word_lifts: bool = True  # Kokoro: lift endearments in address and the word before ! (#84)
     word_lift_bend: float = 4.0  # semitones at the lift's peak
     surprise_bend: float = 5.0  # a surprised word's rise ("whaaat"); not yet listened to (#83)
+    hesitation_bend: float = -1.0  # a thinking "hmmm"/"umm" dips slightly; not yet listened to (#83)
     affection_bend: float = 3.0  # a fond word's warm rise-fall ("sooo cute"); not yet listened to (#83)
     replay_cap_mb: int = 500  # spoken turns kept on disk for bubble replay; oldest go first (#152)
     endearment_bend: float = 8.0  # an endearment's own lift: 8 of 4/6/8 st sounded best (9 Nov 2026, #83)
@@ -208,6 +210,8 @@ class ApplioSettings:
             raise ValueError("word_lift_bend must be between -12 and 12 semitones.")
         if not math.isfinite(self.surprise_bend) or abs(self.surprise_bend) > 12.0:
             raise ValueError("surprise_bend must be between -12 and 12 semitones.")
+        if not math.isfinite(self.hesitation_bend) or abs(self.hesitation_bend) > 12.0:
+            raise ValueError("hesitation_bend must be between -12 and 12 semitones.")
         if not math.isfinite(self.affection_bend) or abs(self.affection_bend) > 12.0:
             raise ValueError("affection_bend must be between -12 and 12 semitones.")
         if not math.isfinite(self.endearment_bend) or abs(self.endearment_bend) > 12.0:
@@ -419,6 +423,7 @@ DELIVERIES: tuple[Delivery, ...] = (
     Delivery("drawl", ATTITUDE_WORDS, moods=SKEPTICAL_MOODS),  # sarcastic "suuure"
     Delivery("surprise", SURPRISE_WORDS, moods=SURPRISED_MOODS, bend="surprise_bend",
              peak=QUESTION_PEAK, standalone=True),  # "Whaaat?", "Reeeally?" rising
+    Delivery("hesitation", HESITATION_WORDS, bend="hesitation_bend"),  # "Hmmm…", "Ummm"
 )
 
 

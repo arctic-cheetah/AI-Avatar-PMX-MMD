@@ -29,11 +29,28 @@ export const IDLE_MOTION = Object.freeze({
   stretch: Object.freeze({ rise: 1, back: 5 * DEG, headPitch: 7 * DEG, shoulders: 6 * DEG }),
   /** The yawn during the stretch: the user's mouth pick, opened slowly (#71). */
   yawn: Object.freeze({ open: 1.4, hold: 0.6, close: 1.0, morphs: Object.freeze({ "あ": 1, "お": 0.4 }) }),
+  /**
+   * A light sneeze (#149): keyframes in seconds and the value at each, eased
+   * between them. Breathe in with the head back (0-0.9 s), snap forward with
+   * the eyes shut, hold, then rest. headPitch: positive tips the head back.
+   */
+  sneeze: Object.freeze({
+    keys: Object.freeze([0, 0.9, 1.05, 1.45, 2.3]),
+    headPitch: Object.freeze([0, 4 * DEG, -6 * DEG, -5 * DEG, 0]),
+    chest: Object.freeze([0, 1.5 * DEG, 0, 0, 0]),
+    shoulders: Object.freeze([0, 1 * DEG, 3 * DEG, 2 * DEG, 0]),
+    yawn: Object.freeze([0, 0.3, 0, 0, 0]),
+    squint: Object.freeze([0, 0.5, 1, 0.9, 0]),
+    /** Morphs the squint channel drives: eyes squeezed shut. */
+    eyes: Object.freeze({ "まばたき": 1 }),
+  }),
   /** Spring rate for every angle, so interrupted motions ease back. */
   rate: 8,
+  /** The eyes close faster than bones move, so a sneeze's squint keeps up. */
+  squintRate: 30,
 });
 
-const ANGLES = ["tilt", "chest", "shoulders", "shoulderLeft", "shoulderRight", "back", "headPitch", "yawn"];
+const ANGLES = ["tilt", "chest", "shoulders", "shoulderLeft", "shoulderRight", "back", "headPitch", "yawn", "squint"];
 const LIMITS = Object.freeze({
   tilt: [-IDLE_MOTION.tilt.angle, IDLE_MOTION.tilt.angle],
   chest: [0, IDLE_MOTION.sigh.chest],
@@ -43,6 +60,7 @@ const LIMITS = Object.freeze({
   back: [0, IDLE_MOTION.stretch.back],
   headPitch: [-IDLE_MOTION.nod.angle, IDLE_MOTION.stretch.headPitch],
   yawn: [0, 1],
+  squint: [0, 1],
 });
 
 const smoothstep = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
@@ -110,6 +128,15 @@ const shrug = (left, right) => ({
 
 const NOD = 3.2;
 
+/** The value of keyframed `values` at `t`, eased between keys; 0 outside. */
+function keyed(t, keys, values) {
+  if (!(t > 0) || t >= keys.at(-1)) return 0;
+  let i = 1;
+  while (keys[i] <= t) i += 1;
+  const f = smoothstep((t - keys[i - 1]) / (keys[i] - keys[i - 1]));
+  return values[i - 1] + (values[i] - values[i - 1]) * f;
+}
+
 /**
  * Every action she may do (#149), while awake and idle and while asleep,
  * picked by weight among the ticked ones; the weights sum to 1. Shrugs stay
@@ -135,7 +162,7 @@ export const ACTIONS = Object.freeze({
   "shrug-right": Object.freeze({ weight: 0.05, ...shrug(false, true) }),
   "shrug-both": Object.freeze({ weight: 0.05, ...shrug(true, true) }),
   sigh: Object.freeze({
-    weight: 0.15,
+    weight: 0.1,
     create: () => ({ duration: IDLE_MOTION.sigh.inhale + IDLE_MOTION.sigh.exhale }),
     apply: (motion, target) => {
       const breath = sighCurve(motion.t);
@@ -160,6 +187,17 @@ export const ACTIONS = Object.freeze({
       return null;
     },
   }),
+  sneeze: Object.freeze({
+    weight: 0.05,
+    create: () => ({ duration: IDLE_MOTION.sneeze.keys.at(-1) }),
+    apply: (motion, target) => {
+      const { sneeze } = IDLE_MOTION;
+      for (const key of ["headPitch", "chest", "shoulders", "yawn", "squint"]) {
+        target[key] = keyed(motion.t, sneeze.keys, sneeze[key]);
+      }
+      return null;
+    },
+  }),
 });
 
 /** Panel labels for the action checkboxes (#149). */
@@ -173,6 +211,7 @@ export const ACTION_LABELS = Object.freeze({
   sigh: "Sigh",
   "stretch-yawn": "Stretch & yawn",
   nod: "Dozing nod",
+  sneeze: "Light sneeze",
 });
 
 export const ACTIONS_KEY = "yidhari.actions";
@@ -269,7 +308,7 @@ export class IdleMotion {
     const pose = { glance };
     for (const key of ANGLES) {
       const spring = this.springs[key];
-      spring.step(target[key], dt, IDLE_MOTION.rate);
+      spring.step(target[key], dt, key === "squint" ? IDLE_MOTION.squintRate : IDLE_MOTION.rate);
       spring.clamp(...LIMITS[key]);
       pose[key] = spring.settle(target[key], 1e-6);
     }

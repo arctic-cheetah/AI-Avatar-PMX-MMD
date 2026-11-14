@@ -100,6 +100,12 @@ browser is closed and reopened. This is **display only**:
 - **New chat** clears the saved log as well.
 - The saved log keeps the latest 200 entries and at most 1,000,000 characters.
   The oldest entries go first.
+- On screen, the log keeps at most 200 bubbles (`MAX_LOG_LINES` in
+  `renderer/bridge-client.js`, #24). Within a long session the oldest bubbles
+  are removed from the page first, so the DOM — and scrolling — stays bounded
+  no matter how long she runs. The reply still streaming and the greeting
+  waiting for its spoken turn are never removed mid-flight, and a removed
+  bubble's replay record goes with it.
 - Every renderer tab on this browser profile shares one saved log. Before each
   save, a tab reads the latest log, so two open tabs add to it instead of
   overwriting each other. Each tab shows what it had at load plus its own new

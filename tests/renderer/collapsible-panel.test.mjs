@@ -49,15 +49,17 @@ test("a saved mix of secondary section states is restored, but Chat always stays
   const local = storage({
     [COLLAPSIBLE_PANEL_KEY]: JSON.stringify({ chat: false, presets: true, candidates: true }),
   });
-  assert.deepEqual(readPanelSections({ local }).map(({ open }) => open), [
-    true, false, true, false, false, true,
-  ]);
+  const open = Object.fromEntries(readPanelSections({ local }).map(({ id, open: isOpen }) => [id, isOpen]));
+  assert.deepEqual(open, {
+    chat: true, speech: false, presets: true, channels: false, actions: false, "action-play": false,
+    audition: false, candidates: true,
+  });
 });
 
 test("missing, malformed and wrong-shaped saved values keep Chat open and secondary sections closed", () => {
   for (const value of ["{broken", "null", "[]", JSON.stringify({ chat: false, presets: "yes", unknown: true })]) {
     const states = readPanelSections({ local: storage({ [COLLAPSIBLE_PANEL_KEY]: value }) });
-    assert.deepEqual(states.map(({ open }) => open), [true, false, false, false, false, false], value);
+    assert.deepEqual(states.map(({ open }) => open), states.map(({ id }) => id === "chat"), value);
     assert.ok(states.every(({ title }) => typeof title === "string" && title.length > 0));
   }
 });
@@ -107,7 +109,7 @@ test("stable heading IDs survive a visible-title rename", () => {
   const document = createDocument();
   const panel = fakePanel(document, { renamed: true });
   installCollapsiblePanel(panel, { local: storage() });
-  assert.equal(panel.querySelectorAll("details").length, 5);
+  assert.equal(panel.querySelectorAll("details").length, readPanelSections({ local: storage() }).length - 1);
   assert.equal(detailsOf(panel, "presets").children[0].textContent, "Expressions");
 });
 

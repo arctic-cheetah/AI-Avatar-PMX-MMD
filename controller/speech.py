@@ -147,7 +147,7 @@ class ApplioSettings:
     surprise_bend: float = 5.0  # a surprised word's rise ("whaaat"); not yet listened to (#83)
     hesitation_bend: float = -1.0  # a thinking "hmmm"/"umm" dips slightly; not yet listened to (#83)
     # "Hmm?" rises to its end: the usual 9 st rise, falling after 70 %, was no question (14 Nov 2026)
-    hesitation_question_bend: float = 12.0
+    hesitation_question_bend: float = 10.0  # 10 of 10/12 st (14 Nov 2026)
     affection_bend: float = 5.0  # a fond word's warm rise-fall: 5 of 3/5 st sounded best (14 Nov 2026, #83)
     affection_intensifier_bend: float = 7.0  # the "sooo" in "sooo cute", a little higher (14 Nov 2026)
     replay_cap_mb: int = 500  # spoken turns kept on disk for bubble replay; oldest go first (#152)

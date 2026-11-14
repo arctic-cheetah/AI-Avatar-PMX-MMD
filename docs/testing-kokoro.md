@@ -379,7 +379,7 @@ drawls: a fond "So cute!" is warm, while "So, what now?" is still a drawl.
 | affection | cute, adorable, sweet, lovely, beautiful, gorgeous, wonderful | the same | warm rise-fall (`--affection-bend`, default 5 st, ±12), drawn out |
 | drawl | but, well, so, now, okay (first word) | any | `--drawl-bend` dip (default −2 st), drawn out |
 | drawl | sure, really, right, totally, obviously | skeptical moods | `--drawl-bend` dip (default −2 st), drawn out |
-| hesitation | hmm, hm, umm, um, uh, er, erm | any | slight dip (`--hesitation-bend`, default −1 st, ±12), drawn out; ending a question, a rise to the end (`--hesitation-question-bend`, default 12 st) |
+| hesitation | hmm, hm, umm, um, uh, er, erm | any | slight dip (`--hesitation-bend`, default −1 st, ±12), drawn out; ending a question, said like "Umm" with a rise to the end (`--hesitation-question-bend`, default 10 st) |
 | surprise | what, really, seriously, wow, whoa, said on their own | surprised, shocked, gasp, excited, wtf-dude | rise peaking at 70 % (`--surprise-bend`, default 5 st, ±12), drawn out |
 
 A surprised word that ends a question keeps the question's own rise
@@ -394,7 +394,8 @@ or drawn out.
 `ˌɛmˌɛmˈɛm` ("em-em-em") and "Hm" as `ˌeɪtʃˈɛm` ("aitch-em"). The Kokoro worker
 says "Hm" like espeak's own "Hmm" (`həm`), and mm and mmm as closed-lip m sounds
 (`mm`, `mmm`), with or without other voice options, like the "Aww" fix (§2e).
-"Hmm" itself is left as espeak says it. A word with no vowel draws out its hum
+"Hmm" itself is left as espeak says it, except before "?": a questioning hm or
+hmm is said like "Umm" (`ˈʌm?`). A word with no vowel draws out its hum
 (m or n), so "mmm" is drawn out over its m sounds. Longer spellings ("Hmmmmm")
 are shortened to "hmm" first (elongated spellings, §2h). "Mmm" is not a
 hesitation row word, because "Mmm, yummy." is pleasure. Hesitation words are in
@@ -402,7 +403,7 @@ any mood and can sit mid-sentence ("I, er, forgot.").
 
 A questioning "Hmm?" (a hesitation word that ends a question) gets the row's own
 question rise instead of the usual one: `--hesitation-question-bend` (default
-12 st, ±12) that keeps rising to the end of the word (peak at 100 %, not the
+10 st, ±12) that keeps rising to the end of the word (peak at 100 %, not the
 usual 9 st falling after 70 %). The row field `question_bend` names that
 setting; other rows ("Really?") keep the usual question rise.
 
@@ -410,7 +411,8 @@ Listening (14 Nov 2026), in order: spelled `hmm`, the h sounded like "camel"; a
 closed-lip `mmm` still sounded off; Kokoro's "Umm" (`ˈʌm`) was tried next; then
 espeak's own `həm`, as heard in live speech, turned out to be the hmm sound
 already, so it is kept. "Hmm?" with the usual rise did not sound like a
-question, hence its higher rise.
+question, hence its higher rise. Then `həm?` with that rise had a "th" sound,
+so a questioning hmm is said like "Umm", and 10 st was kept over 12 st.
 Measured (Kokoro frames of 25 ms): "Hmm, let me think." as `h m m` was 3/4/3,
 drawn out to 250 ms of hum; as `mmm` 3/4/5, drawn out to 5/5/5; as `ˈʌm` 3
 frames of ʌ and 5 of m. Before "…" or "?" Kokoro already holds the last m for
@@ -419,7 +421,7 @@ Measured F0 of "Hmm?" after RVC (thinking mood; first, middle and last fifth of
 the voiced part): the usual rise went 228 → 295 → 283 Hz, falling back at the
 end; with the row's rise, 10 st gives 267 → 266 → 335 Hz and 12 st gives
 267 → 274 → 372 Hz (+5.8 st), still rising at the end.
-Listening: ⏳ the `həm` stretch and the higher "Hmm?" are not yet listened to (14 Nov 2026).
+Listening: ⏳ the "Umm"-like "Hmm?" is not yet listened to (14 Nov 2026).
 
 Affection words keep away from the endearments ("sweetie", "precious",
 "cutie" keep their own `--endearment-bend` lift in address), and "Aww" keeps its

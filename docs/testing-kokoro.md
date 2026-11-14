@@ -325,13 +325,14 @@ emphasis pause before its first word and one gentle pitch dip of
 the F0 curve like the contours in §2e. Unbalanced quotes are ignored.
 
 **Quotation pace (#83):** the quoted words are also said at their own pace,
-`--quote-pace` times the sentence's speed (default 0.9, a little slower; 0.5–1.5;
+`--quote-pace` times the sentence's speed (default 0.8, a little slower; 0.5–1.5;
 1 turns it off). Kokoro does this itself with per-token speed (§2h, `paces`), so
 the pace multiplies the sentence's pace (mood, punctuation and the global pace,
 #92) and the quote is always a little slower than the words around it. It needs
 the per-token model; without it the quote is said at the sentence's pace and the
 clip reports `paceSkipped: no-model`. Clip metrics report `paced`, the
-quotations said at their own pace. Listening: ⏳ not yet listened to (14 Nov 2026).
+quotations said at their own pace. Listening (14 Nov 2026): 0.8 was perfect,
+chosen over 0.9 and 1.0.
 
 | Line (Kokoro source, soft-smile) | pace 1.0 | 0.9 | 0.8 |
 | --- | ---: | ---: | ---: |

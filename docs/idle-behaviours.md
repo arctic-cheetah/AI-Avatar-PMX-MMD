@@ -254,6 +254,48 @@ eases in, eases out and settles back to rest.
   automatically. They do not limit the buttons, and the buttons never change
   them.
 
+### Arm drift (#193)
+
+Once `restArms()` lowers her arms, nothing else moved them while idle, so
+they hung still at her sides. Arm drift is a slow, always-on idle channel,
+not an action: it never takes a pick from `ACTIONS`, and the actions play on
+top of it.
+
+| Channel (screen side) | Bone | Motion | Size |
+| --- | --- | --- | --- |
+| `armSwayLeft/Right` | `右腕` / `左腕` | Swings forward and back, in the shoulder's frame | ±2.5° |
+| `armOutLeft/Right` | `右腕` / `左腕` | Lifts away from the body, never toward it | 0–2° |
+| `elbowLeft/Right` | `右ひじ` / `左ひじ` | Bends a little, never past straight | 0–4° |
+| `wristLeft/Right` | `右手首` / `左手首` | Turns softly about the forearm | ±3.5° |
+
+- **Slow and never on a loop.** Each channel adds two sine waves with
+  periods of 17–47 s that do not divide evenly. The right of the screen runs
+  13 % slower and on its own phases, so the two arms are never mirrored or
+  in step. One frame moves each angle by less than 0.02°.
+- **Eased with the idle state.** `IdleMotion.update()` returns the drift's
+  weight as `armDrift` and the eight angles, already scaled by it. A spring
+  (rate 2, about 2 s) takes the weight to 1 while idle or stretching, 0.6
+  while sleepy or waking, and 0 while active. Blocking (speech, thinking, an
+  open ask, a streaming reply or a morph preview) makes her active, so the
+  arms settle back. The spring snaps to exactly 0 once settled, so many
+  cycles leave nothing behind.
+- **The thinking pose owns the arms.** `applyArmDrift()` runs after
+  `applyThinkingPose()`, which rewrites these bones from the lowered rest
+  every frame. The drift multiplies on top, scaled by
+  `1 − thinkingPose.weight`, so it fades as the hand goes to the chin and
+  comes back as it drops. If the thinking rig failed to build, the drift
+  keeps its own copy of the rest pose. Later hand poses (#177, #150) must
+  follow the same rule.
+- **Shoulders stay with their owners.** The shrugs and the sigh (#149) keep
+  `左肩`/`右肩`. The drift only uses `腕`, `ひじ` and `手首`.
+- **Physics runs after it**, so sleeves, hair and tails react to the arms.
+- **Off switch:** the **Arm drift** tick at the end of the **Actions** list
+  turns it off. It eases out rather than stopping. It is saved as
+  `yidhari.arm-drift` (`0` = off) and is on by default. It does not affect
+  the action picks.
+- For previews and grids, `__yidhariIdlePose` can hold the eight arm angles
+  with `armDrift: 1`.
+
 ## Settings
 
 In **Independent channels**:
@@ -288,7 +330,8 @@ message wakes her.
   controls. It emits actions (`mood`, `rest`) rather than touching the
   expression controller itself.
 - `renderer/idle-motion.js`: the pure `IdleMotion` that turns the idle state
-  into a glance target and small bone angles each frame.
+  into a glance target and small bone angles each frame, including the arm
+  drift (`armDriftAngles`, `bindArmDriftSetting`).
 - `renderer/gaze-tracking.js`: `setIdle(target)`, the idle glance source.
 - `renderer/bridge-client.js`: `onActivity` for every bridge event and
   voice-input state change, and `onAskChange(open)` when an agent ask opens
@@ -296,6 +339,6 @@ message wakes her.
 - `renderer/main.js`: feeds activity and blocking into the controller each
   frame, applies its moods, and scales the idle blink.
 - Tests: `tests/renderer/idle-behaviour.test.mjs`,
-  `tests/renderer/idle-motion.test.mjs`, and the #71 cases in
+  `tests/renderer/idle-motion.test.mjs`, `tests/renderer/arm-drift.test.mjs`, and the #71 cases in
   `tests/renderer/bridge-client.test.mjs` and
   `tests/renderer/gaze-tracking.test.mjs`.

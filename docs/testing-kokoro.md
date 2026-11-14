@@ -363,15 +363,19 @@ Each `Delivery` gives:
 | `words` | the words (lower case, without punctuation) | `DRAWL_OPENERS`, `ATTITUDE_WORDS` |
 | `moods` | moods it applies in (`None`: any) | any; `SKEPTICAL_MOODS` |
 | `opener_only` | only as the sentence's first word | yes; no |
+| `before` | only right before one of these words (`None`: anywhere) | `None` |
 | `standalone` | only when said on its own: followed by `?`, `!`, `,`, `…`, `;` or `:`, or an elongated spelling (a sentence-opening "What do you…" is a question word, not surprise) | no |
 | `bend` | the `ApplioSettings` field with its semitones | `drawl_bend` |
 | `peak` | where the bend peaks (`None`: the default rise-fall) | `None` |
 | `stretch` | Kokoro draws its stressed sound out (`--drawl-stretch`) | yes |
 
-The first row that matches a word wins.
+The first row that matches a word wins, so the affection rows come before the
+drawls: a fond "So cute!" is warm, while "So, what now?" is still a drawl.
 
 | Family | Words | Moods | Delivery |
 | --- | --- | --- | --- |
+| affection | so, too, right before an affection word ("so cute", "too sweet") | tender, happy, joyful, soft-smile, lovestruck, shy, excited, grin, serene | a higher warm rise-fall (`--affection-intensifier-bend`, default 7 st, ±12), drawn out |
+| affection | cute, adorable, sweet, lovely, beautiful, gorgeous, wonderful | the same | warm rise-fall (`--affection-bend`, default 5 st, ±12), drawn out |
 | drawl | but, well, so, now, okay (first word) | any | `--drawl-bend` dip (default −2 st), drawn out |
 | drawl | sure, really, right, totally, obviously | skeptical moods | `--drawl-bend` dip (default −2 st), drawn out |
 | surprise | what, really, seriously, wow, whoa, said on their own | surprised, shocked, gasp, excited, wtf-dude | rise peaking at 70 % (`--surprise-bend`, default 5 st, ±12), drawn out |
@@ -384,6 +388,12 @@ review). A word gets one bend: a surprise word is taken out of the lifts, even
 when it is marked `*Really*` or ends with `!`. Rows other than drawls are
 reported as `delivered` in clip metrics, counting each row word that was bent
 or drawn out.
+Affection words keep away from the endearments ("sweetie", "precious",
+"cutie" keep their own `--endearment-bend` lift in address), and "Aww" keeps its
+interjection contour (§2e). "Sooo cute" is spoken as "so cute" (§2h, elongated spellings) and both
+words are drawn out. A plain "so" ("I am so tired", "so you could rest") is left
+alone. Listening (14 Nov 2026): 5 st was chosen over 3 st, and the fond "sooo"
+sounded more genuine a little higher, so the intensifier sits 2 st above the word.
 Listening (9 Nov 2026): "whaaat" and "wooow" sounded great; "really" sounded
 like "reality" until only its stressed vowel was stretched (§2h).
 
@@ -586,8 +596,8 @@ drawn-out words, drawls come first. Edge reads the spellings itself, so they
 are left alone.
 Listening (9 Nov 2026): the elongated words sounded very good.
 
-Next, in small batches: a word-delivery list (surprise "whaaat?", affection
-"sooo", hesitation "hmmm") and a quotation pace (§2f).
+Done: the word-delivery list with surprise "whaaat?" and affection "sooo cute"
+(§2g). Next, in small batches: hesitation "hmmm" and a quotation pace (§2f).
 
 ## 3. Test on the avatar
 

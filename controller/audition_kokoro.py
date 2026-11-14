@@ -42,6 +42,8 @@ async def audition(args) -> None:
                              interjection_hold=args.interjection_hold,
                              word_lifts=args.word_lifts, word_lift_bend=args.word_lift_bend,
                              endearment_bend=args.endearment_bend, surprise_bend=args.surprise_bend,
+                             affection_bend=args.affection_bend,
+                             affection_intensifier_bend=args.affection_intensifier_bend,
                              question_rise_bend=args.question_rise_bend,
                              quote_voice=args.quote_voice, quote_bend=args.quote_bend,
                              dynamic_emphasis=args.dynamic_emphasis, drawl_bend=args.drawl_bend,
@@ -138,6 +140,10 @@ def main() -> None:
     parser.add_argument('--endearment-bend', type=float, default=8.0)
     parser.add_argument('--surprise-bend', type=float, default=5.0,
                         help='Semitones a surprised "what"/"really" rises (-12 to 12).')
+    parser.add_argument('--affection-bend', type=float, default=5.0,
+                        help='Semitones of a fond word\'s warm rise-fall ("sooo cute", -12 to 12).')
+    parser.add_argument('--affection-intensifier-bend', type=float, default=7.0,
+                        help='Semitones of the fond "so"/"too" before a fond word (-12 to 12).')
     parser.add_argument('--question-rise-bend', type=float, default=9.0)
     parser.add_argument('--quote-voice', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--quote-bend', type=float, default=-2.0)

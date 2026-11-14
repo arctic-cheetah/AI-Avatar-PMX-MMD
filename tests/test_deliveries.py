@@ -29,7 +29,8 @@ class DeliveryListTests(unittest.TestCase):
                 self.assertIsInstance(getattr(settings, row.bend), float)
 
     def test_delivered_words_match_words_moods_and_position(self):
-        self.assertEqual(delivered_words('But I like it.', 'neutral'), {0: DELIVERIES[0]})
+        opener = next(row for row in DELIVERIES if row.words == DRAWL_OPENERS)
+        self.assertEqual(delivered_words('But I like it.', 'neutral'), {0: opener})
         self.assertEqual(delivered_words('I like it, but no.', 'neutral'), {})
         found = delivered_words('Well, sure, totally.', 'skeptical')
         self.assertEqual(sorted(found), [0, 1, 2])

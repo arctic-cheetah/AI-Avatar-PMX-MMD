@@ -152,7 +152,7 @@ panel picks it up by itself.
 | `eyebrow-raise` | 2.2 % | 1.6 s | A curious "oh?": both brows up with slightly wider eyes (`browRaise`) and a small head tilt | brows 1, 2° tilt |
 | `deep-breath` | 4.5 % | 4.8 s | A slower, fuller sigh: 2 s in, a short hold, 2.4 s out, with the head back a touch, the mouth parting a little breathing in and opening with `お` breathing out, and the eyes relaxing on the way out | 2° chest, 4° shoulders, 1.5° head, `お` 0.15 in, 0.35 out |
 | `sniffle` | 2.2 % | 1.4 s | Two quick little sniffs: the head tips up 1.5° each time, the chest lifts and the eyes narrow a little | 1.5° head, 0.8° chest, eyes 0.25 |
-| `neck-roll` | 2.2 % | 6 s | One slow, even circle of the head (back, side, forward, side): it starts a quarter turn in, so all four extremes come at full size inside the 0.6 s ease. About ±3.3° each way on the head bone (the user asked for ±3–4°, 14 November 2026) | 5.5° pitch (head and neck), 4° tilt |
+| `neck-roll` | 2.2 % | 5 s | One slow, even circle of the head (back, side, forward, side): it starts a quarter turn in, so all four extremes come at full size inside the 0.6 s ease. About ±3.3° each way on the head bone (the user asked for ±3–4°, 14 November 2026) | 5.5° pitch (head and neck), 4° tilt |
 | `weight-shift` | 4.5 % | 4.5–5.5 s | The upper body leans to a random side (`lean` on `上半身`; positive leans toward the left of the screen, like `tilt`, checked on the model) and holds, the head tilting back half as much to stay level, then returns | 3° lean, 1.5° head |
 | `shy-look-away` | 2.2 % | 3.5 s | Eyes and head drop down and to a random side, the head dips, with a shy giggle (`shy`), then back | gaze 0.5 sideways, 0.45 down, 3° head |
 

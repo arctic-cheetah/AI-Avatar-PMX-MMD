@@ -107,8 +107,10 @@ browser is closed and reopened. This is **display only**:
 - A log saved in `sessionStorage` by an earlier version is moved over once, the
   first time the page loads after the upgrade.
 - If storage is blocked or full, the chat works as before and just isn't saved.
-  Damaged saved data is skipped with a notice in the log, and the next message
-  saves over it.
+  Invalid saved entries are skipped with a notice when restoring. Before saving,
+  valid entries from other tabs are still kept even if the shared log contains
+  invalid entries. If the whole log cannot be parsed or its format is unsupported,
+  the tab keeps its own copy and the next save replaces the unreadable log.
 
 ## Security note 🛡️
 

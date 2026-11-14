@@ -75,19 +75,20 @@ export class ChatHistory {
   }
 
   /**
-   * The saved log as stored now: entries, damaged, and whether it could be read
-   * at all (readable is false when storage is blocked).
+   * The saved log as stored now: entries, damaged, whether storage was readable,
+   * and whether its version and entries list could be parsed. Individual bad
+   * entries mark it damaged without invalidating the rest of the list.
    */
   read() {
     let raw = null;
-    try { raw = this.storage?.getItem(this.key) ?? null; } catch { return { entries: [], damaged: false, readable: false }; }
-    if (raw === null) return { entries: [], damaged: false, readable: true };
+    try { raw = this.storage?.getItem(this.key) ?? null; } catch { return { entries: [], damaged: false, readable: false, parsed: false }; }
+    if (raw === null) return { entries: [], damaged: false, readable: true, parsed: true };
     let saved;
-    try { saved = JSON.parse(raw); } catch { return { entries: [], damaged: true, readable: true }; }
+    try { saved = JSON.parse(raw); } catch { return { entries: [], damaged: true, readable: true, parsed: false }; }
     const list = saved?.version === 1 && Array.isArray(saved.entries) ? saved.entries : null;
-    if (!list) return { entries: [], damaged: true, readable: true };
+    if (!list) return { entries: [], damaged: true, readable: true, parsed: false };
     const entries = list.map(clean).filter(Boolean);
-    return { entries, damaged: entries.length !== list.length, readable: true };
+    return { entries, damaged: entries.length !== list.length, readable: true, parsed: true };
   }
 
   /** Move a log saved by an earlier version (sessionStorage) over, once. */
@@ -113,8 +114,9 @@ export class ChatHistory {
   /** Pick up what other tabs saved (or cleared) since this tab last wrote. */
   sync() {
     const latest = this.read();
-    // Damaged or blocked: keep this tab's copy, and the next save writes over it.
-    if (latest.readable && !latest.damaged) this.entries = latest.entries;
+    // Keep valid shared entries even if others were dropped. Fall back to this
+    // tab's copy only when storage is blocked or the log cannot be parsed.
+    if (latest.readable && latest.parsed) this.entries = latest.entries;
   }
 
   /** Append an entry and save; false if it was invalid or storage refused it. */

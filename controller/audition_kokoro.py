@@ -150,7 +150,7 @@ def main() -> None:
     parser.add_argument('--question-rise-bend', type=float, default=9.0)
     parser.add_argument('--quote-voice', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--quote-bend', type=float, default=-2.0)
-    parser.add_argument('--quote-pace', type=float, default=0.9,
+    parser.add_argument('--quote-pace', type=float, default=0.8,
                         help="A quotation's speed as a factor of the sentence's (0.5 to 1.5; 1 turns it off).")
     parser.add_argument('--dynamic-emphasis', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--drawl-bend', type=float, default=-2.0)

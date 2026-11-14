@@ -1286,7 +1286,7 @@ def build_parser():
     parser.add_argument(
         "--quote-pace",
         type=float,
-        default=0.9,
+        default=0.8,
         help="A quotation's speed as a factor of the sentence's (0.5 to 1.5; 1 turns it off).",
     )
     parser.add_argument(

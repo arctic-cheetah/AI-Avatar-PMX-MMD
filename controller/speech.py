@@ -156,7 +156,7 @@ class ApplioSettings:
     drawl_stretch: float = 0.125  # seconds per drawn-out sound, said by Kokoro itself (per-token speed, #83)
     quote_voice: bool = True  # Kokoro: pause before and a slight pitch dip across quotes (#84)
     quote_bend: float = -2.0  # semitones at the quote's dip
-    quote_pace: float = 0.9  # a quotation's speed × the sentence's, by per-token speed; not yet listened to (#83)
+    quote_pace: float = 0.8  # a quotation's speed × the sentence's, by per-token speed: 0.8 of 0.8/0.9/1 (14 Nov 2026)
     question_rise_bend: float = 9.0  # semitones a question's last word rises (peak at 70 %)
     interjection_hold: float = 0.0  # seconds an "aww" is held; 0 keeps Kokoro's ~0.36 s (#84)
     exclaim_gain: float = 3.0  # dB louder for a clip ending in !, with punctuation_cadence

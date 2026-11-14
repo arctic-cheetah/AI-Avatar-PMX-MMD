@@ -33,10 +33,9 @@ AWW_WORD = re.compile(r'a+w{2,}h*', re.IGNORECASE)
 AWW_FAMILY = re.compile(r'\b(a)(?:a*w{2,}h*|a+w+h*|w+h+)\b', re.IGNORECASE)
 AWW_PHONEMES = re.compile('ɔːʊ?wə')
 # espeak spells some hums out: Mmm → ˌɛmˌɛmˈɛm, Hm → ˌeɪtʃˈɛm. Its own Hmm (həm) is already the hmm
-# sound (listening, 14 Nov 2026, after hmm, mmm and ˈʌm respellings sounded off), so Hm is said like it.
-HMM_PHONEMES = 'həm'
-# A questioning həm? had a "th" sound (listening, 14 Nov 2026); said like "Umm" it works.
-ASKING_HMM_PHONEMES = 'ˈʌm'
+# sound (listening, 14 Nov 2026, after hmm, mmm and ˈʌm respellings sounded off), so it is kept. A
+# questioning həm? had a "th" sound; said like "Umm" it works, and so does a plain "Hm".
+UMM_PHONEMES = 'ˈʌm'
 HMM_WORD = re.compile(r'hm{1,3}', re.IGNORECASE)
 MM_WORD = re.compile(r'm{2,3}', re.IGNORECASE)
 WORD_EDGES = '.,!?…;:"\'()[]—–-*“”‘’'
@@ -138,14 +137,14 @@ def canonical_aww(text: str) -> str:
 def hum_phonemes(word: str) -> str | None:
     """Phonemes for a hum (without its punctuation), or None to keep espeak's.
 
-    A questioning hm/hmm ("Hmm?") is said like "Umm", a plain "Hm" like espeak's
-    own "Hmm" (həm, which is kept), and mm/mmm as closed-lip m sounds.
+    "Hm" and a questioning "Hmm?" are said like "Umm"; a plain "Hmm" keeps
+    espeak's həm, and mm/mmm are closed-lip m sounds.
     """
     core = word.strip(WORD_EDGES)
     if HMM_WORD.fullmatch(core):
-        if '?' in word[len(word.rstrip(WORD_EDGES)):]:
-            return ASKING_HMM_PHONEMES
-        return HMM_PHONEMES if len(core) == 2 else None
+        if len(core) == 2 or '?' in word[len(word.rstrip(WORD_EDGES)):]:
+            return UMM_PHONEMES
+        return None
     return 'm' * len(core) if MM_WORD.fullmatch(core) else None
 
 

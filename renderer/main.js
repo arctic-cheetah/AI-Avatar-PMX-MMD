@@ -495,11 +495,16 @@ function setupIdleMotion(object) {
  * @returns {void}
  */
 function applyYawn() {
-  if (!mesh || !(idlePose.yawn > 0)) return;
+  if (!mesh) return;
   const influences = mesh.morphTargetInfluences;
-  for (const [name, weight] of Object.entries(IDLE_MOTION.yawn.morphs)) {
-    const index = mesh.morphTargetDictionary[name];
-    if (index !== undefined) influences[index] = Math.min(1, influences[index] + idlePose.yawn * weight);
+  // The yawn's mouth (#71), and a sneeze's squeezed-shut eyes (#149).
+  for (const [channel, morphs] of [["yawn", IDLE_MOTION.yawn.morphs], ["squint", IDLE_MOTION.sneeze.eyes]]) {
+    const amount = idlePose[channel];
+    if (!(amount > 0)) continue;
+    for (const [name, weight] of Object.entries(morphs)) {
+      const index = mesh.morphTargetDictionary[name];
+      if (index !== undefined) influences[index] = Math.min(1, influences[index] + amount * weight);
+    }
   }
 }
 
@@ -1039,7 +1044,7 @@ function updateIdle(delta) {
   refreshActionPlay();
   // A held pose lets previews and comparison grids show one motion on demand.
   idlePose = globalThis.__yidhariIdlePose
-    ? { glance: null, tilt: 0, chest: 0, shoulders: 0, shoulderLeft: 0, shoulderRight: 0, back: 0, headPitch: 0, yawn: 0,
+    ? { glance: null, tilt: 0, chest: 0, shoulders: 0, shoulderLeft: 0, shoulderRight: 0, back: 0, headPitch: 0, yawn: 0, squint: 0,
       ...globalThis.__yidhariIdlePose }
     : idleMotion.update(delta.eased, idle.state, idle.stateTime, idle.timing.sleepActionEvery);
   gaze.setIdle(idlePose.glance);

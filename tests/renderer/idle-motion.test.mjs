@@ -61,7 +61,7 @@ function asleep(name, seconds = 5) {
   return { kind: motion.sleepAction, poses };
 }
 
-const isRest = (pose) => pose.glance === null && pose.yawn === 0 && ANGLES.every((k) => Math.abs(pose[k]) < 1e-9);
+const isRest = (pose) => pose.glance === null && pose.yawn === 0 && pose.squint === 0 && ANGLES.every((k) => Math.abs(pose[k]) < 1e-9);
 const peak = (poses, key) => Math.max(...poses.map((p) => Math.abs(p[key])));
 const signedPeak = (poses, key) => poses.reduce((best, p) => (Math.abs(p[key]) > Math.abs(best) ? p[key] : best), 0);
 
@@ -78,12 +78,20 @@ test("bump eases in, holds and eases out within its duration", () => {
 // ---- one registry (#149) ----
 
 test("one set of actions serves both idle and sleep, with the user's mix: shrugs stay rare", () => {
-  assert.deepEqual(NAMES, ["glance", "tilt-left", "tilt-right", "shrug-left", "shrug-right", "shrug-both", "sigh", "stretch-yawn", "nod"]);
-  // The user's mix (12 Nov 2026): glances 10 %, stretch-and-yawn 30 %, shrugs rare.
-  const mix = { glance: 0.1, "tilt-left": 0.1, "tilt-right": 0.1, "shrug-left": 0.05, "shrug-right": 0.05,
-    "shrug-both": 0.05, sigh: 0.15, "stretch-yawn": 0.3, nod: 0.1 };
+  assert.deepEqual(NAMES, ["glance", "tilt-left", "tilt-right", "shrug-left", "shrug-right", "shrug-both", "sigh", "stretch-yawn", "nod", "sneeze"]);
+  // The sigh is fixed at 15 % (the user, 14 Nov 2026): new actions never take from it.
+  assert.ok(Math.abs(ACTIONS.sigh.weight - 0.15) < 1e-12, "the sigh keeps 15 %");
+  const total = Object.values(ACTIONS).reduce((sum, action) => sum + action.weight, 0);
+  assert.ok(Math.abs(total - 1) < 1e-9, "chances add up to 1");
+  // Every other action keeps the user's relative mix and shares the other 85 %:
+  // glance 1, stretch-and-yawn 3, shrugs and the sneeze half a glance, tilts and the nod like a glance.
+  const relative = { glance: 1, "tilt-left": 1, "tilt-right": 1, "shrug-left": 0.5, "shrug-right": 0.5,
+    "shrug-both": 0.5, "stretch-yawn": 3, nod: 1, sneeze: 0.5 };
+  for (const [name, share] of Object.entries(relative)) {
+    const expected = (share / relative.glance) * ACTIONS.glance.weight;
+    assert.ok(Math.abs(ACTIONS[name].weight - expected) < 1e-9, `${name} keeps its share relative to a glance`);
+  }
   for (const [name, action] of Object.entries(ACTIONS)) {
-    assert.ok(Math.abs(action.weight - mix[name]) < 1e-9, `${name} has its ${mix[name] * 100} % chance`);
     assert.equal(typeof action.create, "function", name);
     assert.equal(typeof action.apply, "function", name);
   }
@@ -206,6 +214,8 @@ test("every action comes up while idle over an hour, one at a time, within its l
 
 test("motions are smooth from frame to frame", () => {
   const motion = new IdleMotion({ random: seeded(3) });
+  // The sneeze is meant to be quick; it has its own speed test below.
+  motion.setActions(NAMES.filter((name) => name !== "sneeze"));
   let previous = motion.update(0, "idle", 0);
   for (let i = 1; i < 300 * 60; i += 1) {
     const state = i < 200 * 60 ? "idle" : i < 200 * 60 + 192 ? "stretching" : "sleepy";
@@ -305,6 +315,7 @@ const SHOWS = {
   sigh: (poses) => peak(poses, "chest") > IDLE_MOTION.sigh.chest * 0.8,
   "stretch-yawn": (poses) => peak(poses, "yawn") > 0.9,
   nod: (poses) => Math.min(...poses.map((p) => p.headPitch)) < -IDLE_MOTION.nod.angle * 0.8,
+  sneeze: (poses) => peak(poses, "squint") > 0.9 && Math.min(...poses.map((p) => p.headPitch)) < -3 * DEG,
 };
 
 test("every action also plays while asleep", () => {
@@ -365,10 +376,12 @@ test("ticked actions keep their relative chances", () => {
     motion.update(IDLE_MOTION.gap[0] + 0.01, "idle", 0);
     return motion.current?.kind;
   };
-  // glance 0.1 : tilt-left 0.1 : sigh 0.15, rescaled over 0.35
-  assert.equal(pick(0.1 / 0.35 - 0.01), "glance");
-  assert.equal(pick(0.1 / 0.35 + 0.01), "tilt-left");
-  assert.equal(pick(0.2 / 0.35 + 0.01), "sigh");
+  // Derived from the weights, so a change to the mix doesn't break this test.
+  const w = (name) => ACTIONS[name].weight;
+  const total = w("glance") + w("tilt-left") + w("sigh");
+  assert.equal(pick(w("glance") / total - 0.01), "glance");
+  assert.equal(pick(w("glance") / total + 0.01), "tilt-left");
+  assert.equal(pick((w("glance") + w("tilt-left")) / total + 0.01), "sigh");
 });
 
 test("with nothing ticked she stays still, awake and asleep", () => {
@@ -457,8 +470,10 @@ test("manual actions stay within their limits and move smoothly, in every state 
         const pose = motion.update(1 / 60, state, i / 60);
         assert.ok(Math.abs(pose.tilt) <= IDLE_MOTION.tilt.angle + 1e-9, `${state} ${name} tilt`);
         assert.ok(pose.yawn >= 0 && pose.yawn <= 1, `${state} ${name} yawn`);
+        // The sneeze snap is meant to be quick: its own limit is 0.6° per frame.
+        const limit = (name === "sneeze" ? 0.6 : 0.25) * DEG;
         for (const key of ANGLES) {
-          assert.ok(Math.abs(pose[key] - previous[key]) < 0.25 * DEG, `${state} ${name} ${key} jumped at frame ${i}`);
+          assert.ok(Math.abs(pose[key] - previous[key]) < limit, `${state} ${name} ${key} jumped at frame ${i}`);
         }
         assert.ok(Math.abs(pose.yawn - previous.yawn) < 0.03, `${state} ${name} yawn jumped at frame ${i}`);
         previous = { ...pose };
@@ -562,4 +577,51 @@ test("the buttons wait for the model, idle on, no block, no held pose and a calm
   assert.match(manualPlayBlocked({ ...ok, held: true }), /held|preview/i);
   assert.match(manualPlayBlocked({ ...ok, state: "stretching" }), /stretch/i);
   assert.match(manualPlayBlocked({ ...ok, state: "waking" }), /waking/i);
+});
+
+// ---- #149: a light sneeze ----
+
+test("a light sneeze: breathe in with the head back, then a quick forward snap with eyes shut, then rest", () => {
+  const { sneeze } = IDLE_MOTION;
+  const { kind, poses } = awake("sneeze", sneeze.keys.at(-1) + 1.5);
+  assert.equal(kind, "sneeze");
+  const at = (seconds) => poses[Math.round(seconds * 60)];
+  const snap = sneeze.keys[1];
+  const before = at(snap - 0.05);
+  assert.ok(before.headPitch > 2 * DEG, `head tips back while breathing in (${(before.headPitch / DEG).toFixed(1)}°)`);
+  assert.ok(before.chest > 0.5 * DEG, "the chest rises with the breath in");
+  assert.ok(before.yawn > 0.15 && before.yawn < 0.5, "the mouth opens a little: ha…");
+  const after = poses.slice(Math.round(snap * 60), Math.round((snap + 0.6) * 60));
+  assert.ok(Math.min(...after.map((p) => p.headPitch)) < -3 * DEG, "then the head snaps forward");
+  assert.ok(Math.max(...after.map((p) => p.squint)) > 0.9, "with the eyes squeezed shut");
+  assert.ok(Math.min(...after.map((p) => p.yawn)) < 0.05, "and the mouth closed: …choo");
+  assert.ok(isRest(poses.at(-1)) || ANGLES.every((k) => Math.abs(poses.at(-1)[k]) < 0.05 * DEG), "back to rest");
+  assert.ok(poses.at(-1).squint < 0.01 && poses.at(-1).yawn < 0.01, "eyes open and mouth closed again");
+});
+
+test("the sneeze snap is quick but never jumps", () => {
+  const { poses } = awake("sneeze", IDLE_MOTION.sneeze.keys.at(-1) + 1);
+  let fastest = 0;
+  for (let i = 1; i < poses.length; i += 1) {
+    for (const key of ANGLES) fastest = Math.max(fastest, Math.abs(poses[i][key] - poses[i - 1][key]));
+    assert.ok(Math.abs(poses[i].squint - poses[i - 1].squint) < 0.12, `eyes close smoothly at frame ${i}`);
+  }
+  assert.ok(fastest > 0.25 * DEG, `quicker than the calm actions (${(fastest / DEG).toFixed(2)}° per frame)`);
+  assert.ok(fastest < 0.6 * DEG, `but no visible jump (${(fastest / DEG).toFixed(2)}° per frame)`);
+});
+
+test("the sneeze is light: small angles, about two seconds", () => {
+  const { sneeze } = IDLE_MOTION;
+  const length = sneeze.keys.at(-1);
+  assert.ok(length >= 1.6 && length <= 3, `${length} s`);
+  assert.ok(Math.max(...sneeze.headPitch.map(Math.abs)) <= 6 * DEG, "head moves 6° at most");
+  assert.equal(ACTION_LABELS.sneeze, "Light sneeze");
+});
+
+test("a sneeze can be played from its Animation actions button", () => {
+  const motion = new IdleMotion({ random: seeded() });
+  assert.equal(motion.play("sneeze"), true);
+  assert.equal(motion.playing, "sneeze");
+  const poses = play(motion, "active", IDLE_MOTION.sneeze.keys.at(-1));
+  assert.ok(peak(poses, "squint") > 0.9);
 });

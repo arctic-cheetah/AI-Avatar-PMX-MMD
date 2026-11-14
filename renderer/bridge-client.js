@@ -9,6 +9,8 @@ const MAX_RESET_TURNS = 1000;
 const REPLAY_LABEL = '▶ Replay';
 const MAX_PROMPT = 2000;
 const MAX_REPLY = 50000;
+/** Chat-log bubbles kept in the DOM (#24); the oldest are evicted first. */
+export const MAX_LOG_LINES = 200;
 const MAX_SOURCE = 40;
 const REPORT_STATUS = new Set(['progress', 'done', 'error']);
 const ASK_ID = /^[0-9a-f]{1,32}$/;
@@ -136,8 +138,28 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     body.className = who === 'you' || who === 'tool' ? 'chat-text' : 'chat-text chat-md';
     line.append(label, body);
     chatLog.append(line);
+    trimLog();
     chatLog.scrollTop = chatLog.scrollHeight;
     return body;
+  }
+
+  /**
+   * Bound the chat log (#24): evict the oldest bubbles beyond MAX_LOG_LINES.
+   * The in-flight reply and the greeting awaiting its turn are never evicted,
+   * and an evicted bubble's spoken-turn record goes with it.
+   */
+  function trimLog() {
+    const keep = new Set();
+    if (reply) keep.add(reply.parentElement);
+    if (greetingLine) keep.add(greetingLine);
+    while (chatLog.children.length > MAX_LOG_LINES) {
+      const oldest = chatLog.children.find((line) => !keep.has(line));
+      if (!oldest) break;
+      for (const [turn, record] of turns) {
+        if (record.line === oldest) turns.delete(turn);
+      }
+      chatLog.removeChild(oldest);
+    }
   }
 
   /** Remember which bubble a spoken turn belongs to. */

@@ -407,10 +407,11 @@ reported as `delivered` in clip metrics, counting each row word that was bent
 or drawn out.
 **Hums (hesitation):** espeak says hums wrongly: "Hmm" as `həm` ("hum"), "Mmm"
 as `ˌɛmˌɛmˈɛm` ("em-em-em") and "Hm" as `ˌeɪtʃˈɛm` ("aitch-em"). The Kokoro
-worker says hm, hmm, mm and mmm as a closed-lip hum, with the h turned into
-another m (hm → `mm`, hmm → `mmm`), with or without other voice options, like
-the "Aww" fix (§2e). Listening (14 Nov 2026): spelled `hmm`, the h made it
-sound like "camel"; a hum should sound like "mmm". A word with no vowel
+worker says hm and hmm like Kokoro's "Umm" (`ˈʌm`), and mm and mmm as closed-lip
+m sounds (`mm`, `mmm`), with or without other voice options, like the "Aww" fix
+(§2e). Listening (14 Nov 2026): spelled `hmm`, the h made it sound like
+"camel", and a closed-lip `mmm` still sounded off; "Umm" resembles how "hmm",
+"hm" and "hmm?" should sound. A word with no vowel
 draws out its hum (m or n) instead, so "hmm" is drawn out over both m sounds.
 Longer spellings ("Hmmmmm") are shortened to "hmm" first (elongated spellings,
 §2h). "Mmm" is pronounced right but is not a hesitation row word, because "Mmm,
@@ -418,7 +419,8 @@ yummy." is pleasure. Hesitation words are in any mood, can sit mid-sentence ("I,
 er, forgot."), and a questioning "Hmm?" keeps the question's rise.
 Measured (Kokoro frames of 25 ms) for the first `hmm` spelling: "Hmm, let me
 think." 3/4/3 (`h m m`), so both m sounds were drawn out to 5 frames (250 ms of
-hum). As `mmm` it is 3/4/5 frames, drawn out to 5/5/5 (375 ms of hum). Before
+hum). As `mmm` it was 3/4/5 frames, drawn out to 5/5/5 (375 ms of hum). As
+`ˈʌm` it is 3 frames of ʌ and 5 of m, and the ʌ is drawn out to 5. Before
 "…" or "?" Kokoro already holds the last m for 14–17 frames, so only the shorter
 m sounds are drawn out there; a lone "Hm." (`mm`, 4/10 frames) has nothing to
 draw out (`stretchSkipped: nothing-to-stretch`).

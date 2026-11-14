@@ -420,7 +420,8 @@ frames of ʌ and 5 of m. Before "…" or "?" Kokoro already holds the last m for
 Measured F0 of "Hmm?" after RVC (thinking mood; first, middle and last fifth of
 the voiced part): the usual rise went 228 → 295 → 283 Hz, falling back at the
 end; with the row's rise, 10 st gives 267 → 266 → 335 Hz and 12 st gives
-267 → 274 → 372 Hz (+5.8 st), still rising at the end.
+267 → 274 → 372 Hz (+5.8 st), still rising at the end. Said like "Umm" at
+10 st: 229 → 256 → 336 Hz (+6.6 st), drawn out over its ʌ.
 Listening: ⏳ the "Umm"-like "Hmm?" is not yet listened to (14 Nov 2026).
 
 Affection words keep away from the endearments ("sweetie", "precious",

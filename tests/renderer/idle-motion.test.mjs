@@ -206,10 +206,10 @@ test("the stretch with its yawn and the dozing nod can also happen while awake",
   assert.ok(Math.min(...nod.poses.map((p) => p.headPitch)) < -IDLE_MOTION.nod.angle * 0.8, "head dips");
 });
 
-test("every action comes up while idle over an hour, one at a time, within its limits", () => {
+test("every action comes up while idle over three hours, one at a time, within its limits", () => {
   const motion = new IdleMotion({ random: seeded(11) });
   const kinds = new Set();
-  for (let i = 1; i <= 3600 * 30; i += 1) {
+  for (let i = 1; i <= 3 * 3600 * 30; i += 1) { // three hours: the rarest actions are ~2 %
     const pose = motion.update(1 / 30, "idle", i / 30);
     if (motion.current) kinds.add(motion.current.kind);
     assert.ok(Math.abs(pose.tilt) <= IDLE_MOTION.tilt.angle + 1e-9);

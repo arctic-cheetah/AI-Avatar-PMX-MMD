@@ -35,7 +35,10 @@ AWW_PHONEMES = re.compile('ɔːʊ?wə')
 # espeak spells some hums out: Mmm → ˌɛmˌɛmˈɛm, Hm → ˌeɪtʃˈɛm. Its own Hmm (həm) is already the hmm
 # sound (listening, 14 Nov 2026, after hmm, mmm and ˈʌm respellings sounded off), so Hm is said like it.
 HMM_PHONEMES = 'həm'
-HUM_WORD = re.compile(r'hm|m{2,3}', re.IGNORECASE)
+# A questioning həm? had a "th" sound (listening, 14 Nov 2026); said like "Umm" it works.
+ASKING_HMM_PHONEMES = 'ˈʌm'
+HMM_WORD = re.compile(r'hm{1,3}', re.IGNORECASE)
+MM_WORD = re.compile(r'm{2,3}', re.IGNORECASE)
 WORD_EDGES = '.,!?…;:"\'()[]—–-*“”‘’'
 SPAN_PUNCTUATION = frozenset(',.!?…;:—"\'()')
 MAX_EMPHASIS = 3          # emphasised words per sentence
@@ -133,9 +136,22 @@ def canonical_aww(text: str) -> str:
     return AWW_FAMILY.sub(lambda m: 'Aww' if m.group(1) == 'A' else 'aww', text)
 
 
+def hum_phonemes(word: str) -> str | None:
+    """Phonemes for a hum (without its punctuation), or None to keep espeak's.
+
+    A questioning hm/hmm ("Hmm?") is said like "Umm", a plain "Hm" like espeak's
+    own "Hmm" (həm, which is kept), and mm/mmm as closed-lip m sounds.
+    """
+    core = word.strip(WORD_EDGES)
+    if HMM_WORD.fullmatch(core):
+        if '?' in word[len(word.rstrip(WORD_EDGES)):]:
+            return ASKING_HMM_PHONEMES
+        return HMM_PHONEMES if len(core) == 2 else None
+    return 'm' * len(core) if MM_WORD.fullmatch(core) else None
+
+
 def needs_respelling(text: str) -> bool:
-    return any(AWW_WORD.fullmatch(core) or HUM_WORD.fullmatch(core)
-               for core in (word.strip(WORD_EDGES) for word in text.split()))
+    return any(AWW_WORD.fullmatch(word.strip(WORD_EDGES)) or hum_phonemes(word) for word in text.split())
 
 
 def respell_phonemes(text: str, phonemes: str) -> str:
@@ -155,11 +171,10 @@ def respell_phonemes(text: str, phonemes: str) -> str:
         core = word.strip(WORD_EDGES)
         if AWW_WORD.fullmatch(core):
             tokens[index] = AWW_PHONEMES.sub('ɔːɔː', tokens[index])
-        elif HUM_WORD.fullmatch(core):
+        elif (hum := hum_phonemes(word)) is not None:
             token = tokens[index]
             lead = len(token) - len(token.lstrip(WORD_EDGES))
             tail = len(token.rstrip(WORD_EDGES))
-            hum = HMM_PHONEMES if core[:1] in 'hH' else 'm' * len(core)
             tokens[index] = token[:lead] + hum + token[tail:]
     return ' '.join(tokens)
 

@@ -1232,7 +1232,7 @@ def build_parser():
     parser.add_argument(
         "--hesitation-question-bend",
         type=float,
-        default=12.0,
+        default=10.0,
         help='Semitones a questioning "Hmm?" rises to its end (-12 to 12).',
     )
     parser.add_argument(

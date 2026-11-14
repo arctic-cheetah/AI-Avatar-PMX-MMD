@@ -22,7 +22,11 @@ class HumPhonemeTests(unittest.TestCase):
         cases = [
             ('Mmm, yummy.', 'ˌɛmˌɛmˈɛm, jˈʌmi.', 'mmm, jˈʌmi.'),
             ('Hm.', 'ˌeɪtʃˈɛm.', 'həm.'),  # said like espeak's own "Hmm"
-            ('Hm?', 'ˌeɪtʃˈɛm?', 'həm?'),
+            # Listening (14 Nov 2026): a questioning həm? had a "th" sound; said like "umm" it works.
+            ('Hm?', 'ˌeɪtʃˈɛm?', 'ˈʌm?'),
+            ('Hmm?', 'həm?', 'ˈʌm?'),
+            ('Well… hmm?', 'wˈɛl… həm?', 'wˈɛl… ˈʌm?'),
+            ('"Hmm?" she asked.', '“həm?” ʃiː ˈæskt.', '“ˈʌm?” ʃiː ˈæskt.'),
             ('Mm.', 'ˌɛmˈɛm.', 'mm.'),
             ('"Hm," she said.', '“ˌeɪtʃˈɛm,” ʃiː sˈɛd.', '“həm,” ʃiː sˈɛd.'),
         ]
@@ -34,7 +38,7 @@ class HumPhonemeTests(unittest.TestCase):
     def test_other_words_are_untouched(self):
         # Listening (14 Nov 2026): espeak's own "Hmm" (həm) is already the hmm sound; hmm, mmm
         # and ˈʌm respellings all sounded off, so it is left alone.
-        for text, phonemes in (('Hmm, let me think.', 'həm, lˈɛt mˌiː θˈɪŋk.'), ('Well… hmm?', 'wˈɛl… həm?'),
+        for text, phonemes in (('Hmm, let me think.', 'həm, lˈɛt mˌiː θˈɪŋk.'), ('Hmm.', 'həm.'),
                                ('Umm, okay.', 'ˈʌm, oʊkˈeɪ.'), ("I'm here.", 'aɪm hˈɪɹ.'),
                                ('Hmmmmm.', 'hˈəm.'),  # longer runs are shortened before Kokoro
                                ('Hmm, sweet.', 'həm')):  # word counts differ
@@ -105,11 +109,11 @@ class SynthesiseHesitationTests(unittest.IsolatedAsyncioTestCase):
         # Listening (14 Nov 2026): "Hmm?" with the usual rise (9 st, falling after 70 %) did not
         # sound like a question; it rises higher and keeps rising to the end.
         sent = await self.run_segment(ApplioSettings(tts_provider='kokoro'), 'Hmm?')
-        self.assertEqual(sent['delivered'], ((0, 12.0, 1.0, True),))
+        self.assertEqual(sent['delivered'], ((0, 10.0, 1.0, True),))
         self.assertNotIn('rises', sent)
-        sent = await self.run_segment(ApplioSettings(tts_provider='kokoro', hesitation_question_bend=10.0),
+        sent = await self.run_segment(ApplioSettings(tts_provider='kokoro', hesitation_question_bend=8.0),
                                       'Well… hmm?')
-        self.assertEqual(sent['delivered'], ((1, 10.0, 1.0, True),))
+        self.assertEqual(sent['delivered'], ((1, 8.0, 1.0, True),))
         self.assertEqual(sent['drawls'], (0,))
 
     async def test_without_dynamic_emphasis_the_usual_question_rise(self):
@@ -138,12 +142,13 @@ class HesitationSettingsTests(unittest.TestCase):
         self.assertEqual(settings.hesitation_bend, -2.0)
 
     def test_question_bend_default_range_and_flag(self):
-        self.assertEqual(ApplioSettings().hesitation_question_bend, 12.0)
+        # Listening (14 Nov 2026): 10 st, over 12 st.
+        self.assertEqual(ApplioSettings().hesitation_question_bend, 10.0)
         for value in (-12.1, 12.1, float('nan')):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 ApplioSettings(applio_dir=Path('/nonexistent'), hesitation_question_bend=value).check()
-        settings = speech_settings(build_parser().parse_args(['--speech', '--hesitation-question-bend', '10']))
-        self.assertEqual(settings.hesitation_question_bend, 10.0)
+        settings = speech_settings(build_parser().parse_args(['--speech', '--hesitation-question-bend', '8']))
+        self.assertEqual(settings.hesitation_question_bend, 8.0)
 
 
 if __name__ == '__main__':

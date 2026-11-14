@@ -97,7 +97,10 @@ export const IDLE_MOTION = Object.freeze({
     shoulders: Object.freeze([0, 4 * DEG, 4 * DEG, 0]),
     headPitch: Object.freeze([0, 1.5 * DEG, 1.5 * DEG, 0]),
     squint: Object.freeze([0, 0, 0.35, 0]),
+    exhale: Object.freeze([0, 0.15, 0.35, 0]),
   }),
+  /** The sigh's breathing mouth: a little open breathing in, more breathing out. */
+  sighMouth: Object.freeze({ in: 0.15, out: 0.35, open: 0.3 }),
   /** Sniffle (#149 part 3): two quick sniffs, the head tipping up each time. */
   sniffle: Object.freeze({
     keys: Object.freeze([0, 0.18, 0.4, 0.62, 0.84, 1.6]),
@@ -105,8 +108,12 @@ export const IDLE_MOTION = Object.freeze({
     chest: Object.freeze([0, 0.8 * DEG, 0, 0.8 * DEG, 0, 0]),
     squint: Object.freeze([0, 0.25, 0.05, 0.25, 0.05, 0]),
   }),
-  /** Neck roll: one slow circle of the head, eased in and out. */
-  neckRoll: Object.freeze({ duration: 4.5, rise: 0.9, pitch: 4 * DEG, roll: 4 * DEG }),
+  /**
+   * Neck roll: one slow, even circle of the head. It starts a quarter turn in
+   * (phase), so back, both sides and forward all come at full size inside the
+   * ease: about 3.3 degrees each way on the head bone (the user, 14 Nov 2026).
+   */
+  neckRoll: Object.freeze({ duration: 5, rise: 0.6, pitch: 5.5 * DEG, roll: 4 * DEG, phase: -Math.PI / 4 }),
   /** Weight shift: lean to one side and hold; the head tilts back to stay level. */
   weightShift: Object.freeze({ duration: Object.freeze([4.5, 5.5]), rise: 1.2, lean: 3 * DEG, head: 0.5 }),
   /** Shy look-away: eyes and head drop to one side with a shy giggle. */
@@ -118,7 +125,7 @@ export const IDLE_MOTION = Object.freeze({
 });
 
 const ANGLES = ["tilt", "chest", "shoulders", "shoulderLeft", "shoulderRight", "back", "headPitch", "shiver", "hum", "lean",
-  "yawn", "squint", "winkLeft", "winkRight", "mouthLift", "surprise", "smile", "browRaise", "shy"];
+  "yawn", "squint", "winkLeft", "winkRight", "mouthLift", "surprise", "smile", "browRaise", "shy", "exhale"];
 
 /**
  * Face channels (#149): an action writes a 0-1 weight per channel, and the
@@ -139,6 +146,8 @@ export const FACE_MORPHS = Object.freeze({
   browRaise: Object.freeze({ "上": 0.8, "びっくり": 0.3 }),
   /** A shy giggle (the user's pick C, #149 part 3); the model has no blush morph. */
   shy: Object.freeze({ "笑い": 0.35, "困る": 0.4 }),
+  /** Breathing mouth for the sigh and the deep breath (the user's idea: お). */
+  exhale: Object.freeze({ "お": 1 }),
 });
 const LIMITS = Object.freeze({
   tilt: [-IDLE_MOTION.tilt.angle, IDLE_MOTION.tilt.angle],
@@ -159,6 +168,7 @@ const LIMITS = Object.freeze({
   smile: [0, 1],
   browRaise: [0, 1],
   shy: [0, 1],
+  exhale: [0, 1],
   lean: [-IDLE_MOTION.weightShift.lean, IDLE_MOTION.weightShift.lean],
 });
 
@@ -292,6 +302,9 @@ const ACTION_TABLE = {
       const breath = sighCurve(motion.t);
       target.chest = breath * IDLE_MOTION.sigh.chest;
       target.shoulders = breath * IDLE_MOTION.sigh.shoulders;
+      const { inhale, exhale } = IDLE_MOTION.sigh;
+      const mouth = IDLE_MOTION.sighMouth;
+      target.exhale = keyed(motion.t, [0, inhale, inhale + mouth.open, inhale + exhale], [0, mouth.in, mouth.out, 0]);
       return null;
     },
   }),
@@ -397,7 +410,7 @@ const ACTION_TABLE = {
     apply: (motion, target) => {
       const { neckRoll } = IDLE_MOTION;
       const amount = bump(motion.t, neckRoll.duration, neckRoll.rise);
-      const angle = (2 * Math.PI * motion.t) / neckRoll.duration;
+      const angle = (2 * Math.PI * motion.t) / neckRoll.duration + neckRoll.phase;
       target.headPitch = amount * neckRoll.pitch * Math.sin(angle);
       target.tilt = amount * neckRoll.roll * Math.cos(angle);
       return null;

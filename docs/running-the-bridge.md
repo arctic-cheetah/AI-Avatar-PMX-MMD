@@ -34,6 +34,13 @@ No speech is generated yet.
 
 ## Local LLM
 
+For an MCP host that authors its own replies and narration, use
+`--mode agent` instead of an LLM mode. It enables the owner-only agent socket
+without chat/summarisation model configuration. Add `--speech --tts kokoro`
+for voice. Missing narration uses a fixed acknowledgement; browser chat is
+unavailable. See [agent voice](agent-voice.md#report-summaries) for report calls
+and the compatibility fallback policy.
+
 Stop demo mode with Ctrl+C before starting LLM mode. Keep llama-server running:
 
 ```bash

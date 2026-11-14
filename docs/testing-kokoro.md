@@ -333,6 +333,16 @@ the per-token model; without it the quote is said at the sentence's pace and the
 clip reports `paceSkipped: no-model`. Clip metrics report `paced`, the
 quotations said at their own pace. Listening: ⏳ not yet listened to (14 Nov 2026).
 
+| Line (Kokoro source, soft-smile) | pace 1.0 | 0.9 | 0.8 |
+| --- | ---: | ---: | ---: |
+| She said "I love it" and smiled. | 2.50 s | 2.55 s | 2.63 s |
+| You told me, "Take your time," and I did. | 3.32 s | 3.48 s | 3.62 s |
+| He just said “whatever” and left. | 2.65 s | 2.65 s | 2.75 s |
+
+Kokoro rounds each token to whole 25 ms frames, so a one-word quote at 0.9 can
+come out unchanged. The second pass costs about +0.4 s of Kokoro time for each
+sentence with a quotation (0.40–0.48 s → 0.80–0.95 s).
+
 ```bash
 .venv/bin/python -m controller.audition_kokoro --quote-voice \
   --text 'She said "I love it" and smiled.' \

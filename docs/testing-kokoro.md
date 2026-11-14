@@ -403,7 +403,8 @@ yummy." is pleasure. Hesitation words are in any mood, can sit mid-sentence ("I,
 er, forgot."), and a questioning "Hmm?" keeps the question's rise.
 Measured (Kokoro frames of 25 ms) for the first `hmm` spelling: "Hmm, let me
 think." 3/4/3 (`h m m`), so both m sounds were drawn out to 5 frames (250 ms of
-hum). As `mmm` it was 3/4/5 frames, drawn out to 5/5/5 (375 ms of hum). Before
+hum). As `mmm` it was 3/4/5 frames, drawn out to 5/5/5 (375 ms of hum). As
+`ˈʌm` it is 3 frames of ʌ and 5 of m, and the ʌ is drawn out to 5. Before
 "…" or "?" Kokoro already holds the last m for 14–17 frames, so only the shorter
 m sounds are drawn out there; a lone "Hm." (`mm`, 4/10 frames) has nothing to
 draw out (`stretchSkipped: nothing-to-stretch`).

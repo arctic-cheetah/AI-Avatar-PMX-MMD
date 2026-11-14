@@ -128,7 +128,7 @@ Then restart the bridge in LLM mode (Ctrl+C the demo first):
 
 Type into the chat bar above her portrait and press **Send**. She remembers earlier turns of the current chat, trimmed to fit the model's context window. Press **New chat** to start over; a reconnect also starts fresh. Details are in [docs/conversation-history.md](docs/conversation-history.md).
 
-The **Chat** section stays permanently open so replies and the floating chat box remain visible. **Speech test**, **Mood presets**, **Independent channels**, **Morph audition**, and **Candidates** start collapsed. Click a secondary heading or focus it and press Enter/Space to expand it. Each choice is saved in this browser and restored after reloads and pop-out moves; if browser storage is unavailable, the choices last for the current page only.
+The **Chat** section stays permanently open so replies and the floating chat box remain visible. **Speech test**, **Mood presets**, **Independent channels**, **Actions**, **Animation actions**, **Morph audition**, and **Candidates** start collapsed. Click a secondary heading or focus it and press Enter/Space to expand it. Each choice is saved in this browser and restored after reloads and pop-out moves; if browser storage is unavailable, the choices last for the current page only.
 
 Any other OpenAI-compatible server works too — local Ollama / LM Studio, or a cloud or proxy endpoint (OpenAI, OpenRouter, EasyProxy / CLIProxyAPI) with `--llama-url <base>`, `--model <name>` and a key from an environment variable:
 

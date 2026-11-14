@@ -131,28 +131,37 @@ panel picks it up by itself.
 
 | Action | Chance | Length | What moves | Size |
 | --- | --- | --- | --- | --- |
-| `glance` | 10 % | 2.2–3.2 s | Eyes, head following at 45 %, drift to one side and back, eased in and out over 0.9 s | 0.45–0.75 of the gaze range sideways, ±0.15 up/down |
-| `tilt-left` | 10 % | 2–3.5 s | `頭` rolls toward the left of the screen | 5° |
-| `tilt-right` | 10 % | 2–3.5 s | `頭` rolls toward the right of the screen | 5° |
-| `shrug-left` | 5 % | 2.4–3.0 s | The shoulder on the left of the screen (`右肩`) lifts, then drops | 12° |
-| `shrug-right` | 5 % | 2.4–3.0 s | The shoulder on the right of the screen (`左肩`) | 12° |
-| `shrug-both` | 5 % | 2.4–3.0 s | Both `肩` together | 12° |
-| `sigh` | 10 % | 1.1 s in, 1.7 s out | Chest (`上半身2` pitch) and both `肩` lift, then fall | 2° chest, 2.5° shoulders |
-| `stretch-yawn` | 30 % | 3.2 s | Back arches (`上半身`), head tips back (`首`/`頭`), shoulders lift, and she yawns | 5° back, 7° head, 6° shoulders, yawn 1 |
-| `nod` | 10 % | 3.2 s | A dozing nod: `首`/`頭` dip forward slowly, then lift | 6° |
-| `sneeze` | 5 % | 2.2 s | A light sneeze: breathe in with the head tipped back, the chest rising and the mouth a little open (0.9 s), then a quick forward snap with the eyes squeezed shut (`まばたき`) and the mouth closed, then rest | 4° back, 5° forward, 1.5° chest, mouth 0.3 |
+| `glance` | 9.4 % | 2.2–3.2 s | Eyes, head following at 45 %, drift to one side and back, eased in and out over 0.9 s | 0.45–0.75 of the gaze range sideways, ±0.15 up/down |
+| `tilt-left` | 9.4 % | 2–3.5 s | `頭` rolls toward the left of the screen | 5° |
+| `tilt-right` | 9.4 % | 2–3.5 s | `頭` rolls toward the right of the screen | 5° |
+| `shrug-left` | 4.7 % | 2.4–3.0 s | The shoulder on the left of the screen (`右肩`) lifts, then drops | 12° |
+| `shrug-right` | 4.7 % | 2.4–3.0 s | The shoulder on the right of the screen (`左肩`) | 12° |
+| `shrug-both` | 4.7 % | 2.4–3.0 s | Both `肩` together | 12° |
+| `sigh` | **15 % (fixed)** | 1.1 s in, 1.7 s out | Chest (`上半身2` pitch) and both `肩` lift, then fall | 2° chest, 2.5° shoulders |
+| `stretch-yawn` | 28.3 % | 3.2 s | Back arches (`上半身`), head tips back (`首`/`頭`), shoulders lift, and she yawns | 5° back, 7° head, 6° shoulders, yawn 1 |
+| `nod` | 9.4 % | 3.2 s | A dozing nod: `首`/`頭` dip forward slowly, then lift | 6° |
+| `sneeze` | 4.7 % | 2.2 s | A light sneeze: breathe in with the head tipped back, the chest rising and the mouth a little open (0.9 s), then a quick forward snap with the eyes squeezed shut (`まばたき`) and the mouth closed, then rest | 4° back, 5° forward, 1.5° chest, mouth 0.3 |
 
 - **Shrug size:** shrugs were 6° at first, but that hid behind the always-on
   body sway. The user picked 12° from a 6/12/18/24° comparison. To keep every
   60 fps frame under 0.25°, a 12° shrug lasts 2.4–3.0 s with 1.2 s ramps
   (0.23° per frame at most).
-- **Chances:** glances 10 % and stretch-and-yawn 30 % are the user's picks
-  (12 November 2026). An equal 1-in-9 mix was not used. When every action had equal
-  chances, the user found the shrugs too common, so shrugs stay at 5 % each.
-- **Choosing actions:** the panel's **Actions · 仕草** group has a checkbox
-  for each one, all ticked by default. Only ticked actions play, awake or
+- **Chances:** the sigh is fixed at 15 % (the user, 14 November 2026), and
+  new actions never take from it. Every other action has a relative share
+  (`share` in `ACTIONS`), and together they fill the other 85 %:
+  - a glance, each tilt and the nod count 1;
+  - stretch-and-yawn counts 3;
+  - each shrug and the sneeze count ½.
+
+  This keeps the user's earlier picks in proportion: glance 10 % to
+  stretch-and-yawn 30 %, with shrugs rare. Equal chances were tried and
+  reverted, because shrugs came up too often. A new action only needs a
+  share; everything except the sigh rebalances by itself.
+- **Choosing actions:** the panel's **Actions · 仕草** section (its own
+  collapsible section since 14 November 2026, next to **Animation actions**)
+  has a checkbox for each one, all ticked by default. Only ticked actions play, awake or
   asleep, and they keep their relative chances. For example, with only
-  glance, tilt-left and sigh ticked, the chances are 10 : 10 : 15 out of 35.
+  glance, tilt-left and sigh ticked, they keep their 9.4 : 9.4 : 15 proportions.
   With nothing ticked she stays still. The choice is saved as
   `yidhari.actions`.
 - **Light sneeze** (#149, 14 November 2026): keyframed with eased
@@ -160,7 +169,7 @@ panel picks it up by itself.
   meant to be quick, so it may move up to 0.6° per 60 fps frame, where the
   calm actions stay under 0.25°. Its eye closure drives `まばたき` through
   a new `squint` channel, and its mouth reuses the yawn's `あ`/`お` channel at
-  0.3. It takes 5 % of picks; the sigh went from 15 % to 10 % to make room.
+  0.3. Its share is ½, like a shrug, and it never takes from the sigh.
   Like every action, it has a checkbox in **Actions** and a button in
   **Animation actions**.
 - **Slower glances:** a glance used to jump to its target at the gaze

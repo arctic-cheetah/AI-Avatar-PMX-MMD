@@ -9,6 +9,8 @@ const MAX_RESET_TURNS = 1000;
 const REPLAY_LABEL = '▶ Replay';
 const MAX_PROMPT = 2000;
 const MAX_REPLY = 50000;
+/** Chat-log bubbles kept in the DOM (#24); the oldest are evicted first. */
+export const MAX_LOG_LINES = 200;
 const MAX_SOURCE = 40;
 const REPORT_STATUS = new Set(['progress', 'done', 'error']);
 const ASK_ID = /^[0-9a-f]{1,32}$/;
@@ -95,6 +97,9 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
   const chatMic = document.querySelector('#chat-mic');
   const chatLog = document.querySelector('#chat-log');
   const chatNew = document.querySelector('#chat-new');
+  const chatSave = document.querySelector('#chat-save');
+  const chatImport = document.querySelector('#chat-import');
+  const chatImportFile = document.querySelector('#chat-import-file');
   let socket;
   let busy = false;
   let reply = null;
@@ -136,8 +141,28 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     body.className = who === 'you' || who === 'tool' ? 'chat-text' : 'chat-text chat-md';
     line.append(label, body);
     chatLog.append(line);
+    trimLog();
     chatLog.scrollTop = chatLog.scrollHeight;
     return body;
+  }
+
+  /**
+   * Bound the chat log (#24): evict the oldest bubbles beyond MAX_LOG_LINES.
+   * The in-flight reply and the greeting awaiting its turn are never evicted,
+   * and an evicted bubble's spoken-turn record goes with it.
+   */
+  function trimLog() {
+    const keep = new Set();
+    if (reply) keep.add(reply.parentElement);
+    if (greetingLine) keep.add(greetingLine);
+    while (chatLog.children.length > MAX_LOG_LINES) {
+      const oldest = chatLog.children.find((line) => !keep.has(line));
+      if (!oldest) break;
+      for (const [turn, record] of turns) {
+        if (record.line === oldest) turns.delete(turn);
+      }
+      chatLog.removeChild(oldest);
+    }
   }
 
   /** Remember which bubble a spoken turn belongs to. */
@@ -239,6 +264,24 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     const line = renderEntry(entry);
     const saved = history.add(entry) ? history.last() : null;
     if (turn) bindTurn(turn, line, saved?.id ?? null);
+  }
+
+  /** Show an imported log (#192): display only, exactly like a refresh restore. */
+  function showImported({ damaged }) {
+    turns.clear();
+    greetingLine = null;
+    chatLog.replaceChildren();
+    history.entries.forEach((entry) => {
+      const { id, ...shown } = entry;
+      const line = renderEntry(shown, { restored: true });
+      if (shown.turn) {
+        bindTurn(shown.turn, line, id ?? null, true);
+        addReplayButton(shown.turn);
+      }
+    });
+    if (damaged) addNote(DAMAGED_NOTE);
+    addNote(RESTORED_NOTE);
+    status.textContent = 'Chat imported · display only';
   }
 
   /** A status line about restoring; shown only, never saved. */
@@ -460,6 +503,31 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
   });
   chatNew.addEventListener('click', () => {
     if (socket?.readyState === WebSocket.OPEN) socket.send(resetFrame(chatTurns()));
+  });
+  chatSave?.addEventListener?.('click', () => {
+    try {
+      const blob = new Blob([history.exportFile()], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `yidhari-chat-${new Date().toISOString().slice(0, 10)}.json`;
+      anchor.click?.();
+      URL.revokeObjectURL?.(url);
+      status.textContent = 'Chat saved as JSON';
+    } catch { status.textContent = 'Could not save the chat as JSON'; }
+  });
+  chatImport?.addEventListener?.('click', () => chatImportFile?.click?.());
+  chatImportFile?.addEventListener?.('change', async () => {
+    const file = chatImportFile.files?.[0];
+    chatImportFile.value = '';
+    if (!file) return;
+    if (reply) { status.textContent = 'Finish the current reply before importing a chat.'; return; }
+    if (typeof win?.confirm === 'function' && !win.confirm('Replace the current chat with the imported one?')) return;
+    try {
+      showImported(history.importFile(await file.text()));
+    } catch (error) {
+      status.textContent = error instanceof Error ? error.message : 'Could not import that chat file.';
+    }
   });
   chatBar.addEventListener('submit', (event) => {
     event.preventDefault();

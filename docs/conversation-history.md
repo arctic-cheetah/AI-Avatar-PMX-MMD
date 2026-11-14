@@ -100,6 +100,12 @@ browser is closed and reopened. This is **display only**:
 - **New chat** clears the saved log as well.
 - The saved log keeps the latest 200 entries and at most 1,000,000 characters.
   The oldest entries go first.
+- On screen, the log keeps at most 200 bubbles (`MAX_LOG_LINES` in
+  `renderer/bridge-client.js`, #24). Within a long session the oldest bubbles
+  are removed from the page first, so the DOM — and scrolling — stays bounded
+  no matter how long she runs. The reply still streaming and the greeting
+  waiting for its spoken turn are never removed mid-flight, and a removed
+  bubble's replay record goes with it.
 - Every renderer tab on this browser profile shares one saved log. Before each
   save, a tab reads the latest log, so two open tabs add to it instead of
   overwriting each other. Each tab shows what it had at load plus its own new
@@ -111,6 +117,36 @@ browser is closed and reopened. This is **display only**:
   valid entries from other tabs are still kept even if the shared log contains
   invalid entries. If the whole log cannot be parsed or its format is unsupported,
   the tab keeps its own copy and the next save replaces the unreadable log.
+
+## Saving and importing the chat as JSON (#192)
+
+The chat box bar has **Save chat** and **Import chat** buttons, so a
+conversation can leave this browser profile as a file and come back later —
+on this machine or another one.
+
+- **Save chat** downloads `yidhari-chat-YYYY-MM-DD.json`, built locally from
+  the saved log. Nothing is uploaded. The file is the storage shape plus a
+  timestamp: `{"version": 1, "exportedAt": "…", "entries": […]}`. Internal
+  entry ids are not written; spoken-turn ids are, so replay can find audio
+  that is still on disk. The audio itself is never in the file.
+- **Import chat** asks for confirmation, then replaces the current log with
+  the file's entries and saves that as the log. It refuses while a reply is
+  still streaming. Importing is **display only**, exactly like restoring
+  after a refresh: nothing is sent to the bridge or the model, no speech or
+  moods play, and the note under the bubbles still applies — she won't
+  remember imported text in new replies. Restored agent questions are no
+  longer waiting. Imported bubbles keep **▶ Replay** only where that turn's
+  audio is on this machine; otherwise they read **Too old to replay**.
+- Files are untrusted input. Only entries that pass the same cleaning rules
+  as saved data are kept (known roles, agent kinds and report states, hex
+  turn ids); the rest are dropped and the damaged-log note shows. Files
+  larger than 2,000,000 characters are rejected before parsing, files that
+  are not JSON or not `version: 1` are rejected outright, and the usual
+  200-entry / 1,000,000-character caps apply oldest-first after import.
+  Imported Markdown goes through the same safe renderer as live bubbles —
+  never raw HTML.
+- The file is plaintext chat, including full agent reports. Store it like
+  any other transcript.
 
 ## Security note 🛡️
 

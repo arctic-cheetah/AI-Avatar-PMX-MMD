@@ -29,6 +29,7 @@ import { MMDLoader } from "three/addons/loaders/MMDLoader.js";
 import { MMDPhysics } from "three/addons/animation/MMDPhysics.js";
 import { OutlineEffect } from "three/addons/effects/OutlineEffect.js";
 import { loadExpressionCatalog } from "./expression-catalog.js";
+import { readyStatus } from "./ready-status.js";
 import { ExpressionController } from "./expression-controller.js";
 import { MorphAudition, buildMorphInventory } from "./morph-audition.js";
 import { AuditionPanel } from "./audition-panel.js";
@@ -1612,12 +1613,10 @@ function onModelLoaded(loaded, data) {
     const name = button.dataset.expression;
     button.disabled = !expressions.isAvailable(name);
     if (button.disabled) {
-      unavailable.push(`${name}: ${expressions.getMissingMorphs(name).join(", ")}`);
+      unavailable.push([name, expressions.getMissingMorphs(name)]);
     }
   }
-  setStatus(unavailable.length > 0
-    ? `Ready · ${morphCount} morphs · unavailable: ${unavailable.join("; ")}`
-    : `Ready · ${morphCount} morphs`);
+  setStatus(readyStatus({ moods: expressionButtons.length, morphs: morphCount, unavailable }));
   scheduleBlink(performance.now() / 1000);
   const transcript = document.querySelector('#bridge-transcript');
   // Page-open greeting (#72): claimed once per page load here, shown on first connect.

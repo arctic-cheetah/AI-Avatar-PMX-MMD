@@ -206,6 +206,12 @@ Run `python3 renderer/serve.py` and open `http://127.0.0.1:8770/renderer/`. The 
 3. **Morph audition**: a slider for every morph in the loaded PMX, grouped by panel, with its romaji, PMX English label, and the presets or channels that already use it. Slider weights are added on top of the channels; the thin bar under each slider shows the final influence, so it rises with a blink or a preset that shares the morph. **Sweep** steps through every morph by itself for 1.5 seconds each. The filter matches Japanese names, romaji, labels, and usage tags.
 4. **Candidates**: save the current sliders under a name, reload them later, and **Copy as catalog JSON** to get entries to merge into `expressions.json` after filling in usage descriptions. Candidates are stored only in this browser.
 
+Once the model loads, the status line reports both counts, read live from the catalog and the mesh:
+`Ready · 50 moods · 56 PMX morphs`. **Moods** are the `expressions.json` presets the model can show,
+including `neutral`. **PMX morphs** are the vertex morphs in the loaded file. When a preset needs a
+morph the model lacks, the line reads `48 of 50 moods` and lists each unavailable preset with its
+missing morphs.
+
 Use **Face** for a close-up and **Bust** to return to the portrait framing. Suggested workflow: sweep once to learn each morph, combine candidates at 0.25, 0.5, 0.75, and 1.0, save the ones you like, then test neutral → candidate → another mood → neutral with blinking on before promoting a candidate into the catalog.
 
 `yidhari-mmd/武器.pmx`, the weapon, has no morphs, so `伊德海莉.pmx` is the only model the bench needs.

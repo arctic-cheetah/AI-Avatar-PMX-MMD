@@ -378,6 +378,7 @@ drawls: a fond "So cute!" is warm, while "So, what now?" is still a drawl.
 | affection | cute, adorable, sweet, lovely, beautiful, gorgeous, wonderful | the same | the same |
 | drawl | but, well, so, now, okay (first word) | any | `--drawl-bend` dip (default −2 st), drawn out |
 | drawl | sure, really, right, totally, obviously | skeptical moods | `--drawl-bend` dip (default −2 st), drawn out |
+| hesitation | hmm, hm, umm, um, uh, er, erm | any | slight dip (`--hesitation-bend`, default −1 st, ±12), drawn out |
 | surprise | what, really, seriously, wow, whoa, said on their own | surprised, shocked, gasp, excited, wtf-dude | rise peaking at 70 % (`--surprise-bend`, default 5 st, ±12), drawn out |
 
 A surprised word that ends a question keeps the question's own rise
@@ -388,6 +389,17 @@ review). A word gets one bend: a surprise word is taken out of the lifts, even
 when it is marked `*Really*` or ends with `!`. Rows other than drawls are
 reported as `delivered` in clip metrics, counting each row word that was bent
 or drawn out.
+**Hums (hesitation):** espeak says hums wrongly: "Hmm" as `həm` ("hum"), "Mmm"
+as `ˌɛmˌɛmˈɛm` ("em-em-em") and "Hm" as `ˌeɪtʃˈɛm` ("aitch-em"). The Kokoro
+worker speaks hm, hmm, mm and mmm as their own letters (`hmm`, `mmm`), with or
+without other voice options, like the "Aww" fix (§2e). A word with no vowel
+draws out its hum (m or n) instead, so "hmm" is drawn out over both m sounds.
+Longer spellings ("Hmmmmm") are shortened to "hmm" first (elongated spellings,
+§2h). "Mmm" is pronounced right but is not a hesitation row word, because "Mmm,
+yummy." is pleasure. Hesitation words are in any mood, can sit mid-sentence ("I,
+er, forgot."), and a questioning "Hmm?" keeps the question's rise.
+Listening: ⏳ not yet listened to (14 Nov 2026).
+
 Affection words keep away from the endearments ("sweetie", "precious",
 "cutie" keep their own `--endearment-bend` lift in address), and "Aww" keeps its
 interjection contour (§2e). "Sooo cute" is spoken as "so cute" (§2h, elongated spellings) and both
@@ -595,8 +607,8 @@ drawn-out words, drawls come first. Edge reads the spellings itself, so they
 are left alone.
 Listening (9 Nov 2026): the elongated words sounded very good.
 
-Done: the word-delivery list with surprise "whaaat?" and affection "sooo cute"
-(§2g). Next, in small batches: hesitation "hmmm" and a quotation pace (§2f).
+Done: the word-delivery list with surprise "whaaat?", affection "sooo cute"
+and hesitation "hmmm" (§2g). Next: a quotation pace (§2f).
 
 ## 3. Test on the avatar
 

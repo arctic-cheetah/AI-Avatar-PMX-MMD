@@ -109,7 +109,7 @@ function reload(page, session, calls) {
 }
 
 function lines(page) {
-  return page.log().children.map((line) => ({
+  return [...page.log().children].map((line) => ({
     className: line.className,
     who: line.children[0].textContent,
     text: line.children[1].textContent,

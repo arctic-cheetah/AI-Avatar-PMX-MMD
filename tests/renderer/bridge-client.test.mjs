@@ -203,7 +203,7 @@ test("the chat log evicts the oldest bubbles beyond the history cap (#24)", (t) 
   const lines = page.log().children;
   assert.equal(lines.length, 200);
   assert.match(bodyOf(lines[0]).textContent, /message 5/);
-  assert.match(bodyOf(lines.at(-1)).textContent, /message 204/);
+  assert.match(bodyOf(lines[lines.length - 1]).textContent, /message 204/);
 });
 
 test("the in-flight reply bubble is never evicted mid-stream (#24)", (t) => {
@@ -215,7 +215,7 @@ test("the in-flight reply bubble is never evicted mid-stream (#24)", (t) => {
   }
   page.receive({ type: "say", text: "still here" });
   page.receive({ type: "end" });
-  const texts = page.log().children.map((line) => bodyOf(line).textContent);
+  const texts = [...page.log().children].map((line) => bodyOf(line).textContent);
   assert.ok(texts.some((text) => text.includes("still here")), "reply bubble survived the flood");
 });
 

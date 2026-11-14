@@ -1,5 +1,5 @@
 """Endearments get their own, higher lift (#83): at 4 st "sweetheart!" still sounded a bit down;
-of 4 / 6 / 8 st, 8 sounded best (listened 9 Nov 2026)."""
+of 4 / 6 / 8 st, 8 sounded best (listened 9 Nov 2026); raised to 9 st on 15 Nov 2026 (#183)."""
 from pathlib import Path
 import sys
 import tempfile
@@ -43,7 +43,7 @@ class EndearmentBendTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_endearments_lift_higher_than_the_exclaimed_word(self):
         reply = await self.exchange(ApplioSettings(tts_provider='kokoro'), (1, 2), (1,))
-        self.assertEqual(reply['request']['bend'], [[0.2, 0.5, 8.0], [0.6, 1.0, 4.0]])
+        self.assertEqual(reply['request']['bend'], [[0.2, 0.5, 9.0], [0.6, 1.0, 4.0]])
         self.assertEqual(reply['lifts'], 2)
 
     async def test_bend_is_configurable(self):
@@ -69,13 +69,14 @@ class SynthesiseEndearmentTests(unittest.IsolatedAsyncioTestCase):
 
 class EndearmentSettingsTests(unittest.TestCase):
     def test_default_range_and_flag(self):
-        self.assertEqual(ApplioSettings().endearment_bend, 8.0)
+        self.assertEqual(ApplioSettings().endearment_bend, 9.0)
         for value in (-12.1, 12.1, float('nan')):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 ApplioSettings(applio_dir=Path('/nonexistent'), endearment_bend=value).check()
         settings = speech_settings(build_parser().parse_args(['--speech', '--endearment-bend', '7']))
         self.assertEqual(settings.endearment_bend, 7.0)
-        self.assertEqual(speech_settings(build_parser().parse_args(['--speech'])).endearment_bend, 8.0)
+        self.assertEqual(speech_settings(build_parser().parse_args(['--speech'])).endearment_bend, 9.0)  # the bridge default too
+
 
 
 if __name__ == '__main__':

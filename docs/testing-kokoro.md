@@ -389,8 +389,8 @@ drawls: a fond "So cute!" is warm, while "So, what now?" is still a drawl.
 
 | Family | Words | Moods | Delivery |
 | --- | --- | --- | --- |
-| affection | so, too, right before an affection word ("so cute", "too sweet") | tender, happy, joyful, soft-smile, lovestruck, shy, excited, grin, serene | warm rise-fall (`--affection-bend`, default 3 st, ±12), drawn out |
-| affection | cute, adorable, sweet, lovely, beautiful, gorgeous, wonderful | the same | the same |
+| affection | so, too, right before an affection word ("so cute", "too sweet") | tender, happy, joyful, soft-smile, lovestruck, shy, excited, grin, serene | a higher warm rise-fall (`--affection-intensifier-bend`, default 7 st, ±12), drawn out |
+| affection | cute, adorable, sweet, lovely, beautiful, gorgeous, wonderful | the same | warm rise-fall (`--affection-bend`, default 5 st, ±12), drawn out |
 | drawl | but, well, so, now, okay (first word) | any | `--drawl-bend` dip (default −2 st), drawn out |
 | drawl | sure, really, right, totally, obviously | skeptical moods | `--drawl-bend` dip (default −2 st), drawn out |
 | hesitation | hmm, hm, umm, um, uh, er, erm | any | slight dip (`--hesitation-bend`, default −1 st, ±12), drawn out |
@@ -406,24 +406,29 @@ reported as `delivered` in clip metrics, counting each row word that was bent
 or drawn out.
 **Hums (hesitation):** espeak says hums wrongly: "Hmm" as `həm` ("hum"), "Mmm"
 as `ˌɛmˌɛmˈɛm` ("em-em-em") and "Hm" as `ˌeɪtʃˈɛm` ("aitch-em"). The Kokoro
-worker speaks hm, hmm, mm and mmm as their own letters (`hmm`, `mmm`), with or
-without other voice options, like the "Aww" fix (§2e). A word with no vowel
+worker says hm, hmm, mm and mmm as a closed-lip hum, with the h turned into
+another m (hm → `mm`, hmm → `mmm`), with or without other voice options, like
+the "Aww" fix (§2e). Listening (14 Nov 2026): spelled `hmm`, the h made it
+sound like "camel"; a hum should sound like "mmm". A word with no vowel
 draws out its hum (m or n) instead, so "hmm" is drawn out over both m sounds.
 Longer spellings ("Hmmmmm") are shortened to "hmm" first (elongated spellings,
 §2h). "Mmm" is pronounced right but is not a hesitation row word, because "Mmm,
 yummy." is pleasure. Hesitation words are in any mood, can sit mid-sentence ("I,
 er, forgot."), and a questioning "Hmm?" keeps the question's rise.
-Measured (Kokoro frames of 25 ms, `h m m`): "Hmm, let me think." 3/4/3, so both
-m sounds are drawn out to 5 frames (250 ms of hum). Before "…" or "?" Kokoro
-already holds the last m for 14–17 frames, so nothing is drawn out there
-(`stretchSkipped: nothing-to-stretch`).
+Measured (Kokoro frames of 25 ms) for the first `hmm` spelling: "Hmm, let me
+think." 3/4/3 (`h m m`), so both m sounds were drawn out to 5 frames (250 ms of
+hum). As `mmm` it is 3/4/5 frames, drawn out to 5/5/5 (375 ms of hum). Before
+"…" or "?" Kokoro already holds the last m for 14–17 frames, so only the shorter
+m sounds are drawn out there; a lone "Hm." (`mm`, 4/10 frames) has nothing to
+draw out (`stretchSkipped: nothing-to-stretch`).
 Listening: ⏳ not yet listened to (14 Nov 2026).
 
 Affection words keep away from the endearments ("sweetie", "precious",
 "cutie" keep their own `--endearment-bend` lift in address), and "Aww" keeps its
 interjection contour (§2e). "Sooo cute" is spoken as "so cute" (§2h, elongated spellings) and both
 words are drawn out. A plain "so" ("I am so tired", "so you could rest") is left
-alone. Listening: ⏳ not yet listened to (14 Nov 2026).
+alone. Listening (14 Nov 2026): 5 st was chosen over 3 st, and the fond "sooo"
+sounded more genuine a little higher, so the intensifier sits 2 st above the word.
 Listening (9 Nov 2026): "whaaat" and "wooow" sounded great; "really" sounded
 like "reality" until only its stressed vowel was stretched (§2h).
 

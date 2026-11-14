@@ -1,7 +1,9 @@
 """Hesitation row (#83): a thinking "hmmm" or "umm" is a hum, drawn out with a slight dip.
 
 espeak spells hums letter by letter or adds a vowel: "Hmm" → həm ("hum"),
-"Mmm" → ˌɛmˌɛmˈɛm ("em-em-em"), "Hm" → ˌeɪtʃˈɛm ("aitch-em").
+"Mmm" → ˌɛmˌɛmˈɛm ("em-em-em"), "Hm" → ˌeɪtʃˈɛm ("aitch-em"). Spelled `hmm`, the h
+made it sound like "camel" (listening, 14 Nov 2026), so every hum is said with
+closed lips: the h becomes another m (hm → mm, hmm → mmm).
 """
 from pathlib import Path
 import unittest
@@ -17,11 +19,13 @@ import test_contours  # the module, not its TestCase class, so its tests do not 
 class HumPhonemeTests(unittest.TestCase):
     def test_hums_are_spoken_as_their_letters(self):
         cases = [
-            ('Hmm, let me think.', 'həm, lˈɛt mˌiː θˈɪŋk.', 'hmm, lˈɛt mˌiː θˈɪŋk.'),
+            # Listening (14 Nov 2026): "hmm" with its h sounded like "camel"; a hum is closed-lip mmm.
+            ('Hmm, let me think.', 'həm, lˈɛt mˌiː θˈɪŋk.', 'mmm, lˈɛt mˌiː θˈɪŋk.'),
             ('Mmm, yummy.', 'ˌɛmˌɛmˈɛm, jˈʌmi.', 'mmm, jˈʌmi.'),
-            ('Hm.', 'ˌeɪtʃˈɛm.', 'hm.'),
-            ('Well… hmm?', 'wˈɛl… həm?', 'wˈɛl… hmm?'),
-            ('"Hmm," she said.', '“həm,” ʃiː sˈɛd.', '“hmm,” ʃiː sˈɛd.'),
+            ('Hm.', 'ˌeɪtʃˈɛm.', 'mm.'),
+            ('Mm.', 'ˌɛmˈɛm.', 'mm.'),
+            ('Well… hmm?', 'wˈɛl… həm?', 'wˈɛl… mmm?'),
+            ('"Hmm," she said.', '“həm,” ʃiː sˈɛd.', '“mmm,” ʃiː sˈɛd.'),
         ]
         for text, phonemes, expected in cases:
             with self.subTest(text=text):
@@ -53,7 +57,7 @@ class SynthesizeHumTests(unittest.TestCase):
         synthesizer = test_contours.AwwPronunciationTests.synthesizer(self, 'həm.')
         synthesizer.synthesize('Hmm.', 'out.wav')
         args, kwargs = synthesizer.model.create.call_args
-        self.assertEqual((args[0], kwargs['is_phonemes']), ('hmm.', True))
+        self.assertEqual((args[0], kwargs['is_phonemes']), ('mmm.', True))
 
 
 class HesitationRowTests(unittest.TestCase):

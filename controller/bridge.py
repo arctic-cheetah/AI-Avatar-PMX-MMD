@@ -1224,6 +1224,18 @@ def build_parser():
         help='Semitones a surprised "what"/"really" rises (-12 to 12).',
     )
     parser.add_argument(
+        "--hesitation-bend",
+        type=float,
+        default=-1.0,
+        help='Semitones of a thinking "hmmm"/"umm" dip (-12 to 12).',
+    )
+    parser.add_argument(
+        "--hesitation-question-bend",
+        type=float,
+        default=10.0,
+        help='Semitones a questioning "Hmm?" rises to its end (-12 to 12).',
+    )
+    parser.add_argument(
         "--affection-bend",
         type=float,
         default=5.0,
@@ -1367,6 +1379,8 @@ def speech_settings(args):
         endearment_bend=args.endearment_bend,
         surprise_bend=args.surprise_bend,
         affection_bend=args.affection_bend,
+        hesitation_bend=args.hesitation_bend,
+        hesitation_question_bend=args.hesitation_question_bend,
         affection_intensifier_bend=args.affection_intensifier_bend,
         question_rise_bend=args.question_rise_bend,
         quote_voice=args.quote_voice and not plain,

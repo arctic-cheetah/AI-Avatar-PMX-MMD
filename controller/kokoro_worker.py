@@ -32,6 +32,12 @@ AWW_WORD = re.compile(r'a+w{2,}h*', re.IGNORECASE)
 # Any LLM spelling of "aww" (Awwww, Aaww, aWWW, Awwh); a plain "aw" is left alone.
 AWW_FAMILY = re.compile(r'\b(a)(?:a*w{2,}h*|a+w+h*|w+h+)\b', re.IGNORECASE)
 AWW_PHONEMES = re.compile('ɔːʊ?wə')
+# espeak spells some hums out: Mmm → ˌɛmˌɛmˈɛm, Hm → ˌeɪtʃˈɛm. Its own Hmm (həm) is already the hmm
+# sound (listening, 14 Nov 2026, after hmm, mmm and ˈʌm respellings sounded off), so it is kept. A
+# questioning həm? had a "th" sound; said like "Umm" it works, and so does a plain "Hm".
+UMM_PHONEMES = 'ˈʌm'
+HMM_WORD = re.compile(r'hm{1,3}', re.IGNORECASE)
+MM_WORD = re.compile(r'm{2,3}', re.IGNORECASE)
 WORD_EDGES = '.,!?…;:"\'()[]—–-*“”‘’'
 SPAN_PUNCTUATION = frozenset(',.!?…;:—"\'()')
 MAX_EMPHASIS = 3          # emphasised words per sentence
@@ -43,6 +49,7 @@ MAX_STRETCH = 0.125       # seconds one sound may be drawn out to: 5 frames soun
 STRESS_MARKS = ('ˈ', 'ˌ')  # primary first
 VOWELS = frozenset('aeiouyæɐɑɒɔəɘɚɛɜɝɞɤɨɪɯɵøœɶʉʊʌʏᵻː')  # ː lengthens the vowel before it
 HOLDABLE = frozenset('lmnŋɹrɾsʃzʒfvθðjwɫ')  # consonants that can be held; stops cannot be drawn out
+HUMMABLE = frozenset('mn')  # what a word with no vowel ("hmm") draws out
 DIPHTHONGS = frozenset({'aɪ', 'aʊ', 'eɪ', 'oʊ', 'ɔɪ', 'əʊ'})  # both halves are drawn out
 
 
@@ -127,12 +134,29 @@ def canonical_aww(text: str) -> str:
     return AWW_FAMILY.sub(lambda m: 'Aww' if m.group(1) == 'A' else 'aww', text)
 
 
+def hum_phonemes(word: str) -> str | None:
+    """Phonemes for a hum (without its punctuation), or None to keep espeak's.
+
+    "Hm" and a questioning "Hmm?" are said like "Umm"; a plain "Hmm" keeps
+    espeak's həm, and mm/mmm are closed-lip m sounds.
+    """
+    core = word.strip(WORD_EDGES)
+    if HMM_WORD.fullmatch(core):
+        if len(core) == 2 or '?' in word[len(word.rstrip(WORD_EDGES)):]:
+            return UMM_PHONEMES
+        return None
+    return 'm' * len(core) if MM_WORD.fullmatch(core) else None
+
+
 def needs_respelling(text: str) -> bool:
-    return any(AWW_WORD.fullmatch(word.strip(WORD_EDGES)) for word in text.split())
+    return any(AWW_WORD.fullmatch(word.strip(WORD_EDGES)) or hum_phonemes(word) for word in text.split())
 
 
 def respell_phonemes(text: str, phonemes: str) -> str:
-    """Replace espeak's "aw-wuh" for aww/awww with one long ɔːɔː; other words are untouched.
+    """Fix espeak's aww and hums; other words are untouched.
+
+    "aw-wuh" for aww/awww becomes one long ɔːɔː, and a hum (hm, hmm, mm, mmm) is
+    said like espeak's own "Hmm" (hm → həm) or as m sounds (mm, mmm), keeping the punctuation around it.
 
     Only applied when the phoneme words line up with the text's spoken words.
     """
@@ -142,8 +166,14 @@ def respell_phonemes(text: str, phonemes: str) -> str:
     tokens = phonemes.split(' ')
     spoken = (i for i, token in enumerate(tokens) if _is_word(token))
     for word, index in zip(words, spoken):
-        if AWW_WORD.fullmatch(word.strip(WORD_EDGES)):
+        core = word.strip(WORD_EDGES)
+        if AWW_WORD.fullmatch(core):
             tokens[index] = AWW_PHONEMES.sub('ɔːɔː', tokens[index])
+        elif (hum := hum_phonemes(word)) is not None:
+            token = tokens[index]
+            lead = len(token) - len(token.lstrip(WORD_EDGES))
+            tail = len(token.rstrip(WORD_EDGES))
+            tokens[index] = token[:lead] + hum + token[tail:]
     return ' '.join(tokens)
 
 
@@ -214,12 +244,15 @@ def stretch_sounds(word: str) -> list[int]:
     with its length mark or a real diphthong's second half, and a consonant that
     can be held when it ends the word ("wellll", "suuure"). A consonant that
     starts the next syllable is left alone: "really" over i, ə and l sounded
-    like "reality". Stops such as t are never drawn out.
+    like "reality". Stops such as t are never drawn out. A word with no vowel
+    draws out its hum instead (both m sounds of "hmm"), or nothing ("psst").
     """
     after = next((word.index(mark) + 1 for mark in STRESS_MARKS if mark in word), 0)
     first = next((i for i in range(after, len(word)) if word[i] in VOWELS), None)
     if first is None:
-        return []
+        if any(char in VOWELS for char in word):
+            return []
+        return [i for i, char in enumerate(word) if char in HUMMABLE]
     last = first
     if word[first:first + 2] in DIPHTHONGS:
         last += 1

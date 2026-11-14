@@ -364,6 +364,7 @@ Each `Delivery` gives:
 | `moods` | moods it applies in (`None`: any) | any; `SKEPTICAL_MOODS` |
 | `opener_only` | only as the sentence's first word | yes; no |
 | `before` | only right before one of these words (`None`: anywhere) | `None` |
+| `question_bend` | the setting with its own rise when the word ends a question, rising to the end (`None`: the usual question rise wins) | `None` |
 | `standalone` | only when said on its own: followed by `?`, `!`, `,`, `…`, `;` or `:`, or an elongated spelling (a sentence-opening "What do you…" is a question word, not surprise) | no |
 | `bend` | the `ApplioSettings` field with its semitones | `drawl_bend` |
 | `peak` | where the bend peaks (`None`: the default rise-fall) | `None` |
@@ -378,6 +379,7 @@ drawls: a fond "So cute!" is warm, while "So, what now?" is still a drawl.
 | affection | cute, adorable, sweet, lovely, beautiful, gorgeous, wonderful | the same | warm rise-fall (`--affection-bend`, default 5 st, ±12), drawn out |
 | drawl | but, well, so, now, okay (first word) | any | `--drawl-bend` dip (default −2 st), drawn out |
 | drawl | sure, really, right, totally, obviously | skeptical moods | `--drawl-bend` dip (default −2 st), drawn out |
+| hesitation | hmm, hm, umm, um, uh, er, erm | any | slight dip (`--hesitation-bend`, default −1 st, ±12), drawn out; ending a question, said like "Umm" with a rise to the end (`--hesitation-question-bend`, default 10 st) |
 | surprise | what, really, seriously, wow, whoa, said on their own | surprised, shocked, gasp, excited, wtf-dude | rise peaking at 70 % (`--surprise-bend`, default 5 st, ±12), drawn out |
 
 A surprised word that ends a question keeps the question's own rise
@@ -388,6 +390,42 @@ review). A word gets one bend: a surprise word is taken out of the lifts, even
 when it is marked `*Really*` or ends with `!`. Rows other than drawls are
 reported as `delivered` in clip metrics, counting each row word that was bent
 or drawn out.
+**Hums (hesitation):** espeak spells some hums letter by letter: "Mmm" as
+`ˌɛmˌɛmˈɛm` ("em-em-em") and "Hm" as `ˌeɪtʃˈɛm` ("aitch-em"). The Kokoro worker
+says "Hm" like "Umm" (`ˈʌm`), and mm and mmm as closed-lip m sounds
+(`mm`, `mmm`), with or without other voice options, like the "Aww" fix (§2e).
+"Hmm" itself is left as espeak says it, except before "?": a questioning hm or
+hmm is said like "Umm" (`ˈʌm?`). A word with no vowel draws out its hum
+(m or n), so "mmm" is drawn out over its m sounds. Longer spellings ("Hmmmmm")
+are shortened to "hmm" first (elongated spellings, §2h). "Mmm" is not a
+hesitation row word, because "Mmm, yummy." is pleasure. Hesitation words are in
+any mood and can sit mid-sentence ("I, er, forgot.").
+
+A questioning "Hmm?" (a hesitation word that ends a question) gets the row's own
+question rise instead of the usual one: `--hesitation-question-bend` (default
+10 st, ±12) that keeps rising to the end of the word (peak at 100 %, not the
+usual 9 st falling after 70 %). The row field `question_bend` names that
+setting; other rows ("Really?") keep the usual question rise.
+
+Listening (14 Nov 2026), in order: spelled `hmm`, the h sounded like "camel"; a
+closed-lip `mmm` still sounded off; Kokoro's "Umm" (`ˈʌm`) was tried next; then
+espeak's own `həm`, as heard in live speech, turned out to be the hmm sound
+already, so it is kept. "Hmm?" with the usual rise did not sound like a
+question, hence its higher rise. Then `həm?` with that rise had a "th" sound,
+so a questioning hmm is said like "Umm", and 10 st was kept over 12 st. A plain
+"Hm" is said like "Umm" as well.
+Measured (Kokoro frames of 25 ms): "Hmm, let me think." as `h m m` was 3/4/3,
+drawn out to 250 ms of hum; as `mmm` 3/4/5, drawn out to 5/5/5; as `ˈʌm` 3
+frames of ʌ and 5 of m. Before "…" or "?" Kokoro already holds the last m for
+14–17 frames, so only the shorter sounds are drawn out there.
+Measured F0 of "Hmm?" after RVC (thinking mood; first, middle and last fifth of
+the voiced part): the usual rise went 228 → 295 → 283 Hz, falling back at the
+end; with the row's rise, 10 st gives 267 → 266 → 335 Hz and 12 st gives
+267 → 274 → 372 Hz (+5.8 st), still rising at the end. Said like "Umm" at
+10 st: 229 → 256 → 336 Hz (+6.6 st), drawn out over its ʌ.
+Listening (14 Nov 2026): approved as "perfect": the plain "Hmm", "Hm" and the
+rising "Hmm?" said like "Umm" (10 st), with the −1 st dip.
+
 Affection words keep away from the endearments ("sweetie", "precious",
 "cutie" keep their own `--endearment-bend` lift in address), and "Aww" keeps its
 interjection contour (§2e). "Sooo cute" is spoken as "so cute" (§2h, elongated spellings) and both
@@ -596,8 +634,8 @@ drawn-out words, drawls come first. Edge reads the spellings itself, so they
 are left alone.
 Listening (9 Nov 2026): the elongated words sounded very good.
 
-Done: the word-delivery list with surprise "whaaat?" and affection "sooo cute"
-(§2g). Next, in small batches: hesitation "hmmm" and a quotation pace (§2f).
+Done: the word-delivery list with surprise "whaaat?", affection "sooo cute"
+and hesitation "hmmm" (§2g). Next: a quotation pace (§2f).
 
 ## 3. Test on the avatar
 

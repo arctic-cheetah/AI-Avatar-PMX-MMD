@@ -42,7 +42,8 @@ async def audition(args) -> None:
                              interjection_hold=args.interjection_hold,
                              word_lifts=args.word_lifts, word_lift_bend=args.word_lift_bend,
                              endearment_bend=args.endearment_bend, surprise_bend=args.surprise_bend,
-                             affection_bend=args.affection_bend,
+                             affection_bend=args.affection_bend, hesitation_bend=args.hesitation_bend,
+                             hesitation_question_bend=args.hesitation_question_bend,
                              affection_intensifier_bend=args.affection_intensifier_bend,
                              question_rise_bend=args.question_rise_bend,
                              quote_voice=args.quote_voice, quote_bend=args.quote_bend,
@@ -140,6 +141,10 @@ def main() -> None:
     parser.add_argument('--endearment-bend', type=float, default=8.0)
     parser.add_argument('--surprise-bend', type=float, default=5.0,
                         help='Semitones a surprised "what"/"really" rises (-12 to 12).')
+    parser.add_argument('--hesitation-bend', type=float, default=-1.0,
+                        help='Semitones of a thinking "hmmm"/"umm" dip (-12 to 12).')
+    parser.add_argument('--hesitation-question-bend', type=float, default=10.0,
+                        help='Semitones a questioning "Hmm?" rises to its end (-12 to 12).')
     parser.add_argument('--affection-bend', type=float, default=5.0,
                         help='Semitones of a fond word\'s warm rise-fall ("sooo cute", -12 to 12).')
     parser.add_argument('--affection-intensifier-bend', type=float, default=7.0,

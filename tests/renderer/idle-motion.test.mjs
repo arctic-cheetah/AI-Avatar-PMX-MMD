@@ -9,7 +9,7 @@ import {
 import { IDLE_TIMING } from "../../renderer/idle-behaviour.js";
 
 const DEG = Math.PI / 180;
-const ANGLES = ["tilt", "chest", "shoulders", "shoulderLeft", "shoulderRight", "back", "headPitch"];
+const ANGLES = ["tilt", "chest", "shoulders", "shoulderLeft", "shoulderRight", "back", "headPitch", "bobPitch", "bobRoll"];
 const NAMES = Object.keys(ACTIONS);
 
 /** Random numbers from a fixed list, repeating the last one. */
@@ -61,7 +61,7 @@ function asleep(name, seconds = 5) {
   return { kind: motion.sleepAction, poses };
 }
 
-const FACE = ["yawn", "squint", "winkLeft", "winkRight", "mouthLift", "surprise"];
+const FACE = ["yawn", "squint", "winkLeft", "winkRight", "mouthLift", "surprise", "smile", "browRaise"];
 const isRest = (pose) => pose.glance === null && FACE.every((k) => pose[k] === 0) && pose.shiverWave === 0 && ANGLES.every((k) => Math.abs(pose[k]) < 1e-9);
 const peak = (poses, key) => Math.max(...poses.map((p) => Math.abs(p[key])));
 const signedPeak = (poses, key) => poses.reduce((best, p) => (Math.abs(p[key]) > Math.abs(best) ? p[key] : best), 0);
@@ -80,7 +80,8 @@ test("bump eases in, holds and eases out within its duration", () => {
 
 test("one set of actions serves both idle and sleep, with the user's mix: shrugs stay rare", () => {
   assert.deepEqual(NAMES, ["glance", "tilt-left", "tilt-right", "shrug-left", "shrug-right", "shrug-both", "sigh", "stretch-yawn", "nod", "sneeze",
-    "wink-left", "wink-right", "look-around", "shiver", "hiccup", "nodding-off"]);
+    "wink-left", "wink-right", "look-around", "shiver", "hiccup", "nodding-off",
+    "humming-bob", "contented-smile", "eyebrow-raise", "deep-breath"]);
   // The sigh is fixed at 15 % (the user, 14 Nov 2026): new actions never take from it.
   assert.ok(Math.abs(ACTIONS.sigh.weight - 0.15) < 1e-12, "the sigh keeps 15 %");
   const total = Object.values(ACTIONS).reduce((sum, action) => sum + action.weight, 0);
@@ -89,7 +90,8 @@ test("one set of actions serves both idle and sleep, with the user's mix: shrugs
   // glance 1, stretch-and-yawn 3, shrugs and the sneeze half a glance, tilts and the nod like a glance.
   const relative = { glance: 1, "tilt-left": 1, "tilt-right": 1, "shrug-left": 0.5, "shrug-right": 0.5,
     "shrug-both": 0.5, "stretch-yawn": 3, nod: 1, sneeze: 0.5,
-    "wink-left": 0.5, "wink-right": 0.5, "look-around": 1, shiver: 0.5, hiccup: 0.5, "nodding-off": 1 };
+    "wink-left": 0.5, "wink-right": 0.5, "look-around": 1, shiver: 0.5, hiccup: 0.5, "nodding-off": 1,
+    "humming-bob": 1, "contented-smile": 1, "eyebrow-raise": 0.5, "deep-breath": 1 };
   for (const [name, share] of Object.entries(relative)) {
     const expected = (share / relative.glance) * ACTIONS.glance.weight;
     assert.ok(Math.abs(ACTIONS[name].weight - expected) < 1e-9, `${name} keeps its share relative to a glance`);
@@ -325,6 +327,10 @@ const SHOWS = {
   shiver: (poses) => peak(poses, "shiverWave") > 0.3 * DEG,
   hiccup: (poses) => peak(poses, "surprise") > 0.4 && peak(poses, "shoulders") > 1.5 * DEG,
   "nodding-off": (poses) => Math.min(...poses.map((p) => p.headPitch)) < -4 * DEG && peak(poses, "surprise") > 0.3,
+  "humming-bob": (poses) => peak(poses, "bobPitch") > 0.5 * DEG && peak(poses, "smile") > 0.2,
+  "contented-smile": (poses) => peak(poses, "smile") > 0.9,
+  "eyebrow-raise": (poses) => peak(poses, "browRaise") > 0.9,
+  "deep-breath": (poses) => peak(poses, "chest") > 1.5 * DEG,
 };
 
 test("every action also plays while asleep", () => {
@@ -724,4 +730,68 @@ test("every new action has a panel label", () => {
   assert.equal(ACTION_LABELS.shiver, "Little shiver");
   assert.equal(ACTION_LABELS.hiccup, "Hiccup");
   assert.equal(ACTION_LABELS["nodding-off"], "Nodding off");
+});
+
+// ---- #149 part 2: humming bob, contented smile, eyebrow raise, deep breath ----
+
+test("the smile and the eyebrow raise are the user's picks from the grid", () => {
+  assert.deepEqual({ ...FACE_MORPHS.smile }, { "笑い": 0.5, "にこり": 0.6, "口角上げ": 0.6 }, "B: soft smiling eyes");
+  assert.deepEqual({ ...FACE_MORPHS.browRaise }, { "上": 0.8, "びっくり": 0.3 }, "G: curious");
+});
+
+test("a humming bob: a gentle rhythmic head bob and sway with a soft smile, then still", () => {
+  const { kind, poses } = awake("humming-bob", IDLE_MOTION.hum.duration + 1.5);
+  assert.equal(kind, "humming-bob");
+  const bob = poses.map((p) => p.bobPitch);
+  let crossings = 0;
+  for (let i = 1; i < bob.length; i += 1) if (Math.sign(bob[i]) !== Math.sign(bob[i - 1]) && bob[i] !== 0) crossings += 1;
+  assert.ok(crossings >= 8, `bobs to a beat (${crossings} crossings)`);
+  assert.ok(peak(poses, "bobPitch") <= IDLE_MOTION.hum.pitch + 1e-9 && peak(poses, "bobRoll") <= IDLE_MOTION.hum.roll + 1e-9, "gentle");
+  assert.ok(peak(poses, "bobRoll") > 0.3 * DEG, "sways a little too");
+  assert.ok(peak(poses, "smile") > 0.2 && peak(poses, "smile") < 0.5, "a soft smile while humming");
+  assert.ok(isRest(poses.at(-1)) || (Math.abs(poses.at(-1).bobPitch) < 1e-6 && poses.at(-1).smile < 0.01), "then still");
+});
+
+test("a contented smile eases in, holds, and eases out", () => {
+  const { kind, poses } = awake("contented-smile", IDLE_MOTION.contented.keys.at(-1) + 1);
+  assert.equal(kind, "contented-smile");
+  const held = poses.filter((p) => p.smile > 0.9).length / 60;
+  assert.ok(held >= 1.2, `holds the smile (${held.toFixed(2)} s)`);
+  assert.ok(poses.at(-1).smile < 0.01, "eases out");
+});
+
+test("an eyebrow raise: a curious 'oh?' with a small head tilt", () => {
+  const { kind, poses } = awake("eyebrow-raise", IDLE_MOTION.browRaise.keys.at(-1) + 1);
+  assert.equal(kind, "eyebrow-raise");
+  assert.ok(peak(poses, "browRaise") > 0.9, "brows up");
+  assert.ok(peak(poses, "tilt") > 1 * DEG && peak(poses, "tilt") <= IDLE_MOTION.tilt.angle + 1e-9, "tilts a little");
+  assert.ok(poses.at(-1).browRaise < 0.01, "brows down again");
+});
+
+test("a deep breath is slower and fuller than a sigh, with relaxed eyes on the way out", () => {
+  const { kind, poses } = awake("deep-breath", IDLE_MOTION.deepBreath.keys.at(-1) + 1.5);
+  assert.equal(kind, "deep-breath");
+  const topAt = poses.reduce((best, p, i) => (p.chest > poses[best].chest ? i : best), 0);
+  assert.ok(topAt / 60 > IDLE_MOTION.sigh.inhale + 0.4, `breathes in longer than a sigh (top at ${(topAt / 60).toFixed(2)} s)`);
+  assert.ok(peak(poses, "chest") > 1.5 * DEG, "a full breath");
+  assert.ok(peak(poses, "shoulders") > IDLE_MOTION.sigh.shoulders, "shoulders rise more than in a sigh");
+  assert.ok(peak(poses.slice(topAt), "squint") > 0.2, "eyes relax on the way out");
+  assert.ok(ANGLES.every((k) => Math.abs(poses.at(-1)[k]) < 0.05 * DEG) && poses.at(-1).squint < 0.01, "back to rest");
+});
+
+test("part 2 actions are calm, not quick", () => {
+  for (const name of ["humming-bob", "contented-smile", "eyebrow-raise", "deep-breath"]) {
+    assert.ok(!ACTIONS[name].quick, name);
+    const { poses } = awake(name, 6);
+    for (let i = 1; i < poses.length; i += 1) {
+      for (const key of ANGLES) assert.ok(Math.abs(poses[i][key] - poses[i - 1][key]) < 0.25 * DEG, `${name} ${key} at ${i}`);
+    }
+  }
+});
+
+test("part 2 actions have panel labels", () => {
+  assert.equal(ACTION_LABELS["humming-bob"], "Humming bob");
+  assert.equal(ACTION_LABELS["contented-smile"], "Contented smile");
+  assert.equal(ACTION_LABELS["eyebrow-raise"], "Eyebrow raise");
+  assert.equal(ACTION_LABELS["deep-breath"], "Deep breath");
 });

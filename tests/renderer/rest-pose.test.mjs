@@ -7,7 +7,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { RELAXED_REST, relaxArms } from "../../renderer/rest-pose.js";
+import {
+  DEFAULT_REST_POSE, RELAXED_REST, REST_POSES, REST_POSE_KEY, bindRestPoseSetting, relaxArms,
+} from "../../renderer/rest-pose.js";
 import { buildThinkingRig } from "../../renderer/thinking-rig.js";
 import { DIGITS, JOINTS, LOWER_LENGTH, UPPER_LENGTH, fixture } from "./arm-fixture.mjs";
 
@@ -208,4 +210,94 @@ test("the thinking pose still reaches the chin from the relaxed rest and release
   close(at(get("右手首")).distanceTo(head.clone().add(new THREE.Vector3(-0.35, -1.5, 2.05))), 0, "chin wrist target", 1e-5);
   for (const { bone, rest } of entries) bone.quaternion.copy(rest);
   assert.deepEqual(snapshot(mesh), relaxed);
+});
+
+test("arm-in swings the arms toward her middle about her front-to-back axis", () => {
+  const angle = 6 * DEG;
+  for (const swing of [NO_SWING, {}]) {
+    const plain = fixture();
+    relaxArms(plain.mesh, { ...RELAXED_REST, ...swing });
+    const tucked = fixture();
+    relaxArms(tucked.mesh, { ...RELAXED_REST, ...swing, armIn: angle });
+    for (const side of SIDES) {
+      const from = handCentre(plain.mesh, plain.get, side);
+      const to = handCentre(tucked.mesh, tucked.get, side);
+      assert.ok(Math.abs(to.x) < Math.abs(from.x) - 0.3, `${side} hand comes in toward her thigh`);
+      if (swing === NO_SWING) {
+        const a = localDirection(plain.mesh, plain.get(`${side}腕`), plain.get(`${side}ひじ`));
+        const b = localDirection(tucked.mesh, tucked.get(`${side}腕`), tucked.get(`${side}ひじ`));
+        close(a.angleTo(b), angle, `${side} upper arm turns by the arm-in angle`);
+        close(a.z, b.z, `${side} arm keeps its forward lean`);
+      } else {
+        close(to.z, legDepth(tucked.mesh, tucked.get, side, to.y) + RELAXED_REST.handForward, `${side} hand stays on the leg line`);
+      }
+    }
+  }
+});
+
+test("two idle poses: clean is the user's pick C, natural tucks the arms in toward the thighs", () => {
+  assert.deepEqual(Object.keys(REST_POSES), ["idle-pose-clean", "idle-pose-natural"]);
+  assert.equal(REST_POSES["idle-pose-clean"].label, "Idle-pose-clean");
+  assert.equal(REST_POSES["idle-pose-natural"].label, "Idle-pose-natural");
+  assert.deepEqual(REST_POSES["idle-pose-clean"].sizes, RELAXED_REST);
+  assert.equal(RELAXED_REST.armIn, 0, "clean does not tuck the arms in");
+  const natural = REST_POSES["idle-pose-natural"].sizes;
+  assert.ok(natural.armIn > 0 && natural.armIn <= 15 * DEG, "natural tucks the arms in a few degrees");
+  assert.deepEqual({ ...natural, armIn: 0 }, { ...RELAXED_REST }, "otherwise the same as clean");
+  assert.equal(DEFAULT_REST_POSE, "idle-pose-clean");
+});
+
+/** A panel button double: records aria-pressed and click listeners. */
+function button() {
+  const listeners = [];
+  return {
+    pressed: null,
+    setAttribute(name, value) { if (name === "aria-pressed") this.pressed = value; },
+    addEventListener: (type, fn) => { if (type === "click") listeners.push(fn); },
+    click() { for (const fn of listeners) fn(); },
+  };
+}
+function storage(initial = {}) {
+  const map = new Map(Object.entries(initial));
+  return { getItem: (k) => map.get(k) ?? null, setItem: (k, v) => map.set(k, String(v)), map };
+}
+const poseButtons = () => Object.fromEntries(Object.keys(REST_POSES).map((name) => [name, button()]));
+
+test("the idle pose buttons apply the saved pose, clean by default", () => {
+  const applied = [];
+  const buttons = poseButtons();
+  assert.equal(bindRestPoseSetting((name) => applied.push(name), buttons, { local: storage() }), "idle-pose-clean");
+  assert.deepEqual(applied, ["idle-pose-clean"]);
+  assert.equal(buttons["idle-pose-clean"].pressed, "true");
+  assert.equal(buttons["idle-pose-natural"].pressed, "false");
+
+  const saved = [];
+  bindRestPoseSetting((name) => saved.push(name), poseButtons(), { local: storage({ [REST_POSE_KEY]: "idle-pose-natural" }) });
+  assert.deepEqual(saved, ["idle-pose-natural"]);
+  const unknown = [];
+  bindRestPoseSetting((name) => unknown.push(name), poseButtons(), { local: storage({ [REST_POSE_KEY]: "t-pose" }) });
+  assert.deepEqual(unknown, ["idle-pose-clean"], "an unknown saved pose falls back to clean");
+});
+
+test("clicking an idle pose applies it, presses its button and saves it", () => {
+  const applied = [];
+  const local = storage();
+  const buttons = poseButtons();
+  bindRestPoseSetting((name) => applied.push(name), buttons, { local });
+  buttons["idle-pose-natural"].click();
+  assert.deepEqual(applied, ["idle-pose-clean", "idle-pose-natural"]);
+  assert.equal(buttons["idle-pose-natural"].pressed, "true");
+  assert.equal(buttons["idle-pose-clean"].pressed, "false");
+  assert.equal(local.map.get(REST_POSE_KEY), "idle-pose-natural");
+  buttons["idle-pose-natural"].click();
+  assert.equal(applied.length, 2, "the pose already shown is not applied again");
+});
+
+test("blocked storage still lets the idle pose change for the session", () => {
+  const applied = [];
+  const local = { getItem: () => { throw new Error("blocked"); }, setItem: () => { throw new Error("blocked"); } };
+  const buttons = poseButtons();
+  assert.equal(bindRestPoseSetting((name) => applied.push(name), buttons, { local }), "idle-pose-clean");
+  buttons["idle-pose-natural"].click();
+  assert.deepEqual(applied, ["idle-pose-clean", "idle-pose-natural"]);
 });

@@ -18,9 +18,9 @@ it. On the way up to the chin, the right forearm and glove cut through her bust.
 The renderer has no collision, and the rig tests use a synthetic skeleton with
 no mesh, so nothing caught it.
 
-Measured on the PMX at full pose weight: 150–290 right forearm and hand
-vertices sat behind the front surface of the bust, up to 0.87 model units deep.
-The count moves a little with the bust physics.
+Measured on the PMX at full pose weight: 150–330 right forearm and hand
+vertices sat behind the front surface of the bust, up to 0.90 model units deep,
+depending on the camera-driven gaze and the bust physics.
 
 The arms are too short for the forearm to pass in front of the bust. The
 shoulder is at z −0.6 and the front of the bust reaches z 1.88, so an elbow far
@@ -61,7 +61,7 @@ private.
 
 | Option | `chin` | `elbowBend` | `support` | `supportBend` | Right in bust | Left in bust |
 | --- | --- | --- | --- | --- | --- | --- |
-| Before | −0.35, −1.5, 2.05 | −0.35, −1, 0.85 | 0.45, −0.3, 0.85 | 0.7, −1, 0.2 | 150–290 vertices, 0.87 deep | 0 |
+| Before | −0.35, −1.5, 2.05 | −0.35, −1, 0.85 | 0.45, −0.3, 0.85 | 0.7, −1, 0.2 | 150–330 vertices, 0.90 deep | 0 |
 | **A (picked)** | −0.35, −1.5, 2.3 | −0.97, −0.26, 0.8 (75° out) | 1.4, −1.6, 0.3 | 1, −1, 0 | 0 | 0–2 vertices, ≤ 0.14 deep |
 | B | as A | as A | 1.6, −1.7, 0.1 | 1, −1, 0 | 0 | 0–2 vertices |
 | C | as A | 90° out | 1.4, −1.6, 0.3 | 1, −1, 0 | 0 | about 55 vertices, 0.49 deep |
@@ -71,6 +71,18 @@ private.
   from `THINKING_POSE.headGaze` is unchanged.
 - B differs from A only in the left hand, which sits a little lower and closer
   to her middle.
+
+### Check of A
+
+Sampled every frame while the pose eased in from rest, A kept the right arm at
+0 vertices in the bust the whole way, with the forearm at least 0.16 clear of
+its front. The old pose reached 231 vertices, 0.90 deep. At most 1–2 left-hand
+vertices graze the bust's lower edge, up to 0.12 deep, while the bust physics
+settles. The final grid (`grid-final.png`) shows the old pose and A from the
+bust camera, from the front zoomed out, and at three-quarter.
+
+In A the right elbow sticks out to her side and the left hand shows at her
+waist. Both are visible changes from the old silhouette.
 
 ## Test
 

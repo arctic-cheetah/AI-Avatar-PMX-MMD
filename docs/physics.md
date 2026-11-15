@@ -399,8 +399,10 @@ cover it:
   stretching 1, sleepy 0.5. The toggle eases it out and back in the same way,
   so nothing snaps.
 
-`TENTACLE_WAVE` holds the sizes: amplitude **0.25** (the middle candidate,
-until one is picked from the grids below), a 5 s period, travel 0.35 rad per link, lift 0.5.
+`TENTACLE_WAVE` holds the sizes: amplitude **0.4** (picked by eye from the
+grids below on 15 November 2026), a 5 s period, travel 0.35 rad per link,
+lift 0.5. The spike measured 0.25 and 0.5 on either side of it, and both
+stayed clean.
 
 ### Frame order with the wave
 
@@ -423,7 +425,7 @@ idle state returns to active and the wave eases out. The reactions from #182
 ### Checked in the browser
 
 With *Idle after* at 5 s, sway and gaze off, vertex motion in the `下半身`
-frame over 6 s (tips, links 14–17):
+frame over 6 s (tips, links 14–17), measured at the earlier 0.25 default:
 
 | | Speed | Jitter | Buzz | Swing |
 |---|---|---|---|---|

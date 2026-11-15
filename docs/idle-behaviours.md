@@ -254,6 +254,15 @@ eases in, eases out and settles back to rest.
   automatically. They do not limit the buttons, and the buttons never change
   them.
 
+## Tentacle wave (#182)
+
+While she is idle or stretching, a slow wave travels along her four tails;
+while sleepy it is half as big. It eases in over about 1.5 s and eases out
+when she becomes active, including when speech or thinking blocks idle. The
+**Tentacle wave · 触手** toggle (`yidhari.tentacles`, on by default) eases it
+out. How it sits on top of physics is in
+[physics.md](physics.md#tentacle-wave-182).
+
 ## Settings
 
 In **Independent channels**:
@@ -289,6 +298,8 @@ message wakes her.
   expression controller itself.
 - `renderer/idle-motion.js`: the pure `IdleMotion` that turns the idle state
   into a glance target and small bone angles each frame.
+- `renderer/tentacle-motion.js`: the pure `TentacleWave` that turns the idle
+  state into a travelling wave along the tails (#182).
 - `renderer/gaze-tracking.js`: `setIdle(target)`, the idle glance source.
 - `renderer/bridge-client.js`: `onActivity` for every bridge event and
   voice-input state change, and `onAskChange(open)` when an agent ask opens

@@ -18,7 +18,7 @@
 //   Live LLM speech, hand poses, hair/coat physics.
 //
 // Extension points:
-//   restArms()  — add elbow, wrist, or finger rotations here.
+//   restArms()  — elbow, wrist and finger rest rotations live in rest-pose.js.
 //   updateBlink — copy this pattern for other morph weights.
 //   applySway() — copy this pattern for other bone-motion layers.
 //   animate()   — keep per-frame work here, not in the loader callback.
@@ -40,6 +40,8 @@ import { LastSpeechReplay, dropQueuedReplay, replayQueueItems } from "./speech-r
 import { FillerSession } from "./filler-session.js";
 import { ThinkingPose, THINKING_POSE, headGazeScale } from "./thinking-pose.js";
 import { buildThinkingRig } from "./thinking-rig.js";
+import { REST_POSES, bindRestPoseSetting, relaxArms } from "./rest-pose.js";
+import { buildHandDriftRig } from "./hand-drift-rig.js";
 import { GazeController, normalisePointer, clampEyePitch } from "./gaze-tracking.js";
 import { CameraGaze } from "./camera-gaze.js";
 import { CameraControls } from "./camera-controls.js";
@@ -52,7 +54,9 @@ import { addSeeThroughBrows, bindSeeThroughBrowsToggle } from "./see-through-bro
 import { installCollapsiblePanel } from "./collapsible-panel.js";
 import { FrameLoop, PopOut, popupWindow } from "./pop-out.js";
 import { IDLE_STATE_LABELS, IdleController, bindIdleSettings, idleBlocked } from "./idle-behaviour.js";
-import { ACTION_LABELS, FACE_MORPHS, IDLE_MOTION, IdleMotion, bindActionSettings, manualPlayBlocked } from "./idle-motion.js";
+import {
+  ACTION_LABELS, ARM_CHANNELS, FACE_MORPHS, IDLE_MOTION, IdleMotion, bindActionSettings, bindArmDriftSetting, manualPlayBlocked,
+} from "./idle-motion.js";
 import { fetchTurn, turnFile } from "./turn-replay.js";
 import { createAmmoLoader } from "./ammo-loader.js";
 import { filterPhysics } from "./physics-groups.js";
@@ -276,6 +280,8 @@ function actionCheckboxes(labels, container, prefix) {
   return boxes;
 }
 bindActionSettings(idleMotion, actionCheckboxes(ACTION_LABELS, "#actions", "action"));
+// Arm drift (#193) is always on while idle, not a picked action, so it has its own tick and key.
+bindArmDriftSetting(idleMotion, actionCheckboxes({ "arm-drift": "Arm drift" }, "#actions", "idle")["arm-drift"]);
 
 /**
  * One play button per action label (#164), disabled until refreshActionPlay
@@ -303,6 +309,22 @@ function actionPlayButtons(labels, container) {
   return buttons;
 }
 const actionButtons = actionPlayButtons(ACTION_LABELS, "#action-play-controls");
+/** The idle pose she rests in (#199): Idle-pose-clean or Idle-pose-natural, saved per browser. */
+let restPose = "idle-pose-clean";
+const restPoseButtons = {};
+for (const [name, { label }] of Object.entries(REST_POSES)) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.dataset.restPose = name;
+  button.textContent = label;
+  document.querySelector("#rest-pose-controls").append(button);
+  restPoseButtons[name] = button;
+}
+bindRestPoseSetting((name) => {
+  restPose = name;
+  // Before the model loads, restArms() picks the pose up.
+  previewRest();
+}, restPoseButtons);
 const actionPlayStatus = document.querySelector("#action-play-status");
 let shownActionPlay = null;
 
@@ -348,6 +370,23 @@ const IDLE_BONES = Object.freeze([
 ]);
 /** @type {{ bone: THREE.Bone, rest: THREE.Quaternion | null, pitch?: [string, number][], roll?: [string, number][] }[]} */
 let idleBones = [];
+/**
+ * Arm drift bones (#193). Her right arm is on the left of the screen. The
+ * upper arms turn in the shoulder's frame (x swings forward and back, z
+ * lifts outward) and the elbows bend about their own y. Signs checked in
+ * front and side grids. The forearms, wrists and fingers use axes found from
+ * the rest pose instead (hand-drift-rig.js).
+ */
+const ARM_BONES = Object.freeze([
+  { name: "右腕", frame: "parent", x: [["armSwayLeft", 1]], z: [["armOutLeft", -1]] },
+  { name: "左腕", frame: "parent", x: [["armSwayRight", 1]], z: [["armOutRight", 1]] },
+  { name: "右ひじ", frame: "local", y: [["elbowLeft", 1]] },
+  { name: "左ひじ", frame: "local", y: [["elbowRight", -1]] },
+]);
+/** @type {{ bone: THREE.Bone, rest: THREE.Quaternion | null, frame: string, x?: [string, number][], y?: [string, number][], z?: [string, number][] }[]} */
+let armBones = [];
+/** Forearm, wrist and finger drift entries (natural hands, #199), with a rest copy where nothing else rewrites the bone. */
+let handBones = [];
 const idleEuler = new THREE.Euler();
 const idleQuat = new THREE.Quaternion();
 // Only conversation keeps her awake: sent chat, voice input and bridge events.
@@ -477,6 +516,54 @@ function setupIdleMotion(object) {
   for (const { name, pitch, roll, own } of IDLE_BONES) {
     const bone = object.skeleton?.getBoneByName(name);
     if (bone) idleBones.push({ bone, rest: own ? bone.quaternion.clone() : null, pitch, roll });
+  }
+  setupArmDrift(object);
+}
+
+/**
+ * Capture the arm drift bones (#193) on top of the arms' rest pose.
+ * @param {THREE.SkinnedMesh} object Loaded PMX mesh.
+ * @returns {void}
+ */
+function setupArmDrift(object) {
+  // The thinking rig rewrites its arm bones from rest every frame; others keep their own rest.
+  const rewritten = new Set(thinkingBones.map(({ bone }) => bone));
+  armBones = [];
+  for (const { name, ...axes } of ARM_BONES) {
+    const bone = object.skeleton?.getBoneByName(name);
+    if (bone) armBones.push({ bone, rest: rewritten.has(bone) ? null : bone.quaternion.clone(), ...axes });
+  }
+  // A base finger joint both curls and spreads: only its first entry resets it to rest.
+  const restored = new Set(rewritten);
+  handBones = buildHandDriftRig(object).map((entry) => {
+    const rest = restored.has(entry.bone) ? null : entry.bone.quaternion.clone();
+    restored.add(entry.bone);
+    return { ...entry, rest };
+  });
+}
+
+/**
+ * Multiply the arm drift (#193) on top of the thinking pose, which owns the
+ * arms: the drift fades as the hand goes to the chin and returns as it drops.
+ * @returns {void}
+ */
+function applyArmDrift() {
+  const fade = 1 - thinkingPose.weight;
+  const sum = (parts = []) => fade * parts.reduce((total, [key, sign]) => total + (idlePose[key] ?? 0) * sign, 0);
+  for (const { bone, rest, frame, x, y, z } of armBones) {
+    if (rest) bone.quaternion.copy(rest);
+    const ax = sum(x);
+    const ay = sum(y);
+    const az = sum(z);
+    if (ax === 0 && ay === 0 && az === 0) continue;
+    idleQuat.setFromEuler(idleEuler.set(ax, ay, az, "XYZ"));
+    if (frame === "parent") bone.quaternion.premultiply(idleQuat);
+    else bone.quaternion.multiply(idleQuat);
+  }
+  for (const { bone, rest, axis, channel, scale } of handBones) {
+    if (rest) bone.quaternion.copy(rest);
+    const angle = fade * scale * (idlePose[channel] ?? 0);
+    if (angle !== 0) bone.quaternion.multiply(idleQuat.setFromAxisAngle(axis, angle));
   }
 }
 
@@ -969,8 +1056,14 @@ function hangBone(bone, worldTarget) {
   bone.quaternion.setFromUnitVectors(child.position.clone().normalize(), parentDown);
 }
 
+/** The arm and hand bones the rest pose sets, as restArms() lowered them (#199). */
+const ARM_REST_BONE = /^(?:右|左)(?:腕$|ひじ$|手首$|(?:親指|人指|中指|薬指|小指)[０１２３]$)/;
+/** @type {Map<THREE.Bone, THREE.Quaternion>} */
+let loweredArms = new Map();
+
 /**
- * Lower both upper arms from the T-pose while leaving elbows and fingers bound.
+ * Lower both upper arms from the T-pose, then relax the elbows, wrists and
+ * fingers (#199, see docs/rest-pose.md).
  * The target directions point mostly down, slightly outward and forward.
  * @param {THREE.SkinnedMesh} object Loaded PMX mesh.
  * @returns {void}
@@ -986,6 +1079,23 @@ function restArms(object) {
     hangBone(right, new THREE.Vector3(-0.28, -1, 0.16));
   }
   object.updateMatrixWorld(true);
+  loweredArms = new Map((object.skeleton?.bones ?? []).filter((bone) => ARM_REST_BONE.test(bone.name))
+    .map((bone) => [bone, bone.quaternion.clone()]));
+  relaxArms(object, REST_POSES[restPose].sizes);
+}
+
+/**
+ * Preview other rest sizes (#199): put the lowered arms back, relax them with
+ * `sizes`, and rebuild the layers that cache the arms' rest on top of it.
+ * @param {object} [sizes] Radians, as RELAXED_REST; defaults to the chosen idle pose.
+ * @returns {void}
+ */
+function previewRest(sizes = REST_POSES[restPose].sizes) {
+  if (!mesh) return;
+  for (const [bone, rest] of loweredArms) bone.quaternion.copy(rest);
+  relaxArms(mesh, sizes);
+  setupThinkingPose(mesh);
+  setupArmDrift(mesh);
 }
 
 /**
@@ -1039,6 +1149,7 @@ function updateIdle(delta) {
   idlePose = globalThis.__yidhariIdlePose
     ? { glance: null, tilt: 0, chest: 0, shoulders: 0, shoulderLeft: 0, shoulderRight: 0, back: 0, headPitch: 0, yawn: 0, squint: 0, winkLeft: 0, winkRight: 0, mouthLift: 0, surprise: 0,
       shiver: 0, shiverWave: 0, smile: 0, browRaise: 0, hum: 0, bobPitch: 0, bobRoll: 0, lean: 0, shy: 0, exhale: 0,
+      armDrift: 0, ...Object.fromEntries(ARM_CHANNELS.map((key) => [key, 0])),
       ...globalThis.__yidhariIdlePose }
     : idleMotion.update(delta.eased, idle.state, idle.stateTime, idle.timing.sleepActionEvery);
   gaze.setIdle(idlePose.glance);
@@ -1578,6 +1689,8 @@ function onModelLoaded(loaded, data) {
       relaxAfterSpeech();
     },
     frameCamera,
+    /** Reapply the relaxed rest pose with other sizes for comparison grids (#199). */
+    relax: previewRest,
     /**
      * Hold one morph combination still, above the mood loop, for visual checks.
      * @param {Record<string, number>} morphs PMX morph names and weights.
@@ -1918,6 +2031,7 @@ function animate() {
   applyGaze(delta);
   applySway(now / 1000, delta);
   applyIdleMotion();
+  applyArmDrift();
   applyPhysics(delta);
   audition?.update(delta);
   audition?.apply();

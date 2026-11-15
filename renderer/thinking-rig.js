@@ -116,6 +116,8 @@ function poseHand(mesh, side, forward, normal, curlAmount) {
  * - elbowBend: which way the right elbow bends.
  * - support: left wrist target, from the posed right elbow (under the bust).
  * - supportBend: which way the left elbow bends.
+ * - fist: the right hand's finger direction, in world space.
+ * - fistPalm: the right palm normal, in world space.
  */
 export const THINKING_ARM = Object.freeze({
   // The wrist sits 0.25 further forward than the jaw needs, so the forearm clears the bust.
@@ -125,6 +127,8 @@ export const THINKING_ARM = Object.freeze({
   // The left forearm folds across her waist under the bust; a hand at the raised elbow would cross it.
   support: Object.freeze([1.4, -1.6, 0.3]),
   supportBend: Object.freeze([1, -1, 0]),
+  fist: Object.freeze([0.15, 1, -0.1]),
+  fistPalm: Object.freeze([0, 0, -1]),
 });
 
 /**
@@ -133,7 +137,7 @@ export const THINKING_ARM = Object.freeze({
  * @param {Partial<typeof THINKING_ARM>} [arm] Overrides for the arm targets, for previews.
  */
 export function buildThinkingRig(mesh, arm = {}) {
-  const { chin, elbowBend, support, supportBend } = { ...THINKING_ARM, ...arm };
+  const { chin, elbowBend, support, supportBend, fist, fistPalm } = { ...THINKING_ARM, ...arm };
   const head = mesh.skeleton?.getBoneByName("頭");
   if (!head) return [];
   const entries = mesh.skeleton.bones.filter((bone) => /^(?:右|左)(?:腕$|ひじ$|手首$|(?:親指|人指|中指|薬指|小指)[０１２３]$)/.test(bone.name))
@@ -144,7 +148,7 @@ export function buildThinkingRig(mesh, arm = {}) {
     const chinWrist = head.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(...chin));
     const right = poseArm(mesh, "右", chinWrist, new THREE.Vector3(...elbowBend));
     if (right) {
-      poseHand(mesh, "右", new THREE.Vector3(0.15, 1, -0.1), new THREE.Vector3(0, 0, -1), 0.8);
+      poseHand(mesh, "右", new THREE.Vector3(...fist), new THREE.Vector3(...fistPalm), 0.8);
       const supportWrist = right.elbow.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(...support));
       const left = poseArm(mesh, "左", supportWrist, new THREE.Vector3(...supportBend));
       if (left) poseHand(mesh, "左", new THREE.Vector3(-1, 0.1, 0), new THREE.Vector3(0, 1, -0.2), 0.45);

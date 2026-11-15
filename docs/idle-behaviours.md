@@ -264,11 +264,12 @@ top of it.
 | Channel (screen side) | Bone | Motion | Size |
 | --- | --- | --- | --- |
 | `armSwayLeft/Right` | `右腕` / `左腕` | Swings forward and back, in the shoulder's frame | ±2.5° |
-| `armOutLeft/Right` | `右腕` / `左腕` | Lifts away from the body, never toward it | 0–2° |
+| `armOutLeft/Right` | `右腕` / `左腕` | Sways away from the body and back in past rest, less far in than out | −1.5° (in) to 2° (out) |
 | `elbowLeft/Right` | `右ひじ` / `左ひじ` | Bends a little, never past straight | 0–4° |
 | `forearmLeft/Right` | `右手捩` / `左手捩` | Rolls softly about the forearm, on the twist bone | ±4° |
 | `wristLeft/Right` | `右手首` / `左手首` | Tips toward and away from the palm, following the elbow 1.2 s later | ±3° |
-| `curlLeft/Right` | `親指`–`小指` `１–３` | Every finger joint loosens and curls around the rest curl, scaled like it (thumb 0.45 to pinky 1.1) | ±3° per joint |
+| `curl{Thumb,Index,Middle,Ring,Little}Left/Right` | `親指`–`小指` `１–３` | Each finger's joints loosen and curl around the rest curl, scaled like it (thumb 0.45 to pinky 1.1), rippling from the index to the little finger | ±3° per joint |
+| `spreadLeft/Right` | `人指`–`小指` `１` | The fingers fan apart and close: index and little finger fully, middle and ring by 0.35 | ±2.5° |
 
 **Natural hands** (#199 follow-up). The user asked for the lower arms and
 hands to move naturally, not just the upper arms. Three things make a still
@@ -281,6 +282,17 @@ hand look alive:
   The elbow only bends one way, so its 0–4° is mapped to the wrist's ±3°.
 - The fingers curl and loosen on their own slow waves (13–29 s), which do not
   follow the elbow, so the hand never freezes in one shape.
+- **Finger sway** (the user, 15 Nov 2026: "make the finger sway a little").
+  Each finger replays the index finger's curl 0.35 s after the finger before
+  it (`rippleLag`), so a curl runs across the hand like a wave. The thumb
+  curls with the index finger. The fingers also fan apart and close on a
+  separate wave (11–23 s, `spread`), about the palm normal at their base
+  joints.
+- **Inward sway** (the same request). The arms used to sway only outward, so
+  they could never press into the body. Now they also sway in past rest, by
+  at most 1.5° (`in`) against 2° out. With the hands resting 0.3 ahead of the
+  leg line, 1.5° in must not push the hands into the thighs, even at a 2×
+  margin, in front, side and three-quarter grids.
 
 The axes come from `buildHandDriftRig()` in `renderer/hand-drift-rig.js`,
 found once from the rest pose: the forearm's own direction for the roll, the
@@ -290,11 +302,11 @@ they work whatever the PMX's local bone axes are. Without finger bones there
 is no palm, so only the forearm rolls.
 
 - **Slow and never on a loop.** Each channel adds two sine waves with
-  periods of 13–47 s (up to 53 s on the right) that do not divide evenly.
+  periods of 11–47 s (up to 53 s on the right) that do not divide evenly.
   The right of the screen runs 13 % slower and on its own phases, so the two arms are never mirrored or
   in step. One frame moves each angle by less than 0.02°.
 - **Eased with the idle state.** `IdleMotion.update()` returns the drift's
-  weight as `armDrift` and the twelve angles, already scaled by it. A spring
+  weight as `armDrift` and the twenty-two angles, already scaled by it. A spring
   (rate 2, about 2 s) takes the weight to 1 while idle or stretching, 0.6
   while sleepy or waking, and 0 while active. Blocking (speech, thinking, an
   open ask, a streaming reply or a morph preview) makes her active, so the
@@ -314,7 +326,7 @@ is no palm, so only the forearm rolls.
   turns it off. It eases out rather than stopping. It is saved as
   `yidhari.arm-drift` (`0` = off) and is on by default. It does not affect
   the action picks.
-- For previews and grids, `__yidhariIdlePose` can hold the twelve arm angles
+- For previews and grids, `__yidhariIdlePose` can hold the twenty-two arm angles
   with `armDrift: 1`.
 
 ## Settings

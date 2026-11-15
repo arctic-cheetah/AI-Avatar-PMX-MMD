@@ -11,7 +11,11 @@ import { RELAXED_REST } from "./rest-pose.js";
 
 /** Her right arm is on the left of the screen, as with the shrugs. */
 const SIDES = Object.freeze([["右", "Left"], ["左", "Right"]]);
-const FINGER = /^(?:右|左)(親指|人指|中指|薬指|小指)[１２３]$/;
+const FINGER = /^(?:右|左)(親指|人指|中指|薬指|小指)([１２３])$/;
+/** Channel names per finger, as the arm drift names them. */
+const FINGER_NAMES = Object.freeze({ "親指": "Thumb", "人指": "Index", "中指": "Middle", "薬指": "Ring", "小指": "Little" });
+/** How far each base joint fans for a positive spread: toward the thumb side is positive. */
+const FAN = Object.freeze({ "人指": 1, "中指": 0.35, "薬指": -0.35, "小指": -1 });
 
 const at = (object) => object.getWorldPosition(new THREE.Vector3());
 
@@ -51,14 +55,25 @@ export function buildHandDriftRig(mesh) {
       channel: `wrist${screen}`,
       scale: 1,
     });
+    // The thumb side of the hand, across the knuckles: the fingers fan toward and away from it.
+    const index = get(`${side}人指１`);
+    const little = get(`${side}小指１`);
+    const thumbSide = at(index).sub(at(little)).normalize();
     for (const bone of mesh.skeleton.bones) {
       const match = FINGER.exec(bone.name);
       if (!match || !bone.name.startsWith(side)) continue;
+      const [, digit, joint] = match;
       const child = bone.children.find((entry) => entry.isBone) ?? bone.children[0];
-      const along = child ? at(child).sub(at(bone)) : at(bone).sub(at(bone.parent));
-      const axis = new THREE.Vector3().crossVectors(along.normalize(), frame.palm);
-      if (axis.lengthSq() < 1e-12) continue;
-      entries.push({ bone, axis: localAxis(bone, axis), channel: `curl${screen}`, scale: RELAXED_REST.digits[match[1]] ?? 1 });
+      const along = (child ? at(child).sub(at(bone)) : at(bone).sub(at(bone.parent))).normalize();
+      const curl = new THREE.Vector3().crossVectors(along, frame.palm);
+      if (curl.lengthSq() < 1e-12) continue;
+      entries.push({
+        bone, axis: localAxis(bone, curl), channel: `curl${FINGER_NAMES[digit]}${screen}`, scale: RELAXED_REST.digits[digit] ?? 1,
+      });
+      const spread = new THREE.Vector3().crossVectors(along, thumbSide);
+      if (joint === "１" && FAN[digit] && spread.lengthSq() > 1e-12) {
+        entries.push({ bone, axis: localAxis(bone, spread), channel: `spread${screen}`, scale: FAN[digit] });
+      }
     }
   }
   return entries;

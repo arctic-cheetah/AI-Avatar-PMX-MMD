@@ -517,10 +517,13 @@ function setupArmDrift(object) {
     const bone = object.skeleton?.getBoneByName(name);
     if (bone) armBones.push({ bone, rest: rewritten.has(bone) ? null : bone.quaternion.clone(), ...axes });
   }
-  handBones = buildHandDriftRig(object).map((entry) => ({
-    ...entry,
-    rest: rewritten.has(entry.bone) ? null : entry.bone.quaternion.clone(),
-  }));
+  // A base finger joint both curls and spreads: only its first entry resets it to rest.
+  const restored = new Set(rewritten);
+  handBones = buildHandDriftRig(object).map((entry) => {
+    const rest = restored.has(entry.bone) ? null : entry.bone.quaternion.clone();
+    restored.add(entry.bone);
+    return { ...entry, rest };
+  });
 }
 
 /**

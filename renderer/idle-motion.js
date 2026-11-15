@@ -130,7 +130,9 @@ export const IDLE_MOTION = Object.freeze({
    */
   armDrift: Object.freeze({
     sway: 2.5 * DEG,
+    /** The arms sway out up to `out` and back in past rest up to `in` (the user, 15 Nov 2026). */
     out: 2 * DEG,
+    in: 1.5 * DEG,
     elbow: 4 * DEG,
     /** The wrist replays the elbow's wave this many seconds later (natural hands, #199). */
     wrist: 3 * DEG,
@@ -138,12 +140,17 @@ export const IDLE_MOTION = Object.freeze({
     /** The forearm rolls on its twist bone; the finger curl is per joint, scaled like the rest curl. */
     forearm: 4 * DEG,
     curl: 3 * DEG,
+    /** Each finger replays the index finger's curl this much later than the one before it. */
+    rippleLag: 0.35,
+    /** The fingers fan apart and close (finger sway, the user, 15 Nov 2026). */
+    spread: 2.5 * DEG,
     periods: Object.freeze({
       sway: Object.freeze([23, 37]),
       out: Object.freeze([29, 47]),
       elbow: Object.freeze([19, 31]),
       forearm: Object.freeze([21, 39]),
       curl: Object.freeze([13, 29]),
+      spread: Object.freeze([11, 23]),
     }),
     mix: Object.freeze([0.6, 0.4]),
     rightScale: 1.13,
@@ -206,14 +213,18 @@ const LIMITS = Object.freeze({
 });
 
 /** Arm drift parts and the IDLE_MOTION.armDrift size each one uses (#193). */
+/** Fingers by screen-independent name, and how many ripple steps each curls after the index finger. */
+const RIPPLE = Object.freeze({ Thumb: 0, Index: 0, Middle: 1, Ring: 2, Little: 3 });
 const ARM_PARTS = Object.freeze({
-  armSway: "sway", armOut: "out", elbow: "elbow", wrist: "wrist", forearm: "forearm", curl: "curl",
+  armSway: "sway", armOut: "out", elbow: "elbow", wrist: "wrist", forearm: "forearm",
+  ...Object.fromEntries(Object.keys(RIPPLE).map((finger) => [`curl${finger}`, "curl"])),
+  spread: "spread",
 });
-const ONE_WAY = new Set(["out", "elbow"]);
+const ONE_WAY = new Set(["elbow"]);
 /** Parts without their own wave: the wrist replays the elbow's, `wristLag` seconds later. */
 const FOLLOWS = Object.freeze({ wrist: "elbow" });
 
-/** The twelve arm drift angles, named by screen side like the shrugs. */
+/** The twenty-two arm drift angles, named by screen side like the shrugs. */
 export const ARM_CHANNELS = Object.freeze(Object.keys(ARM_PARTS).flatMap((part) => [`${part}Left`, `${part}Right`]));
 
 /**
@@ -242,9 +253,17 @@ export function armDriftAngles(clock, amount) {
         angles[part + side] = 0;
         continue;
       }
-      const wave = FOLLOWS[key] ? waveOf(FOLLOWS[key], right, clock - drift.wristLag) : waveOf(key, right, clock);
+      const ripple = RIPPLE[part.slice(4)] ?? 0;
+      const wave = FOLLOWS[key]
+        ? waveOf(FOLLOWS[key], right, clock - drift.wristLag)
+        : waveOf(key, right, ripple ? clock - ripple * drift.rippleLag : clock);
       const size = drift[key] * amount;
-      angles[part + side] = ONE_WAY.has(key) ? size * (0.5 + 0.5 * wave) : size * wave;
+      if (key === "out") {
+        // From `in` toward the body to `out` away from it.
+        angles[part + side] = amount * (-drift.in + (drift.in + drift.out) * (0.5 + 0.5 * wave));
+      } else {
+        angles[part + side] = ONE_WAY.has(key) ? size * (0.5 + 0.5 * wave) : size * wave;
+      }
     }
   }
   return angles;

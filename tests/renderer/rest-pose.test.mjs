@@ -61,7 +61,7 @@ function palmNormal(get, side) {
 }
 
 test("the relaxed sizes stay gentle", () => {
-  assert.ok(RELAXED_REST.elbow >= 5 * DEG && RELAXED_REST.elbow <= 20 * DEG, "elbow 5-20°");
+  assert.ok(RELAXED_REST.elbow > 0 && RELAXED_REST.elbow <= 20 * DEG, "elbow up to 20°");
   assert.ok(RELAXED_REST.wrist >= 0 && RELAXED_REST.wrist <= 10 * DEG, "wrist up to 10°");
   assert.ok(RELAXED_REST.curl > 0 && RELAXED_REST.curl <= 25 * DEG, "curl up to 25° per joint");
   assert.ok(Math.abs(RELAXED_REST.handForward) <= 0.5, "hands near the leg line");
@@ -127,16 +127,26 @@ test("without leg bones the arms are not swung", () => {
   }
 });
 
+test("the user's pick: a hint of elbow bend, a straight wrist and the hands on the leg line", () => {
+  // Option C (15 Nov 2026): the earlier 12° bend, 6° tip and 0.3 lead looked like carrying something.
+  close(RELAXED_REST.elbow, 3 * DEG, "elbow");
+  assert.equal(RELAXED_REST.wrist, 0);
+  close(RELAXED_REST.curl, 15 * DEG, "curl");
+  assert.equal(RELAXED_REST.handForward, 0);
+});
+
 test("the wrists tip the hands toward the palm by the wrist angle", () => {
+  // The default keeps the wrist straight, so test the tip with a size of its own.
+  const tip = 6 * DEG;
   const straight = fixture();
   relaxArms(straight.mesh, { ...RELAXED_REST, ...NO_SWING, wrist: 0, curl: 0 });
   const relaxed = fixture();
-  relaxArms(relaxed.mesh, { ...RELAXED_REST, ...NO_SWING, curl: 0 });
+  relaxArms(relaxed.mesh, { ...RELAXED_REST, ...NO_SWING, wrist: tip, curl: 0 });
   for (const side of SIDES) {
     const hand = (rig) => at(rig.get(`${side}中指１`)).sub(at(rig.get(`${side}手首`))).normalize();
     const from = hand(straight);
     const to = hand(relaxed);
-    close(to.angleTo(from), RELAXED_REST.wrist, `${side} hand tips by the wrist angle`);
+    close(to.angleTo(from), tip, `${side} hand tips by the wrist angle`);
     assert.ok(to.clone().sub(from).dot(palmNormal(straight.get, side)) > 0, `${side} hand tips toward the palm`);
   }
 });

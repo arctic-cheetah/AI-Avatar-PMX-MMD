@@ -35,7 +35,7 @@ export const RELAXED_REST = Object.freeze({
  */
 export const REST_POSES = Object.freeze({
   "idle-pose-clean": Object.freeze({ label: "Idle-pose-clean", sizes: RELAXED_REST }),
-  "idle-pose-natural": Object.freeze({ label: "Idle-pose-natural", sizes: Object.freeze({ ...RELAXED_REST, armIn: 6 * DEG }) }),
+  "idle-pose-natural": Object.freeze({ label: "Idle-pose-natural", sizes: Object.freeze({ ...RELAXED_REST, armIn: 4 * DEG }) }),
 });
 export const DEFAULT_REST_POSE = "idle-pose-clean";
 export const REST_POSE_KEY = "yidhari.rest-pose";

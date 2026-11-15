@@ -16,7 +16,8 @@ const DEG = Math.PI / 180;
  * elbow bend, a straight wrist and the hands on the leg line, because a 12°
  * bend, 6° tip and 0.3 lead looked like carrying something. `digits` scales the
  * curl per finger, more toward the pinky. `handForward` is how far (model units)
- * each hand hangs ahead of its leg line; null leaves the arms unswung.
+ * each hand hangs ahead of its leg line; null leaves the arms unswung. `armIn`
+ * swings the arms toward her middle (about her front-to-back axis) before that.
  */
 export const RELAXED_REST = Object.freeze({
   elbow: 3 * DEG,
@@ -24,7 +25,20 @@ export const RELAXED_REST = Object.freeze({
   curl: 15 * DEG,
   digits: Object.freeze({ "親指": THUMB_CURL, "人指": 0.8, "中指": 0.9, "薬指": 1, "小指": 1.1 }),
   handForward: 0,
+  armIn: 0,
 });
+
+/**
+ * The idle poses the panel can pick (the user, 15 Nov 2026): clean is pick C,
+ * natural also tucks the arms in so the hands rest near the thighs in the
+ * front view, allowing a little clipping as a person's hands would.
+ */
+export const REST_POSES = Object.freeze({
+  "idle-pose-clean": Object.freeze({ label: "Idle-pose-clean", sizes: RELAXED_REST }),
+  "idle-pose-natural": Object.freeze({ label: "Idle-pose-natural", sizes: Object.freeze({ ...RELAXED_REST, armIn: 6 * DEG }) }),
+});
+export const DEFAULT_REST_POSE = "idle-pose-clean";
+export const REST_POSE_KEY = "yidhari.rest-pose";
 
 /** The most the arms swing to meet the legs, so an odd rig never flails. */
 const SWING_LIMIT = 20 * DEG;
@@ -94,7 +108,7 @@ function swingToLeg(mesh, side, ahead) {
  * @returns {void}
  */
 export function relaxArms(mesh, sizes = RELAXED_REST) {
-  const { elbow, wrist, curl, digits, handForward } = { ...RELAXED_REST, ...sizes };
+  const { elbow, wrist, curl, digits, handForward, armIn } = { ...RELAXED_REST, ...sizes };
   const get = (name) => mesh.skeleton?.getBoneByName(name);
   mesh.updateMatrixWorld(true);
   // Her front is the mesh's +z.
@@ -113,7 +127,46 @@ export function relaxArms(mesh, sizes = RELAXED_REST) {
       if (frame) curlFingers(mesh, side, frame.palm, (digit) => curl * (digits[digit] ?? 1));
       wristBone.updateWorldMatrix(false, true);
     }
+    // Her right arm hangs on her -x side, so turning it +armIn about her front axis brings it in.
+    const arm = get(`${side}腕`);
+    if (armIn && arm) turnWorld(arm, front, side === "右" ? armIn : -armIn);
     if (handForward !== null && handForward !== undefined) swingToLeg(mesh, side, handForward);
   }
   mesh.updateMatrixWorld(true);
+}
+
+/**
+ * Bind the idle pose buttons: apply the saved pose (clean when none is saved
+ * or it is unknown), press its button, and on a click apply and save another.
+ * @param {(name: string) => void} apply Shows a REST_POSES pose.
+ * @param {Record<string, { setAttribute(name: string, value: string): void, addEventListener(type: string, fn: () => void): void }>} buttons By pose name.
+ * @param {{ local?: Storage }} [options]
+ * @returns {string} The pose applied now.
+ */
+export function bindRestPoseSetting(apply, buttons, { local } = {}) {
+  try {
+    local ??= globalThis.localStorage;
+  } catch { /* Storage access itself can throw. */ }
+  let current = DEFAULT_REST_POSE;
+  try {
+    const saved = local?.getItem(REST_POSE_KEY);
+    if (saved && Object.hasOwn(REST_POSES, saved)) current = saved;
+  } catch { /* Blocked: clean. */ }
+  const show = () => {
+    for (const [name, button] of Object.entries(buttons)) button?.setAttribute("aria-pressed", String(name === current));
+  };
+  apply(current);
+  show();
+  for (const [name, button] of Object.entries(buttons)) {
+    button?.addEventListener("click", () => {
+      if (name === current || !Object.hasOwn(REST_POSES, name)) return;
+      current = name;
+      apply(name);
+      show();
+      try {
+        local?.setItem(REST_POSE_KEY, name);
+      } catch { /* Session-only. */ }
+    });
+  }
+  return current;
 }

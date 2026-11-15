@@ -40,7 +40,7 @@ import { LastSpeechReplay, dropQueuedReplay, replayQueueItems } from "./speech-r
 import { FillerSession } from "./filler-session.js";
 import { ThinkingPose, THINKING_POSE, headGazeScale } from "./thinking-pose.js";
 import { buildThinkingRig } from "./thinking-rig.js";
-import { RELAXED_REST, relaxArms } from "./rest-pose.js";
+import { REST_POSES, bindRestPoseSetting, relaxArms } from "./rest-pose.js";
 import { buildHandDriftRig } from "./hand-drift-rig.js";
 import { GazeController, normalisePointer, clampEyePitch } from "./gaze-tracking.js";
 import { CameraGaze } from "./camera-gaze.js";
@@ -309,6 +309,22 @@ function actionPlayButtons(labels, container) {
   return buttons;
 }
 const actionButtons = actionPlayButtons(ACTION_LABELS, "#action-play-controls");
+/** The idle pose she rests in (#199): Idle-pose-clean or Idle-pose-natural, saved per browser. */
+let restPose = "idle-pose-clean";
+const restPoseButtons = {};
+for (const [name, { label }] of Object.entries(REST_POSES)) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.dataset.restPose = name;
+  button.textContent = label;
+  document.querySelector("#rest-pose-controls").append(button);
+  restPoseButtons[name] = button;
+}
+bindRestPoseSetting((name) => {
+  restPose = name;
+  // Before the model loads, restArms() picks the pose up.
+  previewRest();
+}, restPoseButtons);
 const actionPlayStatus = document.querySelector("#action-play-status");
 let shownActionPlay = null;
 
@@ -1065,16 +1081,16 @@ function restArms(object) {
   object.updateMatrixWorld(true);
   loweredArms = new Map((object.skeleton?.bones ?? []).filter((bone) => ARM_REST_BONE.test(bone.name))
     .map((bone) => [bone, bone.quaternion.clone()]));
-  relaxArms(object);
+  relaxArms(object, REST_POSES[restPose].sizes);
 }
 
 /**
  * Preview other rest sizes (#199): put the lowered arms back, relax them with
  * `sizes`, and rebuild the layers that cache the arms' rest on top of it.
- * @param {Partial<typeof RELAXED_REST>} [sizes] Radians; defaults to RELAXED_REST.
+ * @param {object} [sizes] Radians, as RELAXED_REST; defaults to the chosen idle pose.
  * @returns {void}
  */
-function previewRest(sizes = RELAXED_REST) {
+function previewRest(sizes = REST_POSES[restPose].sizes) {
   if (!mesh) return;
   for (const [bone, rest] of loweredArms) bone.quaternion.copy(rest);
   relaxArms(mesh, sizes);

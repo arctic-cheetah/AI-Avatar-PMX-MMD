@@ -37,7 +37,32 @@ ahead of the line (in model units). The swing is solved exactly in the mesh's
 y–z plane and limited to ±20°. It keeps the elbow bend and how far out the arm
 hangs. Without the leg bones there is no swing.
 
-## What was measured first
+## Idle poses
+
+On 15 November 2026 the user asked to keep option C as a named pose and to add
+a second one with the hands closer to the thighs in the front view, saying
+some clipping is fine because a person's hands rest against their thighs.
+Two rest poses can now be picked in **Animation actions · 仕草再生**:
+
+| Button | Pose | Sizes |
+| --- | --- | --- |
+| **Idle-pose-clean** | The user's pick C, the default | elbow 3°, wrist 0°, curl 15°, hands on the leg line |
+| **Idle-pose-natural** | The same, with the arms swung in toward the thighs | as clean, plus `armIn` (see below) |
+
+- `armIn` swings each upper arm toward her middle about her front-to-back
+  axis (the mesh's z) through the shoulder, before the leg-line swing. So the
+  hand still ends up on the leg line, just closer to the thigh. Clean has
+  `armIn` 0.
+- Clicking a button applies that pose straight away. The thinking rig and
+  the arm drift are rebuilt on top of it. The chosen button stays pressed.
+  The choice is saved as `yidhari.rest-pose`, and at load she starts in the
+  saved pose (clean if none is saved or the value is unknown). Clicking the
+  pose already shown does nothing.
+- The idle motion (sway, inward and outward drift, forearm roll, finger
+  ripple and spread) plays on top of either pose.
+- The pose switch is instant, not eased. Both poses are rest poses, so the
+  change is small.
+
 
 The ticket guessed that her palms faced backward. Measured in the renderer,
 they already face her thighs, with the thumb side forward (palm normal about
@@ -96,7 +121,8 @@ idle bones on top of it. `relax()` with no argument puts the defaults back.
 
 ## Code and tests
 
-- `renderer/rest-pose.js`: `RELAXED_REST` and `relaxArms(mesh, sizes)`.
+- `renderer/rest-pose.js`: `RELAXED_REST`, `relaxArms(mesh, sizes)`,
+  `REST_POSES` and `bindRestPoseSetting()` for the pose buttons.
 - `renderer/thinking-rig.js`: `curlFingers()`, shared with `poseHand()`.
 - `renderer/main.js`: `restArms()` calls `relaxArms()`.
 - `tests/renderer/rest-pose.test.mjs` uses the synthetic arm rig in

@@ -61,7 +61,7 @@ import { fetchTurn, turnFile } from "./turn-replay.js";
 import { createAmmoLoader } from "./ammo-loader.js";
 import { filterPhysics } from "./physics-groups.js";
 import { PhysicsLayer } from "./physics-layer.js";
-import { TENTACLE_WAVE_KEY, TentacleWave, tailChains } from "./tentacle-motion.js";
+import { TENTACLE_WAVE_KEY, TentacleWave, bindTentacleSize, tailChains } from "./tentacle-motion.js";
 import { bindStoredToggle } from "./stored-toggle.js";
 import {
   HAIR_FOLLOW, RIGID_STRANDS, blendWeights, pinTargets, pinnedBones, sameMotionAs, stiffStrands,
@@ -125,6 +125,8 @@ const physicsRateOutput = document.querySelector("#physics-rate-value");
 const gazeStatus = document.querySelector("#gaze-status");
 const idleToggle = document.querySelector("#idle-toggle");
 const tentacleToggle = document.querySelector("#tentacle-toggle");
+const tentacleSizeInput = document.querySelector("#tentacle-size");
+const tentacleSizeOutput = document.querySelector("#tentacle-size-value");
 const idleAfterInput = document.querySelector("#idle-after");
 const sleepAfterInput = document.querySelector("#sleep-after");
 const sleepActionEveryInput = document.querySelector("#sleep-action-every");
@@ -1987,6 +1989,9 @@ function pinStrands(object, data) {
 // step, and taken off before the next. See docs/physics.md#tentacle-wave-182.
 const tentacleWave = new TentacleWave();
 bindStoredToggle(tentacleToggle, TENTACLE_WAVE_KEY, (on) => tentacleWave.setEnabled(on));
+bindTentacleSize(tentacleWave, tentacleSizeInput, {
+  show: (size) => { if (tentacleSizeOutput) tentacleSizeOutput.textContent = size.toFixed(2); },
+});
 /** @type {{phase: number, links: {bone: THREE.Bone, k: number, rest: THREE.Quaternion, base: THREE.Quaternion}[]}[]} */
 let tentacles = [];
 /** Whether the tail bones carry this frame's wave on top of their base pose. */

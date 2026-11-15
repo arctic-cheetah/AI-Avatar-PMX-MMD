@@ -254,6 +254,84 @@ eases in, eases out and settles back to rest.
   automatically. They do not limit the buttons, and the buttons never change
   them.
 
+### Arm drift (#193)
+
+Once `restArms()` lowers her arms, nothing else moved them while idle, so
+they hung still at her sides. Arm drift is a slow, always-on idle channel,
+not an action: it never takes a pick from `ACTIONS`, and the actions play on
+top of it.
+
+| Channel (screen side) | Bone | Motion | Size |
+| --- | --- | --- | --- |
+| `armSwayLeft/Right` | `右腕` / `左腕` | Swings forward and back, in the shoulder's frame | ±2.5° |
+| `armOutLeft/Right` | `右腕` / `左腕` | Sways away from the body and back in past rest, less far in than out | −1.5° (in) to 2° (out) |
+| `elbowLeft/Right` | `右ひじ` / `左ひじ` | Bends a little, never past straight | 0–4° |
+| `forearmLeft/Right` | `右手捩` / `左手捩` | Rolls softly about the forearm, on the twist bone | ±4° |
+| `wristLeft/Right` | `右手首` / `左手首` | Tips toward and away from the palm, following the elbow 1.2 s later | ±3° |
+| `curl{Thumb,Index,Middle,Ring,Little}Left/Right` | `親指`–`小指` `１–３` | Each finger's joints loosen and curl around the rest curl, scaled like it (thumb 0.45 to pinky 1.1), rippling from the index to the little finger | ±3° per joint |
+| `spreadLeft/Right` | `人指`–`小指` `１` | The fingers fan apart and close: index and little finger fully, middle and ring by 0.35 | ±2.5° |
+
+**Natural hands** (#199 follow-up). The user asked for the lower arms and
+hands to move naturally, not just the upper arms. Three things make a still
+hand look alive:
+- The forearm roll uses the twist bone `手捩`, not the wrist. Twisting at
+  the wrist pinches the skin there, while the twist bone spreads it along
+  the forearm.
+- The wrist does not have its own wave. It replays the elbow's wave 1.2 s
+  later (`wristLag`), so the hand trails the forearm like a loose hand would.
+  The elbow only bends one way, so its 0–4° is mapped to the wrist's ±3°.
+- The fingers curl and loosen on their own slow waves (13–29 s), which do not
+  follow the elbow, so the hand never freezes in one shape.
+- **Finger sway** (the user, 15 Nov 2026: "make the finger sway a little").
+  Each finger replays the index finger's curl 0.35 s after the finger before
+  it (`rippleLag`), so a curl runs across the hand like a wave. The thumb
+  curls with the index finger. The fingers also fan apart and close on a
+  separate wave (11–23 s, `spread`), about the palm normal at their base
+  joints.
+- **Inward sway** (the same request). The arms used to sway only outward, so
+  they could never press into the body. Now they also sway in past rest, by
+  at most 1.5° (`in`) against 2° out. With the hands resting on the leg
+  line (the relaxed rest's option C, see [rest-pose.md](rest-pose.md)),
+  1.5° in brings each wrist 0.14 closer to the body (x −2.81 to −2.67).
+  Front, side and three-quarter grids show no clipping into the thighs at
+  1.5° in, nor at a 2× margin (3°). The same check passed earlier with the
+  hands 0.3 ahead.
+
+The axes come from `buildHandDriftRig()` in `renderer/hand-drift-rig.js`,
+found once from the rest pose: the forearm's own direction for the roll, the
+axis between the hand and the palm for the wrist, and, for each finger
+joint, the axis between the joint and the palm, as the rest curl uses. So
+they work whatever the PMX's local bone axes are. Without finger bones there
+is no palm, so only the forearm rolls.
+
+- **Slow and never on a loop.** Each channel adds two sine waves with
+  periods of 11–47 s (up to 53 s on the right) that do not divide evenly.
+  The right of the screen runs 13 % slower and on its own phases, so the two arms are never mirrored or
+  in step. One frame moves each angle by less than 0.02°.
+- **Eased with the idle state.** `IdleMotion.update()` returns the drift's
+  weight as `armDrift` and the twenty-two angles, already scaled by it. A spring
+  (rate 2, about 2 s) takes the weight to 1 while idle or stretching, 0.6
+  while sleepy or waking, and 0 while active. Blocking (speech, thinking, an
+  open ask, a streaming reply or a morph preview) makes her active, so the
+  arms settle back. The spring snaps to exactly 0 once settled, so many
+  cycles leave nothing behind.
+- **The thinking pose owns the arms.** `applyArmDrift()` runs after
+  `applyThinkingPose()`, which rewrites these bones from the lowered rest
+  every frame. The drift multiplies on top, scaled by
+  `1 − thinkingPose.weight`, so it fades as the hand goes to the chin and
+  comes back as it drops. If the thinking rig failed to build, the drift
+  keeps its own copy of the rest pose. Later hand poses (#177, #150) must
+  follow the same rule.
+- **Shoulders stay with their owners.** The shrugs and the sigh (#149) keep
+  `左肩`/`右肩`. The drift only uses `腕`, `ひじ` and `手首`.
+- **Physics runs after it**, so sleeves, hair and tails react to the arms.
+- **Off switch:** the **Arm drift** tick at the end of the **Actions** list
+  turns it off. It eases out rather than stopping. It is saved as
+  `yidhari.arm-drift` (`0` = off) and is on by default. It does not affect
+  the action picks.
+- For previews and grids, `__yidhariIdlePose` can hold the twenty-two arm angles
+  with `armDrift: 1`.
+
 ## Tentacle wave (#182)
 
 While she is idle or stretching, a slow wave travels along her four tails;
@@ -297,7 +375,8 @@ message wakes her.
   controls. It emits actions (`mood`, `rest`) rather than touching the
   expression controller itself.
 - `renderer/idle-motion.js`: the pure `IdleMotion` that turns the idle state
-  into a glance target and small bone angles each frame.
+  into a glance target and small bone angles each frame, including the arm
+  drift (`armDriftAngles`, `bindArmDriftSetting`).
 - `renderer/tentacle-motion.js`: the pure `TentacleWave` that turns the idle
   state into a travelling wave along the tails (#182).
 - `renderer/gaze-tracking.js`: `setIdle(target)`, the idle glance source.
@@ -307,6 +386,6 @@ message wakes her.
 - `renderer/main.js`: feeds activity and blocking into the controller each
   frame, applies its moods, and scales the idle blink.
 - Tests: `tests/renderer/idle-behaviour.test.mjs`,
-  `tests/renderer/idle-motion.test.mjs`, and the #71 cases in
+  `tests/renderer/idle-motion.test.mjs`, `tests/renderer/arm-drift.test.mjs`, and the #71 cases in
   `tests/renderer/bridge-client.test.mjs` and
   `tests/renderer/gaze-tracking.test.mjs`.

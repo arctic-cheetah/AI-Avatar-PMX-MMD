@@ -8,6 +8,8 @@ import { Spring } from "./smoothing.js";
 import { IDLE_TIMING } from "./idle-behaviour.js";
 
 const DEG = Math.PI / 180;
+/** The arm drift's weight while asleep or waking (#193). */
+const SLEEPY_DRIFT = 0.6;
 
 /** Timings in seconds, angles in radians, glance sizes as normalised gaze targets. */
 export const IDLE_MOTION = Object.freeze({
@@ -118,6 +120,44 @@ export const IDLE_MOTION = Object.freeze({
   weightShift: Object.freeze({ duration: Object.freeze([4.5, 5.5]), rise: 1.2, lean: 3 * DEG, head: 0.5 }),
   /** Shy look-away: eyes and head drop to one side with a shy giggle. */
   shy: Object.freeze({ duration: 3.5, rise: 0.9, x: 0.5, y: 0.45, headPitch: 3 * DEG, tilt: 2 * DEG }),
+  /**
+   * Arm drift (#193): always on while idle, not an action. Sizes in radians;
+   * each channel mixes two sine waves (periods in seconds, weights in `mix`)
+   * that never line up, and the right of the screen runs `rightScale` slower
+   * on its own phases. `out` and `elbow` only go one way, so the arms never
+   * press into the body or bend past straight. `levels` is the drift's
+   * weight per idle state; `rate` is its spring.
+   */
+  armDrift: Object.freeze({
+    sway: 2.5 * DEG,
+    /** The arms sway out up to `out` and back in past rest up to `in` (the user, 15 Nov 2026). */
+    out: 2 * DEG,
+    in: 1.5 * DEG,
+    elbow: 4 * DEG,
+    /** The wrist replays the elbow's wave this many seconds later (natural hands, #199). */
+    wrist: 3 * DEG,
+    wristLag: 1.2,
+    /** The forearm rolls on its twist bone; the finger curl is per joint, scaled like the rest curl. */
+    forearm: 4 * DEG,
+    curl: 3 * DEG,
+    /** Each finger replays the index finger's curl this much later than the one before it. */
+    rippleLag: 0.35,
+    /** The fingers fan apart and close (finger sway, the user, 15 Nov 2026). */
+    spread: 2.5 * DEG,
+    periods: Object.freeze({
+      sway: Object.freeze([23, 37]),
+      out: Object.freeze([29, 47]),
+      elbow: Object.freeze([19, 31]),
+      forearm: Object.freeze([21, 39]),
+      curl: Object.freeze([13, 29]),
+      spread: Object.freeze([11, 23]),
+    }),
+    mix: Object.freeze([0.6, 0.4]),
+    rightScale: 1.13,
+    sleepy: SLEEPY_DRIFT,
+    levels: Object.freeze({ idle: 1, stretching: 1, sleepy: SLEEPY_DRIFT, waking: SLEEPY_DRIFT }),
+    rate: 2,
+  }),
   /** Spring rate for every angle, so interrupted motions ease back. */
   rate: 8,
   /** The eyes close faster than bones move, so a sneeze's squint keeps up. */
@@ -171,6 +211,65 @@ const LIMITS = Object.freeze({
   exhale: [0, 1],
   lean: [-IDLE_MOTION.weightShift.lean, IDLE_MOTION.weightShift.lean],
 });
+
+/** Arm drift parts and the IDLE_MOTION.armDrift size each one uses (#193). */
+/** Fingers by screen-independent name, and how many ripple steps each curls after the index finger. */
+const RIPPLE = Object.freeze({ Thumb: 0, Index: 0, Middle: 1, Ring: 2, Little: 3 });
+const ARM_PARTS = Object.freeze({
+  armSway: "sway", armOut: "out", elbow: "elbow", wrist: "wrist", forearm: "forearm",
+  ...Object.fromEntries(Object.keys(RIPPLE).map((finger) => [`curl${finger}`, "curl"])),
+  spread: "spread",
+});
+const ONE_WAY = new Set(["elbow"]);
+/** Parts without their own wave: the wrist replays the elbow's, `wristLag` seconds later. */
+const FOLLOWS = Object.freeze({ wrist: "elbow" });
+
+/** The twenty-two arm drift angles, named by screen side like the shrugs. */
+export const ARM_CHANNELS = Object.freeze(Object.keys(ARM_PARTS).flatMap((part) => [`${part}Left`, `${part}Right`]));
+
+/**
+ * The arm drift angles at `clock` seconds, scaled by `amount` (0-1).
+ * A two-wave mix per channel stays within ±1, so each angle stays within its size.
+ * @param {number} clock Seconds of motion so far.
+ * @param {number} amount The drift's eased weight.
+ * @returns {Record<string, number>} Radians per ARM_CHANNELS name.
+ */
+export function armDriftAngles(clock, amount) {
+  const drift = IDLE_MOTION.armDrift;
+  const [a, b] = drift.mix;
+  const keys = Object.values(ARM_PARTS);
+  // One part's raw wave (-1..1) on one side; each part has its own phases.
+  const waveOf = (key, right, time) => {
+    const [first, second] = drift.periods[key];
+    const scale = right ? drift.rightScale : 1;
+    const phase = 1.3 * keys.indexOf(key) + (right ? 2.4 : 0);
+    return a * Math.sin((2 * Math.PI * time) / (first * scale) + phase)
+      + b * Math.sin((2 * Math.PI * time) / (second * scale) + 1.7 * phase + 0.9);
+  };
+  const angles = {};
+  for (const [part, key] of Object.entries(ARM_PARTS)) {
+    for (const [side, right] of [["Left", false], ["Right", true]]) {
+      if (!(amount > 0)) {
+        angles[part + side] = 0;
+        continue;
+      }
+      const ripple = RIPPLE[part.slice(4)] ?? 0;
+      const wave = FOLLOWS[key]
+        ? waveOf(FOLLOWS[key], right, clock - drift.wristLag)
+        : waveOf(key, right, ripple ? clock - ripple * drift.rippleLag : clock);
+      const size = drift[key] * amount;
+      if (key === "out") {
+        // From `in` toward the body to `out` away from it.
+        angles[part + side] = amount * (-drift.in + (drift.in + drift.out) * (0.5 + 0.5 * wave));
+      } else {
+        angles[part + side] = ONE_WAY.has(key) ? size * (0.5 + 0.5 * wave) : size * wave;
+      }
+    }
+  }
+  return angles;
+}
+
+export const ARM_DRIFT_KEY = "yidhari.arm-drift";
 
 const smoothstep = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
 const within = ([min, max], r) => min + (max - min) * r;
@@ -508,8 +607,16 @@ export class IdleMotion {
     /** @type {null | { kind: string, t: number, duration: number }} The action played from a panel button (#164). */
     this.manual = null;
     this.springs = Object.fromEntries(ANGLES.map((key) => [key, new Spring(0)]));
-    /** Seconds of motion so far; the shiver's wave runs on it. */
+    /** Seconds of motion so far; the shiver's wave and the arm drift run on it. */
     this.clock = 0;
+    /** Whether the arms drift while idle and asleep (#193). */
+    this.armDriftEnabled = true;
+    this.driftSpring = new Spring(0);
+  }
+
+  /** @param {boolean} enabled Turn the arm drift on or off; it eases either way. */
+  setArmDrift(enabled) {
+    this.armDriftEnabled = Boolean(enabled);
   }
 
   /**
@@ -591,6 +698,13 @@ export class IdleMotion {
     const { hum } = IDLE_MOTION;
     pose.bobPitch = pose.hum * hum.pitch * Math.sin(2 * Math.PI * hum.hz * this.clock);
     pose.bobRoll = pose.hum * hum.roll * Math.sin(2 * Math.PI * hum.swayHz * this.clock);
+    // The arm drift (#193) eases with the state and settles exactly to 0 when active.
+    const { armDrift } = IDLE_MOTION;
+    const level = this.armDriftEnabled ? (armDrift.levels[state] ?? 0) : 0;
+    this.driftSpring.step(level, dt, armDrift.rate);
+    this.driftSpring.clamp(0, 1);
+    pose.armDrift = this.driftSpring.settle(level, 1e-5);
+    Object.assign(pose, armDriftAngles(this.clock, pose.armDrift));
     return pose;
   }
 
@@ -663,6 +777,32 @@ export class IdleMotion {
     }
     return { kind, t: 0, ...ACTIONS[kind].create(this.random) };
   }
+}
+
+/**
+ * Bind the panel's Arm drift tick (#193): on by default, saved as "0"/"1".
+ * @param {IdleMotion} motion
+ * @param {{ checked: boolean, addEventListener(type: string, fn: () => void): void } | null} box
+ * @param {{ local?: Storage }} [options]
+ * @returns {void}
+ */
+export function bindArmDriftSetting(motion, box, { local } = {}) {
+  try {
+    local ??= globalThis.localStorage;
+  } catch { /* Storage access itself can throw. */ }
+  let enabled = true;
+  try {
+    enabled = local?.getItem(ARM_DRIFT_KEY) !== "0";
+  } catch { /* Blocked: on. */ }
+  motion.setArmDrift(enabled);
+  if (!box) return;
+  box.checked = enabled;
+  box.addEventListener("change", () => {
+    motion.setArmDrift(box.checked);
+    try {
+      local?.setItem(ARM_DRIFT_KEY, box.checked ? "1" : "0");
+    } catch { /* Session-only. */ }
+  });
 }
 
 /**

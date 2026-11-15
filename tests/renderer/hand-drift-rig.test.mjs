@@ -12,6 +12,7 @@ import { RELAXED_REST, relaxArms } from "../../renderer/rest-pose.js";
 import { DIGITS, JOINTS, fixture } from "./arm-fixture.mjs";
 
 const SIDES = [["右", "Left"], ["左", "Right"]];
+const FINGER_NAMES = { "親指": "Thumb", "人指": "Index", "中指": "Middle", "薬指": "Ring", "小指": "Little" };
 const at = (object) => object.getWorldPosition(new THREE.Vector3());
 
 /** Every object's local quaternion, by object. */
@@ -49,7 +50,13 @@ test("the rig has a forearm, a wrist and fifteen finger joints per side, by scre
     const mine = entries.filter((entry) => entry.bone.name.startsWith(side));
     assert.deepEqual(mine.filter((e) => e.channel === `forearm${screen}`).map((e) => e.bone.name), [`${side}手捩`]);
     assert.deepEqual(mine.filter((e) => e.channel === `wrist${screen}`).map((e) => e.bone.name), [`${side}手首`]);
-    assert.equal(mine.filter((e) => e.channel === `curl${screen}`).length, DIGITS.length * JOINTS.length);
+    assert.equal(mine.filter((e) => e.channel.startsWith("curl") && e.channel.endsWith(screen)).length, DIGITS.length * JOINTS.length);
+    for (const [digit, finger] of Object.entries(FINGER_NAMES)) {
+      assert.deepEqual(mine.filter((e) => e.channel === `curl${finger}${screen}`).map((e) => e.bone.name),
+        JOINTS.map((joint) => side + digit + joint), `${side}${digit} curls on its own channel`);
+    }
+    assert.deepEqual(mine.filter((e) => e.channel === `spread${screen}`).map((e) => e.bone.name).sort(),
+      ["人指", "中指", "薬指", "小指"].map((digit) => `${side}${digit}１`).sort(), `${side} spreads at the base joints`);
   }
   for (const entry of entries) {
     assert.ok(Math.abs(entry.axis.length() - 1) < 1e-9, `${entry.bone.name} has a unit axis`);
@@ -104,10 +111,28 @@ test("a positive curl angle curls every finger toward the palm, scaled like the 
   }
 });
 
+test("a positive spread fans the fingers apart: index toward the thumb, little finger away", () => {
+  for (const [side] of SIDES) {
+    const { mesh, get } = relaxed();
+    const entries = buildHandDriftRig(mesh).filter((e) => e.channel.startsWith("spread") && e.bone.name.startsWith(side));
+    const tip = (digit) => at(mesh.getObjectByName(`${side}${digit}先`));
+    const width = () => tip("人指").distanceTo(tip("小指"));
+    const thumbSide = at(get(`${side}人指１`)).sub(at(get(`${side}小指１`))).normalize();
+    const before = { width: width(), index: tip("人指"), little: tip("小指") };
+    for (const entry of entries) {
+      assert.ok(Math.abs(entry.scale) <= 1, `${entry.bone.name} fan scale`);
+      turn(mesh, entry, 0.1 * entry.scale);
+    }
+    assert.ok(width() > before.width, `${side} fingers fan apart`);
+    assert.ok(tip("人指").sub(before.index).dot(thumbSide) > 0, `${side} index moves toward the thumb side`);
+    assert.ok(tip("小指").sub(before.little).dot(thumbSide) < 0, `${side} little finger moves away from it`);
+  }
+});
+
 test("missing bones are skipped without errors", () => {
   const { mesh } = fixture({ fingers: false, legs: false });
   const entries = buildHandDriftRig(mesh);
-  assert.ok(entries.every((e) => !e.channel.startsWith("curl") && !e.channel.startsWith("wrist")),
+  assert.ok(entries.every((e) => !e.channel.startsWith("curl") && !e.channel.startsWith("wrist") && !e.channel.startsWith("spread")),
     "no palm without fingers, so no wrist or curl entries");
   assert.ok(entries.some((e) => e.channel.startsWith("forearm")), "the forearm still rolls");
   assert.deepEqual(buildHandDriftRig(new THREE.Object3D()), []);

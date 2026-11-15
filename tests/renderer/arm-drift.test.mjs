@@ -8,6 +8,7 @@ import {
 } from "../../renderer/idle-motion.js";
 
 const DEG = Math.PI / 180;
+const FINGERS = ["Thumb", "Index", "Middle", "Ring", "Little"];
 const { armDrift } = IDLE_MOTION;
 
 /** Step the motion through a state for some seconds; returns every pose. */
@@ -36,8 +37,10 @@ function storage(initial = {}) {
 test("arm channels are named by screen side for the upper arm, elbow, forearm, wrist and fingers", () => {
   assert.deepEqual([...ARM_CHANNELS].sort(), [
     "armOutLeft", "armOutRight", "armSwayLeft", "armSwayRight",
-    "curlLeft", "curlRight", "elbowLeft", "elbowRight",
-    "forearmLeft", "forearmRight", "wristLeft", "wristRight",
+    "curlIndexLeft", "curlIndexRight", "curlLittleLeft", "curlLittleRight",
+    "curlMiddleLeft", "curlMiddleRight", "curlRingLeft", "curlRingRight",
+    "curlThumbLeft", "curlThumbRight", "elbowLeft", "elbowRight",
+    "forearmLeft", "forearmRight", "spreadLeft", "spreadRight", "wristLeft", "wristRight",
   ]);
 });
 
@@ -54,14 +57,19 @@ test("full drift stays within a few degrees, one-sided where clipping is a risk"
     for (const side of ["Left", "Right"]) {
       assert.ok(Math.abs(a[`armSway${side}`]) <= armDrift.sway + 1e-9, `sway ${clock}`);
       // Out only (never toward the torso) and bend only (never past straight).
-      assert.ok(a[`armOut${side}`] >= 0 && a[`armOut${side}`] <= armDrift.out + 1e-9, `out ${clock}`);
+      // Out further than in, so the hands only brush toward the thighs.
+      assert.ok(a[`armOut${side}`] >= -armDrift.in - 1e-9 && a[`armOut${side}`] <= armDrift.out + 1e-9, `out ${clock}`);
       assert.ok(a[`elbow${side}`] >= 0 && a[`elbow${side}`] <= armDrift.elbow + 1e-9, `elbow ${clock}`);
       assert.ok(Math.abs(a[`wrist${side}`]) <= armDrift.wrist + 1e-9, `wrist ${clock}`);
       assert.ok(Math.abs(a[`forearm${side}`]) <= armDrift.forearm + 1e-9, `forearm ${clock}`);
-      assert.ok(Math.abs(a[`curl${side}`]) <= armDrift.curl + 1e-9, `curl ${clock}`);
+      for (const finger of FINGERS) {
+        assert.ok(Math.abs(a[`curl${finger}${side}`]) <= armDrift.curl + 1e-9, `curl ${finger} ${clock}`);
+      }
+      assert.ok(Math.abs(a[`spread${side}`]) <= armDrift.spread + 1e-9, `spread ${clock}`);
     }
   }
-  for (const key of ["sway", "out", "elbow", "wrist", "forearm", "curl"]) {
+  assert.ok(armDrift.in > 0 && armDrift.in < armDrift.out, "the arms sway in a little, less than out");
+  for (const key of ["sway", "out", "in", "elbow", "wrist", "forearm", "curl", "spread"]) {
     assert.ok(armDrift[key] > 0 && armDrift[key] <= 5 * DEG, `${key} is a few degrees`);
   }
 });
@@ -72,7 +80,7 @@ test("the two sides are phase-offset, never mirrored or identical", () => {
   let samples = 0;
   for (let clock = 0; clock < 120; clock += 0.5) {
     const a = armDriftAngles(clock, 1);
-    for (const part of ["armSway", "armOut", "elbow", "wrist", "forearm", "curl"]) {
+    for (const part of ["armSway", "armOut", "elbow", "wrist", "forearm", "curlMiddle", "spread"]) {
       samples += 1;
       if (Math.abs(a[`${part}Left`] - a[`${part}Right`]) < 0.05 * DEG) same += 1;
       if (Math.abs(a[`${part}Left`] + a[`${part}Right`]) < 0.05 * DEG) mirrored += 1;
@@ -119,9 +127,50 @@ test("the forearm roll and finger curl move on their own, not with the elbow", (
     const a = armDriftAngles(clock, 1);
     const b = armDriftAngles(clock + 0.5, 1);
     if (Math.sign(b.forearmLeft - a.forearmLeft) !== Math.sign(b.elbowLeft - a.elbowLeft)) forearmMoves += 1;
-    if (Math.sign(b.curlLeft - a.curlLeft) !== Math.sign(b.elbowLeft - a.elbowLeft)) curlMoves += 1;
+    if (Math.sign(b.curlMiddleLeft - a.curlMiddleLeft) !== Math.sign(b.elbowLeft - a.elbowLeft)) curlMoves += 1;
   }
   assert.ok(forearmMoves > 40 && curlMoves > 40, `independent ${forearmMoves}, ${curlMoves} of 240`);
+});
+
+test("the arms sway inward as well as out", () => {
+  let inward = 0;
+  let outward = 0;
+  for (let clock = 0; clock < 600; clock += 1) {
+    const a = armDriftAngles(clock, 1);
+    for (const side of ["Left", "Right"]) {
+      if (a[`armOut${side}`] < -0.5 * armDrift.in) inward += 1;
+      if (a[`armOut${side}`] > 0.5 * armDrift.out) outward += 1;
+    }
+  }
+  assert.ok(inward > 50 && outward > 50, `inward ${inward}, outward ${outward} of 1200`);
+});
+
+test("the finger curl ripples from the index finger to the little finger", () => {
+  const lag = armDrift.rippleLag;
+  assert.ok(lag > 0 && lag <= 0.6, "a short ripple");
+  const order = ["Index", "Middle", "Ring", "Little"];
+  for (let clock = 2; clock < 90; clock += 0.73) {
+    for (const side of ["Left", "Right"]) {
+      const now = armDriftAngles(clock, 1);
+      for (const [step, finger] of order.entries()) {
+        const lead = armDriftAngles(clock - step * lag, 1);
+        assert.ok(Math.abs(now[`curl${finger}${side}`] - lead[`curlIndex${side}`]) < 1e-12, `${finger} ${side} at ${clock}`);
+      }
+      // The thumb curls on the index finger's timing.
+      assert.equal(now[`curlThumb${side}`], now[`curlIndex${side}`]);
+    }
+  }
+});
+
+test("the fingers spread and close on their own slow waves", () => {
+  let changes = 0;
+  let previous = armDriftAngles(0, 1).spreadLeft;
+  for (let clock = 1; clock < 120; clock += 1) {
+    const spread = armDriftAngles(clock, 1).spreadLeft;
+    if (Math.sign(spread) !== Math.sign(previous)) changes += 1;
+    previous = spread;
+  }
+  assert.ok(changes >= 4 && changes <= 30, `spread changed sides ${changes} times in 2 min`);
 });
 
 test("the drift does not repeat on a short loop", () => {

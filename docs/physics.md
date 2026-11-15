@@ -412,12 +412,35 @@ until one is picked from the grids below), a 5 s period, travel 0.35 rad per lin
 Taking the wave off before the step matters: `MMDPhysics` works out each
 bone's new rotation from its current local rotation, so a wave left on would
 feed into the next physics pose. Before a rebuild's `reset()` the wave is
-taken off too, so the bodies start from the physics pose. With physics off,
+taken off too and the mesh's matrices are refreshed, because `reset()` places
+the bodies from `bone.matrixWorld`, which still holds the last drawn wave. With physics off,
 the wave is added to the tails' rest pose instead.
 
 Speech, a streaming reply, an open ask and real thinking block idle, so the
 idle state returns to active and the wave eases out. The reactions from #182
 (lift, droop, the sway while speaking) are planned separately.
+
+### Checked in the browser
+
+With *Idle after* at 5 s, sway and gaze off, vertex motion in the `下半身`
+frame over 6 s (tips, links 14–17):
+
+| | Speed | Jitter | Buzz | Swing |
+|---|---|---|---|---|
+| Idle, wave on (0.25) | 0.55 units/s | 0.0005 | 0.003 | 1.25 |
+| Idle, wave toggled off | 0 | 0 | 0 | 0 |
+| Idle, wave on, after physics off → on | 0.55 units/s | 0.0004 | 0.003 | 1.25 |
+
+- The gain rises 0 → 0.5 in about 0.45 s and reaches 0.99 by 1.6 s. It eases
+  out the same way when the toggle goes off, or when real thinking blocks idle
+  and she returns to active.
+- With physics off, the wave plays on the tails' rest pose. When physics comes
+  back, it builds without errors and the wave carries on.
+- **Not from the wave:** after a body-group rebuild (switching chest physics
+  on), the tails keep a faint buzz on `master` too (tips 0.07 units/s, jitter
+  0.0024, swing 0.002), and on this branch with the wave on or off (0.11 units/s, jitter
+  0.0034, swing 0.004). A fresh load or a physics off → on doesn't show it.
+  This one belongs to #116.
 
 ### Grids
 

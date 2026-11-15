@@ -244,7 +244,8 @@ test("two idle poses: clean is the user's pick C, natural tucks the arms in towa
   assert.deepEqual(REST_POSES["idle-pose-clean"].sizes, RELAXED_REST);
   assert.equal(RELAXED_REST.armIn, 0, "clean does not tuck the arms in");
   const natural = REST_POSES["idle-pose-natural"].sizes;
-  assert.ok(natural.armIn > 0 && natural.armIn <= 15 * DEG, "natural tucks the arms in a few degrees");
+  // The user's pick from the 0/4/6/8/10° grid (15 Nov 2026).
+  close(natural.armIn, 4 * DEG, "natural tucks the arms in 4°");
   assert.deepEqual({ ...natural, armIn: 0 }, { ...RELAXED_REST }, "otherwise the same as clean");
   assert.equal(DEFAULT_REST_POSE, "idle-pose-clean");
 });

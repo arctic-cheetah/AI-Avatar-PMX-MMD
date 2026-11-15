@@ -92,7 +92,14 @@ physics moves.
 | A | clear | — | at her waist | 0–2 vertices, ≤ 0.14 deep |
 | T2 | 0.15–0.24 clear | fist 1.3 from the face | at her waist | 0 |
 | C1 | 0.09–0.57 clear | 0.46–0.52 above | at her waist | 0 |
-| **Final (50° fist, L2)** | **0.46–0.91 clear** | **0.20–0.22 above (side of the jaw)** | **0.007–0.012 from the elbow sleeve** | **0** |
+| **Final (50° fist, L2)** | **0.45–0.93 clear** | **0.21–0.26 above (side of the jaw)** | **0.008–0.019 from the elbow sleeve** | **0** |
+
+The final row is the committed default, checked after the commit from the face
+camera, the bust camera, the front and both three-quarters
+(`grid-final-l2.png`). The original pose's right forearm bone was 0.26–0.35
+inside the bust from the same views. Sampled every frame while the final pose
+eased in from rest, the right forearm bone stayed at least 0.53 in front of the
+bust wherever it was over it, and the left forearm bone never was.
 
 In the final pose the puffy sleeve and glove press into the bust, as agreed.
 The upper-arm readings near the armpits sometimes count as inside the bust

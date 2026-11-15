@@ -26,10 +26,35 @@ export const TENTACLE_WAVE = Object.freeze({
   lift: 0.5,
   /** Seconds to ease in or out. */
   ease: 1.5,
+  /** Wave size while she speaks: a gentle sway, even though speech blocks idle. */
+  speakingGain: 0.35,
   /** Wave size per idle state; any other state is still. */
   stateGain: Object.freeze({ active: 0, waking: 0, idle: 1, stretching: 1, sleepy: 0.5 }),
   /** A phase per tail, so no two wave in step. */
   phases: Object.freeze({ "左Tail1": 0, "右Tail1": 2.1, "左Tail2": 4.2, "右Tail2": 1.05 }),
+});
+
+/**
+ * Mood reactions, as a total arc along each tail in radians (positive lifts).
+ * Perk and lift rise, hold and fall once when the mood arrives; droop holds
+ * while the mood lasts.
+ */
+export const TENTACLE_REACTIONS = Object.freeze({
+  perk: Object.freeze({ lift: 0.5, rise: 0.35, hold: 0.4, fall: 1.2,
+    moods: Object.freeze(["surprised", "shocked", "gasp", "scared"]) }),
+  lift: Object.freeze({ lift: 0.3, rise: 0.8, hold: 1.2, fall: 1.6,
+    moods: Object.freeze(["happy", "joyful", "excited", "grin", "lovestruck"]) }),
+  droop: Object.freeze({ lift: -0.35, moods: Object.freeze(["sleepy", "sad", "sorrowful", "disappointed", "cry"]) }),
+});
+
+const bumpLength = ({ rise, hold, fall }) => rise + hold + fall;
+
+/** Tentacle actions for the Animation actions buttons (#164), lengths in seconds. */
+export const TENTACLE_ACTIONS = Object.freeze({
+  wave: Object.freeze({ label: "Tentacle wave", duration: 10 }),
+  perk: Object.freeze({ label: "Tentacle perk", duration: bumpLength(TENTACLE_REACTIONS.perk) }),
+  droop: Object.freeze({ label: "Tentacle droop", duration: 4 }),
+  sway: Object.freeze({ label: "Tentacle sway", duration: 8 }),
 });
 
 /** localStorage key of the panel toggle. */
@@ -93,6 +118,21 @@ export function waveAngles(t, phase, k, count, amplitude) {
   return { yaw: size * Math.sin(angle), pitch: size * lift * Math.sin(angle + Math.PI / 2) };
 }
 
+/** 0 → 1 with zero slope at both ends. */
+const smooth = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
+
+/**
+ * A perk or lift's share at time t: rise, hold, fall.
+ * @param {{rise: number, hold: number, fall: number}} shape
+ * @param {number} t Seconds since it fired.
+ * @returns {number} 0 to 1.
+ */
+function bumpAt({ rise, hold, fall }, t) {
+  if (t < rise) return smooth(t / rise);
+  if (t < rise + hold) return 1;
+  return 1 - smooth((t - rise - hold) / fall);
+}
+
 /** Put a spring exactly at rest on its target. */
 function settle(spring, target) {
   spring.value = target;
@@ -145,6 +185,82 @@ export class TentacleWave {
     /** Wave time in seconds. */
     this.time = 0;
     this._spring = new Spring(0);
+    /** The held droop, and any reaction handed over when one is cut short. */
+    this._lift = new Spring(0);
+    /** A perk or lift in flight: {shape, t}. */
+    this._bump = null;
+    this._bumpLift = 0;
+    this._mood = null;
+    this._droopMood = false;
+    /** A played tentacle action: {name, t}. */
+    this._manual = null;
+  }
+
+  /** @returns {number} This frame's total arc along each tail, in radians (positive lifts). */
+  get lift() {
+    return this._bumpLift + this._lift.value;
+  }
+
+  /** @returns {string|null} The tentacle action playing from a button. */
+  get playing() {
+    return this._manual?.name ?? null;
+  }
+
+  /**
+   * Tell the tails her mood. A change into a perk or lift mood fires it once;
+   * a droop mood holds the droop until the mood changes.
+   * @param {string} mood Expression name.
+   * @returns {void}
+   */
+  setMood(mood) {
+    if (mood === this._mood) return;
+    this._mood = mood;
+    this._droopMood = TENTACLE_REACTIONS.droop.moods.includes(mood);
+    for (const name of ["perk", "lift"]) {
+      if (TENTACLE_REACTIONS[name].moods.includes(mood) && this.enabled) this._fire(name);
+    }
+  }
+
+  /**
+   * Play a tentacle action from its button.
+   * @param {string} name A TENTACLE_ACTIONS key.
+   * @returns {void}
+   */
+  play(name) {
+    if (!TENTACLE_ACTIONS[name]) throw new RangeError(`Unknown tentacle action: ${name}`);
+    this.stop();
+    this._manual = { name, t: 0 };
+    if (name === "perk" && this.enabled) this._fire("perk");
+  }
+
+  /** Stop a played action; the tails ease back. */
+  stop() {
+    if (this._manual?.name === "perk") this._handOver();
+    this._manual = null;
+  }
+
+  /**
+   * The same button again stops its action; another switches to it.
+   * @param {string} name A TENTACLE_ACTIONS key.
+   * @returns {void}
+   */
+  toggle(name) {
+    if (this.playing === name) this.stop();
+    else this.play(name);
+  }
+
+  /** @param {"perk"|"lift"} name */
+  _fire(name) {
+    this._handOver();
+    this._bump = { shape: TENTACLE_REACTIONS[name], t: 0 };
+  }
+
+  /** Cut a perk or lift short: its current arc eases back through the droop spring. */
+  _handOver() {
+    if (!this._bump) return;
+    this._lift.value += this._bumpLift;
+    this._bump = null;
+    this._bumpLift = 0;
   }
 
   /** @returns {number} The eased wave size, 0 to 1. */
@@ -179,14 +295,36 @@ export class TentacleWave {
   }
 
   /**
-   * Advance the wave and ease its size toward the idle state's.
+   * Advance the wave and reactions, easing toward the idle state's wave size.
    * @param {number} delta Seconds since the previous frame; invalid values change nothing.
    * @param {string} state Idle state from IdleController.
+   * @param {{speaking?: boolean, composed?: boolean}} [options] She is speaking (a gentle
+   *   sway), or idle is blocked by anything else (everything eases out).
    * @returns {number} The eased gain.
    */
-  update(delta, state) {
+  update(delta, state, { speaking = false, composed = false } = {}) {
     if (!(Number.isFinite(delta) && delta > 0)) return this.gain;
-    const target = this.enabled ? (TENTACLE_WAVE.stateGain[state] ?? 0) : 0;
+    const still = composed || !this.enabled;
+    if (this._manual) {
+      this._manual.t += delta;
+      if (this._manual.t >= TENTACLE_ACTIONS[this._manual.name].duration) this._manual = null;
+    }
+    if (still) this._handOver();
+    if (this._bump) {
+      this._bump.t += delta;
+      if (this._bump.t >= bumpLength(this._bump.shape)) {
+        this._bump = null;
+        this._bumpLift = 0;
+      } else {
+        this._bumpLift = this._bump.shape.lift * bumpAt(this._bump.shape, this._bump.t);
+      }
+    }
+    const droop = !still && (this._droopMood || this.playing === "droop");
+    const liftTarget = droop ? TENTACLE_REACTIONS.droop.lift : 0;
+    this._lift.step(liftTarget, delta, SPRING_RATE);
+    settleNear(this._lift, liftTarget);
+    const manualGain = { wave: 1, sway: TENTACLE_WAVE.speakingGain }[this.playing] ?? 0;
+    const target = still ? 0 : Math.max(TENTACLE_WAVE.stateGain[state] ?? 0, speaking ? TENTACLE_WAVE.speakingGain : 0, manualGain);
     if (target === 0 && this.gain === 0) {
       settle(this._size, this._sizeTarget);
       return 0;
@@ -210,8 +348,11 @@ export class TentacleWave {
    * @returns {{yaw: number, pitch: number}} Radians.
    */
   angles(phase, k, count) {
-    if (this.gain === 0) return { yaw: 0, pitch: 0 };
+    // Reactions follow the slider up to the default size, and stop at 0.
+    const scale = Math.min(1, this.amplitude / TENTACLE_WAVE.amplitude);
+    const lift = (this.lift * scale) / count;
+    if (this.gain === 0) return { yaw: 0, pitch: lift };
     const { yaw, pitch } = waveAngles(this.time, phase, k, count, this.amplitude);
-    return { yaw: yaw * this.gain, pitch: pitch * this.gain };
+    return { yaw: yaw * this.gain, pitch: pitch * this.gain + lift };
   }
 }

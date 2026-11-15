@@ -32,7 +32,7 @@ import { loadExpressionCatalog } from "./expression-catalog.js";
 import { ExpressionController } from "./expression-controller.js";
 import { MorphAudition, buildMorphInventory } from "./morph-audition.js";
 import { AuditionPanel } from "./audition-panel.js";
-import { connectBridge } from "./bridge-client.js";
+import { bridgeEnabled, connectBridge } from "./bridge-client.js";
 import { SpeechPlayer, loadSpeechShapes } from "./speech-player.js";
 import { VoiceVolume, bindVoiceVolume } from "./voice-volume.js";
 import { LiveSpeechSession } from "./speech-session.js";
@@ -1737,6 +1737,8 @@ function onModelLoaded(loaded, data) {
   const greetingGate = bindGreetingToggle(new GreetingGate(), document.querySelector('#greeting-toggle'));
   bridgeControls = connectBridge({
     catalog: EXPRESSION_CATALOG,
+    // ?bridge=off (#215): a test page that leaves agent speech with the live avatar.
+    bridge: bridgeEnabled(location.search),
     onReplayTurn: replayTurn,
     greeting: greetingGate.claim(new Date()),
     onGreeting: ({ mood, weight }) => { expressions.stopLoop(); applyMood(mood, weight); },

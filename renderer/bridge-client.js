@@ -42,6 +42,15 @@ function turnOf(event) {
   return typeof event.turn === 'string' && TURN_ID.test(event.turn) ? { turn: event.turn } : {};
 }
 
+/**
+ * False when the page URL has ?bridge=off (#215): a test page that must not
+ * take agent speech from the live avatar, since the bridge routes it to the
+ * most recently connected page.
+ */
+export function bridgeEnabled(search = globalThis.location?.search ?? '') {
+  return new URLSearchParams(search).get('bridge') !== 'off';
+}
+
 /** Page-open greeting (#129): the bridge speaks this fixed phrase without the LLM. */
 export function greetFrame({ text, mood, weight }) {
   return JSON.stringify({ type: 'greet', text, mood, weight });
@@ -84,10 +93,11 @@ export function agentEvent(event, catalog) {
  * refresh (#105); win is the window whose pagehide saves a reply still streaming.
  * onActivity fires on every sent chat message, bridge event and voice-input
  * state change, and onAskChange(open) when an agent ask opens or closes; both
- * feed the idle timer (#71).
+ * feed the idle timer (#71). With bridge false (#215) no WebSocket is opened
+ * and the chat stays disabled; the restored log is still shown.
  */
 export function connectBridge({ catalog, onStart, onFinish, onExpression, onText, onSpeak, onFiller, onReset, onAgentSay, onAgentMood, onTurn, greeting = null, onGreeting,
-  onActivity, onAskChange, onReplayTurn, history = new ChatHistory(), win = globalThis }) {
+  onActivity, onAskChange, onReplayTurn, history = new ChatHistory(), win = globalThis, bridge = true }) {
   const button = document.querySelector('#bridge-start');
   const status = document.querySelector('#bridge-status');
   const chatBar = document.querySelector('#chat-bar');
@@ -583,7 +593,16 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
   if (saved.damaged) addNote(DAMAGED_NOTE);
   if (saved.entries.length) addNote(RESTORED_NOTE);
   win?.addEventListener?.('pagehide', () => finishReply({ interrupted: true }));
-  connect();
+  if (bridge) {
+    connect();
+  } else {
+    // Show the chat bar, disabled, so the layout matches the live page.
+    button.disabled = true;
+    chatBar.hidden = false;
+    chatInput.placeholder = 'Bridge off (test page)';
+    setChatEnabled(false);
+    status.textContent = 'Bridge off (test page)';
+  }
   return {
     /** Enable the replay buttons only while speech is idle and no reply is streaming. */
     setReplayEnabled(enabled) {

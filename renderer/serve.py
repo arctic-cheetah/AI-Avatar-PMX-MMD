@@ -2,12 +2,15 @@
 
 The model folder stays outside git. This server only exposes it on localhost.
 With --stt it also answers POST /stt: a recording from the renderer page goes
-to a local Whisper worker and only the transcript comes back.
+to a local Whisper worker and only the transcript comes back. With --no-bridge
+the printed URL ends in ?bridge=off: a test page that never connects to the
+bridge, so the live avatar keeps agent speech (#215).
 """
 
 from __future__ import annotations
 
 import argparse
+import errno
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -79,17 +82,30 @@ def main() -> None:
     parser.add_argument("--stt-threads", type=int, default=4)
     parser.add_argument("--stt-prompt", default=None,
                         help="Vocabulary hint for Whisper (default mentions Yidhari); \"\" disables it.")
+    parser.add_argument("--no-bridge", action="store_true",
+                        help="Print a ?bridge=off test-page URL that never connects to the bridge, "
+                             "so the live avatar keeps her voice. Use a free --port, such as 8772.")
     args = parser.parse_args()
 
     handler = partial(Handler, directory=str(ROOT))
-    server = ThreadingHTTPServer((args.host, args.port), handler)
-    server.origin = f"http://{args.host}:{args.port}"
+    try:
+        server = ThreadingHTTPServer((args.host, args.port), handler)
+    except OSError as error:
+        if error.errno != errno.EADDRINUSE:
+            raise
+        sys.exit(f"Port {args.port} is already in use (is the live renderer running?). "
+                 f"Pick another with --port, for example --port {args.port + 2}.")
+    port = server.server_address[1]
+    server.origin = f"http://{args.host}:{port}"
     server.stt = None
     if args.stt:
         server.stt = SttWorker(args.stt_model, args.stt_threads, prompt=args.stt_prompt)
         ready = server.stt.start()
         print(f"STT worker ready: {ready.get('model')} on CPU, loaded in {ready.get('loadSeconds')} s")
-    print(f"Yidhari renderer: http://{args.host}:{args.port}/renderer/")
+    query = "?bridge=off" if args.no_bridge else ""
+    print(f"Yidhari renderer: {server.origin}/renderer/{query}")
+    if args.no_bridge:
+        print("Bridge off: this page never connects to the bridge, so the live avatar keeps her voice.")
     print("Model pack is served from the workspace root. Ctrl+C to stop.")
     try:
         server.serve_forever()

@@ -51,7 +51,9 @@ flowchart LR
   unchanged. Closing the floating window never closes the bridge.
 - Opening a second renderer tab instead would make a second bridge
   connection. That one would take agent speech away from the first and load
-  the PMX twice, which is why that route was not taken.
+  the PMX twice, which is why that route was not taken. For a test page that
+  must not take her voice, open the renderer with `?bridge=off` (or start
+  `serve.py --no-bridge`, #215); see the README's test-page section.
 - The page's style rules are copied into the floating window inline (a
   `<link>` only for sheets whose rules cannot be read), so the very first
   resize measures a styled canvas. `resize()` never writes an inline CSS

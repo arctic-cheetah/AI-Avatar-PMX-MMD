@@ -114,6 +114,16 @@ sequenceDiagram
    ```
 4. **Open [http://127.0.0.1:8770/renderer/](http://127.0.0.1:8770/renderer/).** Use `127.0.0.1`, not `localhost`, and do not open the HTML file directly. Wait for **Connected · ready**, then click **Start default response**. She smiles, thinks, and returns to neutral.
 
+### 🔇 Test pages that keep her voice
+
+The bridge sends agent speech to the renderer page that connected **most recently**, so an extra page, such as a feature branch on another port, takes her voice from the live avatar. Start a test server with `--no-bridge` on a free port:
+
+```bash
+python3 renderer/serve.py --port 8772 --no-bridge
+```
+
+It prints `http://127.0.0.1:8772/renderer/?bridge=off`. You can open that URL in any browser. With `?bridge=off`, the page never opens the bridge WebSocket. The status reads **Bridge off (test page)** and the chat bar stays disabled. The model, presets, idle motion, physics and panels all work as usual. The live server on 8770 and its page are left alone. If the port you pick is already in use, `serve.py` exits with a hint to choose another `--port`. You can add `?bridge=off` to any renderer URL by hand too.
+
 ## 🤖 Talk to the local LLM
 
 Start `llama-server` with your model on port 8080, for example:

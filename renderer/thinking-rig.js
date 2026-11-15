@@ -114,21 +114,23 @@ function poseHand(mesh, side, forward, normal, curlAmount) {
  * Arm targets for the chin-rest pose, in model units relative to a bone.
  * - chin: right wrist target, from the head bone.
  * - elbowBend: which way the right elbow bends.
- * - support: left wrist target, from the posed right elbow (under the bust).
+ * - support: left wrist target, from the posed right elbow.
  * - supportBend: which way the left elbow bends.
  * - fist: the right hand's finger direction, in world space.
  * - fistPalm: the right palm normal, in world space.
+ * Picked with the user from comparison grids; see docs/thinking-pose.md (#217).
  */
 export const THINKING_ARM = Object.freeze({
-  // The wrist sits 0.25 further forward than the jaw needs, so the forearm clears the bust.
-  chin: Object.freeze([-0.35, -1.5, 2.3]),
-  // 75° outward from straight down: the forearm passes beside and above the bust (#217).
-  elbowBend: Object.freeze([-0.97, -0.26, 0.8]),
-  // The left forearm folds across her waist under the bust; a hand at the raised elbow would cross it.
-  support: Object.freeze([1.4, -1.6, 0.3]),
+  // The fist sits under the right side of the chin, so it props the chin up without covering the face.
+  chin: Object.freeze([-0.85, -0.75, 1.8]),
+  // 30° out from straight down with a little forward bias: tucked in, with the forearm bone clear of the bust.
+  elbowBend: Object.freeze([-0.5, -0.866, 0.8]),
+  // The left hand cups the right elbow from below, against the puffy sleeve.
+  support: Object.freeze([0.5, -0.6, 0.1]),
   supportBend: Object.freeze([1, -1, 0]),
-  fist: Object.freeze([0.15, 1, -0.1]),
-  fistPalm: Object.freeze([0, 0, -1]),
+  // Fingers tilted 50° back, so the fist is short enough to fit under the chin.
+  fist: Object.freeze([0.15, 0.643, -0.766]),
+  fistPalm: Object.freeze([0, -0.766, -0.643]),
 });
 
 /**

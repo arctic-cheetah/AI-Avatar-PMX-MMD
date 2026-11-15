@@ -291,8 +291,9 @@ hand look alive:
 - **Inward sway** (the same request). The arms used to sway only outward, so
   they could never press into the body. Now they also sway in past rest, by
   at most 1.5° (`in`) against 2° out. With the hands resting 0.3 ahead of the
-  leg line, 1.5° in must not push the hands into the thighs, even at a 2×
-  margin, in front, side and three-quarter grids.
+  leg line, 1.5° in brings each wrist 0.14 closer to the body. Front, side
+  and three-quarter grids show no clipping into the thighs at 1.5° in, nor
+  at a 2× margin (3°).
 
 The axes come from `buildHandDriftRig()` in `renderer/hand-drift-rig.js`,
 found once from the rest pose: the forearm's own direction for the roll, the

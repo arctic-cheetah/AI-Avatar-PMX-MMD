@@ -110,8 +110,27 @@ function poseHand(mesh, side, forward, normal, curlAmount) {
   wrist.updateWorldMatrix(false, true);
 }
 
-/** Build a supported chin-rest pose, retaining exact rest rotations for release. */
-export function buildThinkingRig(mesh) {
+/**
+ * Arm targets for the chin-rest pose, in model units relative to a bone.
+ * - chin: right wrist target, from the head bone.
+ * - elbowBend: which way the right elbow bends.
+ * - support: left wrist target, from the posed right elbow.
+ * - supportBend: which way the left elbow bends.
+ */
+export const THINKING_ARM = Object.freeze({
+  chin: Object.freeze([-0.35, -1.5, 2.05]),
+  elbowBend: Object.freeze([-0.35, -1, 0.85]),
+  support: Object.freeze([0.45, -0.3, 0.85]),
+  supportBend: Object.freeze([0.7, -1, 0.2]),
+});
+
+/**
+ * Build a supported chin-rest pose, retaining exact rest rotations for release.
+ * @param {THREE.Object3D} mesh
+ * @param {Partial<typeof THINKING_ARM>} [arm] Overrides for the arm targets, for previews.
+ */
+export function buildThinkingRig(mesh, arm = {}) {
+  const { chin, elbowBend, support, supportBend } = { ...THINKING_ARM, ...arm };
   const head = mesh.skeleton?.getBoneByName("頭");
   if (!head) return [];
   const entries = mesh.skeleton.bones.filter((bone) => /^(?:右|左)(?:腕$|ひじ$|手首$|(?:親指|人指|中指|薬指|小指)[０１２３]$)/.test(bone.name))
@@ -119,12 +138,12 @@ export function buildThinkingRig(mesh) {
   try {
     mesh.updateMatrixWorld(true);
     // Leave space in front of the jaw and outfit for the curled fingers and gloves.
-    const chinWrist = head.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(-0.35, -1.5, 2.05));
-    const right = poseArm(mesh, "右", chinWrist, new THREE.Vector3(-0.35, -1, 0.85));
+    const chinWrist = head.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(...chin));
+    const right = poseArm(mesh, "右", chinWrist, new THREE.Vector3(...elbowBend));
     if (right) {
       poseHand(mesh, "右", new THREE.Vector3(0.15, 1, -0.1), new THREE.Vector3(0, 0, -1), 0.8);
-      const support = right.elbow.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0.45, -0.3, 0.85));
-      const left = poseArm(mesh, "左", support, new THREE.Vector3(0.7, -1, 0.2));
+      const supportWrist = right.elbow.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(...support));
+      const left = poseArm(mesh, "左", supportWrist, new THREE.Vector3(...supportBend));
       if (left) poseHand(mesh, "左", new THREE.Vector3(-1, 0.1, 0), new THREE.Vector3(0, 1, -0.2), 0.45);
     }
     for (const entry of entries) entry.posed.copy(entry.bone.quaternion);

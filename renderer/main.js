@@ -245,6 +245,8 @@ const gazeQuat = new THREE.Quaternion();
 const thinkingPose = new ThinkingPose();
 /** @type {{ bone: THREE.Bone, rest: THREE.Quaternion, posed: THREE.Quaternion }[]} */
 let thinkingBones = [];
+/** Arm-target overrides from the preview hook (#217); empty uses THINKING_ARM. */
+let thinkingArm = {};
 /** @type {{ bone: THREE.Bone, rest: THREE.Quaternion }[]} */
 let swayBones = [];
 const swayEuler = new THREE.Euler();
@@ -509,8 +511,9 @@ function applyGaze(delta) {
 }
 
 /** Cache the lowered-arm rest pose and a supported chin-rest pose. */
-function setupThinkingPose(object) {
-  thinkingBones = buildThinkingRig(object);
+function setupThinkingPose(object, arm = thinkingArm) {
+  thinkingArm = arm;
+  thinkingBones = buildThinkingRig(object, arm);
 }
 
 /** Blend the hand-to-chin gesture over the lowered-arm rest pose. */
@@ -1726,6 +1729,21 @@ function onModelLoaded(loaded, data) {
     frameCamera,
     /** Reapply the relaxed rest pose with other sizes for comparison grids (#199). */
     relax: previewRest,
+    /**
+     * Rebuild the thinking pose with other arm targets for comparison grids (#217).
+     * @param {Partial<typeof import("./thinking-rig.js").THINKING_ARM>} [arm] No argument restores the defaults.
+     * @returns {void}
+     */
+    thinkingArm(arm = {}) {
+      if (!mesh) return;
+      // Rebuild from the rest pose, not from the currently blended thinking pose.
+      for (const { bone, rest } of thinkingBones) bone.quaternion.copy(rest);
+      setupThinkingPose(mesh, arm);
+    },
+    /** The loaded PMX mesh, for clearance measurements. */
+    get mesh() {
+      return mesh;
+    },
     /**
      * Hold one morph combination still, above the mood loop, for visual checks.
      * @param {Record<string, number>} morphs PMX morph names and weights.

@@ -464,6 +464,26 @@ physics still owns them:
 - A reaction stopped part-way (composure, the toggle, the Stop button) hands
   its current lift to the droop spring, so it eases back instead of snapping.
 
+Checked in the browser with each reaction held at full size (tips, 20 % of
+tail vertices against 25 % of body vertices):
+
+| Held | Highest tip (y) | Lowest tail point (y) | Closest to body | Closest to another tail |
+|---|---|---|---|---|
+| Rest | 13.19 | 5.26 | 0.098 | 1.53 |
+| Perk +0.5 | 16.74 | 8.70 | 0.101 | 1.53 |
+| Lift +0.3 | 15.35 | 7.27 | 0.099 | 1.53 |
+| Droop −0.35 | 10.95 | 3.25 | 0.096 | 1.53 |
+
+A positive lift raises the tails in every view, and the droop stays well
+above the floor. Played live:
+- The perk peaks at 0.5 within about 0.5 s and is back at 0 by 2 s.
+- Surprise from the mood does the same.
+- Sad droops to −0.35 in about 1.5 s.
+- Thinking eases the droop to 0, disables the tentacle buttons and says so.
+- Stopping the wave eases it out over about 1.5 s.
+The sway while speaking is covered by the tests only: the mocked bridge
+plays no speech.
+
 ### Playing them from Animation actions
 
 The **Animation actions · 仕草再生** section (#164) has four more buttons:

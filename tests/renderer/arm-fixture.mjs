@@ -105,16 +105,20 @@ export const BUST = Object.freeze([-0.7, 0.7].map((x) => Object.freeze({
   radii: new THREE.Vector3(1.0, 1.05, 1.25),
 })));
 
-/** About the radius of her forearm and glove, in model units. */
-export const FOREARM_RADIUS = 0.3;
+/**
+ * The arm itself around its bone, in model units. The puffy sleeve and the
+ * glove are thicker (up to about 0.9) and may press into the bust, as cloth
+ * does on a real person; the arm inside them must not (#217).
+ */
+export const ARM_BONE_RADIUS = 0.2;
 
 /**
  * How far a limb of the given radius at this point sinks into the bust.
- * @param {THREE.Vector3} point World position on the limb's axis.
+ * @param {THREE.Vector3} point World position on the limb's bone.
  * @param {number} [radius] Limb radius.
  * @returns {number} Positive inside (0 to 1, normalised), zero or negative when clear.
  */
-export function bustDepth(point, radius = FOREARM_RADIUS) {
+export function bustDepth(point, radius = ARM_BONE_RADIUS) {
   return Math.max(...BUST.map(({ center, radii }) => {
     const offset = point.clone().sub(center);
     const reach = radii.clone().addScalar(radius);

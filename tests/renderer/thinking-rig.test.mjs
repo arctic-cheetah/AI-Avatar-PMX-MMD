@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { THINKING_ARM, buildThinkingRig, elbowForTarget } from "../../renderer/thinking-rig.js";
+import { THINKING_ARM, buildThinkingRig, elbowForTarget, handFrame } from "../../renderer/thinking-rig.js";
 import { DIGITS, JOINTS, LOWER_LENGTH, UPPER_LENGTH, bustDepth, fixture } from "./arm-fixture.mjs";
 
 const TOLERANCE = 1e-7;
@@ -120,7 +120,7 @@ test("cached pose reaches the chin and supports the lowered right elbow through 
   }
 });
 
-test("posed forearms keep clear of the bust instead of cutting through it (#217)", () => {
+test("posed forearm bones keep clear of the bust; only cloth may press in (#217)", () => {
   const { mesh, get } = fixture();
   applyPose(mesh, buildThinkingRig(mesh), 1);
   for (const side of ["右", "左"]) {
@@ -129,9 +129,27 @@ test("posed forearms keep clear of the bust instead of cutting through it (#217)
     for (let step = 0; step <= 20; step++) {
       const point = elbow.clone().lerp(wrist, step / 20);
       const depth = bustDepth(point);
-      assert.ok(depth <= 0, `${side} forearm at ${step * 5}% from the elbow sinks ${depth.toFixed(3)} into the bust `
+      assert.ok(depth <= 0, `${side} forearm bone at ${step * 5}% from the elbow sinks ${depth.toFixed(3)} into the bust `
         + `at (${point.toArray().map((value) => value.toFixed(2)).join(", ")})`);
     }
+  }
+});
+
+test("the left hand rests at the right elbow, cupping it from below (#217)", () => {
+  const { mesh, get } = fixture();
+  applyPose(mesh, buildThinkingRig(mesh), 1);
+  const elbow = worldPosition(get("右ひじ"));
+  const wrist = worldPosition(get("左手首"));
+  assert.ok(wrist.distanceTo(elbow) <= 0.9, `left wrist is ${wrist.distanceTo(elbow).toFixed(2)} from the right elbow`);
+  assert.ok(wrist.y < elbow.y, "left hand sits under the right elbow");
+});
+
+test("the right fist follows the fist setting, so it can tilt under the chin (#217)", () => {
+  for (const fist of [THINKING_ARM.fist, [0.15, 0.64, -0.77]]) {
+    const { mesh } = fixture();
+    applyPose(mesh, buildThinkingRig(mesh, { fist, fistPalm: [0, -0.77, -0.64] }), 1);
+    const expected = new THREE.Vector3(...fist).normalize();
+    close(handFrame(mesh, "右").finger.angleTo(expected), 0, `finger direction for ${fist}`, 1e-6);
   }
 });
 

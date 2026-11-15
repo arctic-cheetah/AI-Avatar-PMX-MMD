@@ -13,7 +13,7 @@ relaxes the rest of the arm:
 | Elbow (`ひじ`) | The forearm turns forward, toward her front, about the elbow | 12° |
 | Wrist (`手首`) | The hand tips toward the palm | 6° |
 | Fingers (`親指`–`小指` `１–３`) | Each joint curls toward the palm | 15° per joint, scaled per finger |
-| Upper arm (`腕`) | The whole arm swings back from the shoulder until the hand hangs in line with the leg | `handForward` 0 |
+| Upper arm (`腕`) | The whole arm swings back from the shoulder until the hand hangs in line with the leg | `handForward` 0.3 |
 
 The finger scale is thumb 0.45, index 0.8, middle 0.9, ring 1.0 and pinky
 1.1, so the curl grows toward the pinky, like a resting hand. The thumb scale
@@ -65,7 +65,9 @@ not turn.
 
 On 15 November 2026 the user picked candidate C (elbow 12°, wrist 6°, curl
 15°) from B (8°, 4°, 10°), C and D (16°, 8°, 22°), and asked for the hands
-to hang in line with the legs rather than in front of them.
+to hang in line with the legs rather than in front of them. From the
+leg-line grid (old pose, C without the swing, C on the line and C 0.3 ahead),
+they then picked 0.3 ahead.
 
 The sizes were picked by eye from labelled front, side and three-quarter
 grids of candidates against the old rest pose (see

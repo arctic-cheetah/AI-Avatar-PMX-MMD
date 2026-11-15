@@ -12,7 +12,7 @@ import { THUMB_CURL, curlFingers, handFrame } from "./thinking-rig.js";
 const DEG = Math.PI / 180;
 
 /**
- * Default sizes in radians, the user's pick C (15 Nov 2026). `digits` scales the
+ * Default sizes in radians, the user's pick C, hands 0.3 ahead of the leg line (15 Nov 2026). `digits` scales the
  * curl per finger, more toward the pinky. `handForward` is how far (model units)
  * each hand hangs ahead of its leg line; null leaves the arms unswung.
  */
@@ -21,7 +21,7 @@ export const RELAXED_REST = Object.freeze({
   wrist: 6 * DEG,
   curl: 15 * DEG,
   digits: Object.freeze({ "親指": THUMB_CURL, "人指": 0.8, "中指": 0.9, "薬指": 1, "小指": 1.1 }),
-  handForward: 0,
+  handForward: 0.3,
 });
 
 /** The most the arms swing to meet the legs, so an odd rig never flails. */

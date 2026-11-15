@@ -384,8 +384,8 @@ function refreshActionPlay() {
     button.setAttribute("aria-pressed", String(tailPlaying === name));
   }
   const labels = [playing && ACTION_LABELS[playing], tailPlaying && TENTACLE_ACTIONS[tailPlaying].label].filter(Boolean);
-  actionPlayStatus.textContent = reason
-    ?? (labels.length ? `Playing: ${labels.join(" + ")}` : "Ready: click an action to play it once");
+  const ready = labels.length ? `Playing: ${labels.join(" + ")}` : "Ready: click an action to play it once";
+  actionPlayStatus.textContent = reason ?? (tailReason ? `${ready} · ${tailReason}` : ready);
 }
 /**
  * Idle motion bones: which angle of the pose each one takes, and its sign

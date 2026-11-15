@@ -162,7 +162,10 @@ parameter) while `python3 renderer/serve.py` is serving the renderer:
 1. **`setup.js`** opens the renderer at 1280×800 and mocks the bridge socket.
    This matters: the bridge sends agent speech to the most recently connected
    page, so an unmocked page would take over the live avatar's voice. It also
-   turns off sway and cursor gaze so every cell is framed the same.
+   turns off sway and cursor gaze so every cell is framed the same. Outside
+   Playwright, open the renderer with `?bridge=off` instead. Running
+   `python3 renderer/serve.py --port 8772 --no-bridge` prints that URL (see
+   [Testing morphs in the renderer](#testing-morphs-in-the-renderer)).
 2. **Set the spec with `browser_evaluate`:**
 
    ```js
@@ -199,7 +202,7 @@ range.
 
 ## Testing morphs in the renderer
 
-Run `python3 renderer/serve.py` and open `http://127.0.0.1:8770/renderer/`. The right-hand panel has four sections:
+Run `python3 renderer/serve.py` and open `http://127.0.0.1:8770/renderer/`. While the live avatar is running, use a test page instead so she keeps her voice. `python3 renderer/serve.py --port 8772 --no-bridge` prints `http://127.0.0.1:8772/renderer/?bridge=off`, a page that never connects to the bridge and shows **Bridge off (test page)**. The right-hand panel has four sections:
 
 1. **Mood presets**: one button per `EXPRESSION_CATALOG` entry, generated automatically, with an intensity slider and the 3-second loop. **Edit in sliders** copies the active preset, at the current intensity, into the morph sliders and clears the mood, ready for tuning.
 2. **Independent channels**: toggle auto-blink (`まばたき`) and the two winks, to check overlaps such as `笑い` + `まばたき`.

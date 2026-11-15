@@ -13,7 +13,7 @@ import { Spring } from "./smoothing.js";
 /** Sizes in radians, times in seconds. */
 export const TENTACLE_WAVE = Object.freeze({
   /** Wave size; a tail bends at most 1.5x this from root to tip. Picked from the #182 grids. */
-  amplitude: 0.25,
+  amplitude: 0.4,
   /** Each link bends at most amplitude / linkDivisor, scaled up toward the tip. */
   linkDivisor: 6,
   /** Seconds per wave. */

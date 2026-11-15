@@ -11,10 +11,11 @@ export const JOINTS = ["１", "２", "３"];
 
 /**
  * Build the rig.
- * @param {{ fingers?: boolean }} [options] fingers: false leaves the hands without finger bones.
+ * @param {{ fingers?: boolean, legs?: boolean }} [options] fingers: false leaves the hands without
+ *   finger bones; legs: false leaves out the hips and legs.
  * @returns {{ mesh: THREE.Object3D, get: (name: string) => THREE.Bone | undefined }}
  */
-export function fixture({ fingers = true } = {}) {
+export function fixture({ fingers = true, legs = true } = {}) {
   const mesh = new THREE.Object3D();
   mesh.rotation.set(0.12, -0.19, 0.08);
   const bones = [];
@@ -33,6 +34,13 @@ export function fixture({ fingers = true } = {}) {
   const torso = atWorld(mesh, "上半身", new THREE.Vector3(0, 15.4, -0.55),
     new THREE.Euler(-0.09, 0.16, -0.11));
   atWorld(torso, "頭", new THREE.Vector3(0, 19.27, -0.55));
+  if (legs) {
+    const hips = atWorld(mesh, "下半身", new THREE.Vector3(0, 13.3, -0.5), new THREE.Euler(0.05, -0.08, 0.04));
+    for (const [side, sign] of [["右", -1], ["左", 1]]) {
+      const thigh = atWorld(hips, `${side}足`, new THREE.Vector3(sign * 1.05, 12.6, -0.6), new THREE.Euler(-0.06, 0, sign * 0.05));
+      atWorld(thigh, `${side}ひざ`, new THREE.Vector3(sign * 1.2, 7.4, -0.25));
+    }
+  }
   for (const [side, sign] of [["右", -1], ["左", 1]]) {
     const shoulderPosition = new THREE.Vector3(sign * 1.32, 17.76, -0.57);
     const upperDirection = new THREE.Vector3(sign * 0.22, -0.94, 0.26).normalize();

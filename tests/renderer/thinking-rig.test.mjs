@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { buildThinkingRig, elbowForTarget } from "../../renderer/thinking-rig.js";
-import { DIGITS, JOINTS, LOWER_LENGTH, UPPER_LENGTH, fixture } from "./arm-fixture.mjs";
+import { THINKING_ARM, buildThinkingRig, elbowForTarget } from "../../renderer/thinking-rig.js";
+import { DIGITS, JOINTS, LOWER_LENGTH, UPPER_LENGTH, bustDepth, fixture } from "./arm-fixture.mjs";
 
 const TOLERANCE = 1e-7;
 
@@ -110,13 +110,28 @@ test("cached pose reaches the chin and supports the lowered right elbow through 
   const head = worldPosition(get("頭"));
   const entries = buildThinkingRig(mesh);
   applyPose(mesh, entries, 1);
-  vectorClose(worldPosition(get("右手首")), head.clone().add(new THREE.Vector3(-0.35, -1.5, 2.05)), "chin wrist target");
+  vectorClose(worldPosition(get("右手首")), head.clone().add(new THREE.Vector3(...THINKING_ARM.chin)), "chin wrist target");
   const elbow = worldPosition(get("右ひじ"));
   assert.ok(elbow.y < worldPosition(get("右手首")).y, "right elbow hangs below the wrist");
-  vectorClose(worldPosition(get("左手首")), elbow.clone().add(new THREE.Vector3(0.45, -0.3, 0.85)), "support wrist target");
+  vectorClose(worldPosition(get("左手首")), elbow.clone().add(new THREE.Vector3(...THINKING_ARM.support)), "support wrist target");
   for (const side of ["右", "左"]) {
     close(worldPosition(get(`${side}腕`)).distanceTo(worldPosition(get(`${side}ひじ`))), UPPER_LENGTH, "posed upper length");
     close(worldPosition(get(`${side}ひじ`)).distanceTo(worldPosition(get(`${side}手首`))), LOWER_LENGTH, "posed lower length");
+  }
+});
+
+test("posed forearms keep clear of the bust instead of cutting through it (#217)", () => {
+  const { mesh, get } = fixture();
+  applyPose(mesh, buildThinkingRig(mesh), 1);
+  for (const side of ["右", "左"]) {
+    const elbow = worldPosition(get(`${side}ひじ`));
+    const wrist = worldPosition(get(`${side}手首`));
+    for (let step = 0; step <= 20; step++) {
+      const point = elbow.clone().lerp(wrist, step / 20);
+      const depth = bustDepth(point);
+      assert.ok(depth <= 0, `${side} forearm at ${step * 5}% from the elbow sinks ${depth.toFixed(3)} into the bust `
+        + `at (${point.toArray().map((value) => value.toFixed(2)).join(", ")})`);
+    }
   }
 });
 

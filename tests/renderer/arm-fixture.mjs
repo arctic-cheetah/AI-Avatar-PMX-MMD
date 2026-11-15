@@ -93,3 +93,31 @@ export function fixture({ fingers = true, legs = true } = {}) {
   mesh.updateMatrixWorld(true);
   return { mesh, get: (name) => mesh.skeleton.getBoneByName(name) };
 }
+
+/**
+ * A stand-in for her bust in the fixture's world space (#217): one ellipsoid
+ * per side, fitted to the front of the PMX's 胸-weighted vertices (x ±1.5,
+ * y 16.0–17.8, front surface up to z 1.88). The fixture has no mesh, so this
+ * is what the thinking-pose arms must keep clear of.
+ */
+export const BUST = Object.freeze([-0.7, 0.7].map((x) => Object.freeze({
+  center: new THREE.Vector3(x, 16.7, 0.6),
+  radii: new THREE.Vector3(1.0, 1.05, 1.25),
+})));
+
+/** About the radius of her forearm and glove, in model units. */
+export const FOREARM_RADIUS = 0.3;
+
+/**
+ * How far a limb of the given radius at this point sinks into the bust.
+ * @param {THREE.Vector3} point World position on the limb's axis.
+ * @param {number} [radius] Limb radius.
+ * @returns {number} Positive inside (0 to 1, normalised), zero or negative when clear.
+ */
+export function bustDepth(point, radius = FOREARM_RADIUS) {
+  return Math.max(...BUST.map(({ center, radii }) => {
+    const offset = point.clone().sub(center);
+    const reach = radii.clone().addScalar(radius);
+    return 1 - Math.hypot(offset.x / reach.x, offset.y / reach.y, offset.z / reach.z);
+  }));
+}

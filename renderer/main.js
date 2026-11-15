@@ -41,6 +41,7 @@ import { FillerSession } from "./filler-session.js";
 import { ThinkingPose, THINKING_POSE, headGazeScale } from "./thinking-pose.js";
 import { buildThinkingRig } from "./thinking-rig.js";
 import { RELAXED_REST, relaxArms } from "./rest-pose.js";
+import { buildHandDriftRig } from "./hand-drift-rig.js";
 import { GazeController, normalisePointer, clampEyePitch } from "./gaze-tracking.js";
 import { CameraGaze } from "./camera-gaze.js";
 import { CameraControls } from "./camera-controls.js";
@@ -356,19 +357,20 @@ let idleBones = [];
 /**
  * Arm drift bones (#193). Her right arm is on the left of the screen. The
  * upper arms turn in the shoulder's frame (x swings forward and back, z
- * lifts outward); the elbows bend about their own y and the wrists turn
- * about the forearm (their own x). Signs checked in front and side grids.
+ * lifts outward) and the elbows bend about their own y. Signs checked in
+ * front and side grids. The forearms, wrists and fingers use axes found from
+ * the rest pose instead (hand-drift-rig.js).
  */
 const ARM_BONES = Object.freeze([
   { name: "右腕", frame: "parent", x: [["armSwayLeft", 1]], z: [["armOutLeft", -1]] },
   { name: "左腕", frame: "parent", x: [["armSwayRight", 1]], z: [["armOutRight", 1]] },
   { name: "右ひじ", frame: "local", y: [["elbowLeft", 1]] },
   { name: "左ひじ", frame: "local", y: [["elbowRight", -1]] },
-  { name: "右手首", frame: "local", x: [["wristLeft", 1]] },
-  { name: "左手首", frame: "local", x: [["wristRight", 1]] },
 ]);
 /** @type {{ bone: THREE.Bone, rest: THREE.Quaternion | null, frame: string, x?: [string, number][], y?: [string, number][], z?: [string, number][] }[]} */
 let armBones = [];
+/** Forearm, wrist and finger drift entries (natural hands, #199), with a rest copy where nothing else rewrites the bone. */
+let handBones = [];
 const idleEuler = new THREE.Euler();
 const idleQuat = new THREE.Quaternion();
 // Only conversation keeps her awake: sent chat, voice input and bridge events.
@@ -515,6 +517,10 @@ function setupArmDrift(object) {
     const bone = object.skeleton?.getBoneByName(name);
     if (bone) armBones.push({ bone, rest: rewritten.has(bone) ? null : bone.quaternion.clone(), ...axes });
   }
+  handBones = buildHandDriftRig(object).map((entry) => ({
+    ...entry,
+    rest: rewritten.has(entry.bone) ? null : entry.bone.quaternion.clone(),
+  }));
 }
 
 /**
@@ -534,6 +540,11 @@ function applyArmDrift() {
     idleQuat.setFromEuler(idleEuler.set(ax, ay, az, "XYZ"));
     if (frame === "parent") bone.quaternion.premultiply(idleQuat);
     else bone.quaternion.multiply(idleQuat);
+  }
+  for (const { bone, rest, axis, channel, scale } of handBones) {
+    if (rest) bone.quaternion.copy(rest);
+    const angle = fade * scale * (idlePose[channel] ?? 0);
+    if (angle !== 0) bone.quaternion.multiply(idleQuat.setFromAxisAngle(axis, angle));
   }
 }
 

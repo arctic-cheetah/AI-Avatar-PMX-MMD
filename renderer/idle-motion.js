@@ -132,12 +132,18 @@ export const IDLE_MOTION = Object.freeze({
     sway: 2.5 * DEG,
     out: 2 * DEG,
     elbow: 4 * DEG,
-    wrist: 3.5 * DEG,
+    /** The wrist replays the elbow's wave this many seconds later (natural hands, #199). */
+    wrist: 3 * DEG,
+    wristLag: 1.2,
+    /** The forearm rolls on its twist bone; the finger curl is per joint, scaled like the rest curl. */
+    forearm: 4 * DEG,
+    curl: 3 * DEG,
     periods: Object.freeze({
       sway: Object.freeze([23, 37]),
       out: Object.freeze([29, 47]),
       elbow: Object.freeze([19, 31]),
-      wrist: Object.freeze([17, 43]),
+      forearm: Object.freeze([21, 39]),
+      curl: Object.freeze([13, 29]),
     }),
     mix: Object.freeze([0.6, 0.4]),
     rightScale: 1.13,
@@ -200,10 +206,14 @@ const LIMITS = Object.freeze({
 });
 
 /** Arm drift parts and the IDLE_MOTION.armDrift size each one uses (#193). */
-const ARM_PARTS = Object.freeze({ armSway: "sway", armOut: "out", elbow: "elbow", wrist: "wrist" });
+const ARM_PARTS = Object.freeze({
+  armSway: "sway", armOut: "out", elbow: "elbow", wrist: "wrist", forearm: "forearm", curl: "curl",
+});
 const ONE_WAY = new Set(["out", "elbow"]);
+/** Parts without their own wave: the wrist replays the elbow's, `wristLag` seconds later. */
+const FOLLOWS = Object.freeze({ wrist: "elbow" });
 
-/** The eight arm drift angles, named by screen side like the shrugs. */
+/** The twelve arm drift angles, named by screen side like the shrugs. */
 export const ARM_CHANNELS = Object.freeze(Object.keys(ARM_PARTS).flatMap((part) => [`${part}Left`, `${part}Right`]));
 
 /**
@@ -216,20 +226,27 @@ export const ARM_CHANNELS = Object.freeze(Object.keys(ARM_PARTS).flatMap((part) 
 export function armDriftAngles(clock, amount) {
   const drift = IDLE_MOTION.armDrift;
   const [a, b] = drift.mix;
-  const angles = {};
-  Object.entries(ARM_PARTS).forEach(([part, key], index) => {
+  const keys = Object.values(ARM_PARTS);
+  // One part's raw wave (-1..1) on one side; each part has its own phases.
+  const waveOf = (key, right, time) => {
     const [first, second] = drift.periods[key];
-    for (const [side, scale, phase] of [["Left", 1, 1.3 * index], ["Right", drift.rightScale, 1.3 * index + 2.4]]) {
+    const scale = right ? drift.rightScale : 1;
+    const phase = 1.3 * keys.indexOf(key) + (right ? 2.4 : 0);
+    return a * Math.sin((2 * Math.PI * time) / (first * scale) + phase)
+      + b * Math.sin((2 * Math.PI * time) / (second * scale) + 1.7 * phase + 0.9);
+  };
+  const angles = {};
+  for (const [part, key] of Object.entries(ARM_PARTS)) {
+    for (const [side, right] of [["Left", false], ["Right", true]]) {
       if (!(amount > 0)) {
         angles[part + side] = 0;
         continue;
       }
-      const wave = a * Math.sin((2 * Math.PI * clock) / (first * scale) + phase)
-        + b * Math.sin((2 * Math.PI * clock) / (second * scale) + 1.7 * phase + 0.9);
+      const wave = FOLLOWS[key] ? waveOf(FOLLOWS[key], right, clock - drift.wristLag) : waveOf(key, right, clock);
       const size = drift[key] * amount;
       angles[part + side] = ONE_WAY.has(key) ? size * (0.5 + 0.5 * wave) : size * wave;
     }
-  });
+  }
   return angles;
 }
 

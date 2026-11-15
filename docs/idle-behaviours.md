@@ -314,7 +314,7 @@ is no palm, so only the forearm rolls.
   turns it off. It eases out rather than stopping. It is saved as
   `yidhari.arm-drift` (`0` = off) and is on by default. It does not affect
   the action picks.
-- For previews and grids, `__yidhariIdlePose` can hold the eight arm angles
+- For previews and grids, `__yidhariIdlePose` can hold the twelve arm angles
   with `armDrift: 1`.
 
 ## Settings

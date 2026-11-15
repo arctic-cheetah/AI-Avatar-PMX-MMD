@@ -332,6 +332,19 @@ is no palm, so only the forearm rolls.
 - For previews and grids, `__yidhariIdlePose` can hold the twenty-two arm angles
   with `armDrift: 1`.
 
+## Tentacle wave (#182)
+
+While she is idle or stretching, a slow wave travels along her four tails;
+while sleepy it is half as big. It eases in over about 1.5 s and eases out
+when she becomes active, including when speech or thinking blocks idle. The
+**Tentacle wave · 触手** toggle (`yidhari.tentacles`, on by default) eases it
+out. The **Wave size** slider under it sets the size from 0 to 2 (default
+0.4, saved as `yidhari.tentacles.size`). The tails also perk up on surprise,
+lift when she's happy, droop while sleepy or sad, and sway gently while she
+speaks. Four **Tentacle** buttons in Animation actions play the wave, perk,
+droop and sway on demand. How it sits on top of physics is in
+[physics.md](physics.md#tentacle-wave-182).
+
 ## Settings
 
 In **Independent channels**:
@@ -368,6 +381,8 @@ message wakes her.
 - `renderer/idle-motion.js`: the pure `IdleMotion` that turns the idle state
   into a glance target and small bone angles each frame, including the arm
   drift (`armDriftAngles`, `bindArmDriftSetting`).
+- `renderer/tentacle-motion.js`: the pure `TentacleWave` that turns the idle
+  state into a travelling wave along the tails (#182).
 - `renderer/gaze-tracking.js`: `setIdle(target)`, the idle glance source.
 - `renderer/bridge-client.js`: `onActivity` for every bridge event and
   voice-input state change, and `onAskChange(open)` when an agent ask opens

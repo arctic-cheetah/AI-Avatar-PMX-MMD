@@ -61,6 +61,7 @@ import { fetchTurn, turnFile } from "./turn-replay.js";
 import { createAmmoLoader } from "./ammo-loader.js";
 import { filterPhysics } from "./physics-groups.js";
 import { PhysicsLayer } from "./physics-layer.js";
+import { TENTACLE_ACTIONS, TENTACLE_WAVE_KEY, TentacleWave, bindTentacleSize, tailChains } from "./tentacle-motion.js";
 import { bindStoredToggle } from "./stored-toggle.js";
 import {
   HAIR_FOLLOW, RIGID_STRANDS, blendWeights, pinTargets, pinnedBones, sameMotionAs, stiffStrands,
@@ -123,6 +124,9 @@ const physicsRateInput = document.querySelector("#physics-rate");
 const physicsRateOutput = document.querySelector("#physics-rate-value");
 const gazeStatus = document.querySelector("#gaze-status");
 const idleToggle = document.querySelector("#idle-toggle");
+const tentacleToggle = document.querySelector("#tentacle-toggle");
+const tentacleSizeInput = document.querySelector("#tentacle-size");
+const tentacleSizeOutput = document.querySelector("#tentacle-size-value");
 const idleAfterInput = document.querySelector("#idle-after");
 const sleepAfterInput = document.querySelector("#sleep-after");
 const sleepActionEveryInput = document.querySelector("#sleep-action-every");
@@ -249,6 +253,12 @@ const swayQuat = new THREE.Quaternion();
 const sway = new SwayController();
 /** Idle-state timer (#71): sleepy after a long quiet, waking on activity. */
 const idle = new IdleController();
+// Tentacle wave (#182), built early: the action buttons below play it.
+const tentacleWave = new TentacleWave();
+bindStoredToggle(tentacleToggle, TENTACLE_WAVE_KEY, (on) => tentacleWave.setEnabled(on));
+bindTentacleSize(tentacleWave, tentacleSizeInput, {
+  show: (size) => { if (tentacleSizeOutput) tentacleSizeOutput.textContent = size.toFixed(2); },
+});
 bindIdleSettings(idle, { toggle: idleToggle, idleAfterInput, sleepAfterInput, sleepActionEveryInput });
 /** Whether an agent ask is waiting for an answer; idle waits too. */
 let askOpen = false;
@@ -309,6 +319,22 @@ function actionPlayButtons(labels, container) {
   return buttons;
 }
 const actionButtons = actionPlayButtons(ACTION_LABELS, "#action-play-controls");
+/** Tentacle action buttons (#182): the wave and its reactions, played alongside the body actions. */
+const tentacleButtons = {};
+for (const [name, { label }] of Object.entries(TENTACLE_ACTIONS)) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.dataset.tentacleAction = name;
+  button.textContent = label;
+  button.disabled = true;
+  button.setAttribute("aria-pressed", "false");
+  button.addEventListener("click", () => {
+    tentacleWave.toggle(name);
+    refreshActionPlay();
+  });
+  document.querySelector("#action-play-controls").append(button);
+  tentacleButtons[name] = button;
+}
 /** The idle pose she rests in (#199): Idle-pose-clean or Idle-pose-natural, saved per browser. */
 let restPose = "idle-pose-clean";
 const restPoseButtons = {};
@@ -342,16 +368,24 @@ function refreshActionPlay() {
     state: idle.state,
   });
   if (reason) idleMotion.stop();
+  const tailReason = reason ?? (tentacleWave.enabled ? null : "Tentacle wave is off");
+  if (tailReason) tentacleWave.stop();
   const playing = idleMotion.playing;
-  const shown = `${reason}|${playing}`;
+  const tailPlaying = tentacleWave.playing;
+  const shown = `${reason}|${tailReason}|${playing}|${tailPlaying}`;
   if (shown === shownActionPlay) return;
   shownActionPlay = shown;
   for (const [name, button] of Object.entries(actionButtons)) {
     button.disabled = Boolean(reason);
     button.setAttribute("aria-pressed", String(playing === name));
   }
-  actionPlayStatus.textContent = reason
-    ?? (playing ? `Playing: ${ACTION_LABELS[playing]}` : "Ready: click an action to play it once");
+  for (const [name, button] of Object.entries(tentacleButtons)) {
+    button.disabled = Boolean(tailReason);
+    button.setAttribute("aria-pressed", String(tailPlaying === name));
+  }
+  const labels = [playing && ACTION_LABELS[playing], tailPlaying && TENTACLE_ACTIONS[tailPlaying].label].filter(Boolean);
+  const ready = labels.length ? `Playing: ${labels.join(" + ")}` : "Ready: click an action to play it once";
+  actionPlayStatus.textContent = reason ?? (tailReason ? `${ready} · ${tailReason}` : ready);
 }
 /**
  * Idle motion bones: which angle of the pose each one takes, and its sign
@@ -1683,6 +1717,7 @@ function onModelLoaded(loaded, data) {
     speech,
     speak: enqueueSpeech,
     physics,
+    tentacleWave,
     /** Simulate the bridge ending a response (end, error or disconnect). */
     finish() {
       liveSpeech.responseFinished();
@@ -1718,6 +1753,7 @@ function onModelLoaded(loaded, data) {
   setupIdleMotion(mesh);
   pinStrands(mesh, data);
   setupPhysics(mesh, data);
+  setupTentacles(mesh);
 
   const morphCount = mesh.morphTargetInfluences?.length ?? 0;
   const unavailable = [];
@@ -1841,7 +1877,13 @@ async function buildPhysics(groups) {
   physicsWorld = physics.world;
   return {
     update: (delta) => physics.update(delta),
-    reset: () => physics.reset(),
+    reset: () => {
+      // reset() reads bone.matrixWorld: refresh it once the wave is off, or the
+      // tails' bodies start from the last drawn wave and buzz against their locked joints.
+      takeTentacleWaveOff();
+      object.updateMatrixWorld(true);
+      physics.reset();
+    },
     warmup: (cycles) => physics.warmup(cycles),
     setStep({ unitStep, maxStepNum }) {
       physics.unitStep = unitStep;
@@ -1863,6 +1905,8 @@ function restorePhysicsBones() {
     bone.quaternion.copy(quaternion);
     bone.position.copy(position);
   }
+  // The tails are back at rest, without the wave (#182).
+  tentacleWaveOn = false;
 }
 
 const physics = new PhysicsLayer({ build: buildPhysics, restoreBones: restorePhysicsBones });
@@ -1971,6 +2015,71 @@ function pinStrands(object, data) {
   }
 }
 
+// Tentacle wave (#182): added on top of the tails' physics pose after each
+// step, and taken off before the next. See docs/physics.md#tentacle-wave-182.
+/** @type {{phase: number, links: {bone: THREE.Bone, k: number, rest: THREE.Quaternion, base: THREE.Quaternion}[]}[]} */
+let tentacles = [];
+/** Whether the tail bones carry this frame's wave on top of their base pose. */
+let tentacleWaveOn = false;
+const tentacleEuler = new THREE.Euler();
+const tentacleQuat = new THREE.Quaternion();
+
+/**
+ * Find her four tails and capture each link's rest pose.
+ * @param {THREE.SkinnedMesh} object Loaded PMX mesh.
+ * @returns {void}
+ */
+function setupTentacles(object) {
+  const bones = object.skeleton?.bones ?? [];
+  tentacles = tailChains(bones.map((bone) => bone.name)).map(({ phase, links }) => ({
+    phase,
+    links: links.map(({ index, k }) => ({
+      bone: bones[index], k, rest: bones[index].quaternion.clone(), base: bones[index].quaternion.clone(),
+    })),
+  }));
+}
+
+/**
+ * Put the tails back on their base pose. MMDPhysics works out each bone's new
+ * rotation from its current one, so the wave must be off before every step
+ * and before a rebuild's reset.
+ * @returns {void}
+ */
+function takeTentacleWaveOff() {
+  if (!tentacleWaveOn) return;
+  for (const { links } of tentacles) for (const { bone, base } of links) bone.quaternion.copy(base);
+  tentacleWaveOn = false;
+}
+
+/**
+ * Note the tails' base pose (physics' result, or rest with physics off) and
+ * add this frame's wave on top of it.
+ * @param {number} delta Seconds since the previous frame.
+ * @returns {void}
+ */
+function applyTentacleWave(delta) {
+  // Her mood drives the reactions; speech sways the tails, anything else that blocks idle keeps them composed.
+  if (expressions) tentacleWave.setMood(expressions.activeExpression);
+  const speaking = !speechIdle();
+  tentacleWave.update(delta, idle.state, { speaking, composed: idle.blocked && !speaking });
+  const moving = tentacleWave.gain > 0 || tentacleWave.lift !== 0;
+  const simulated = physics.status === "on";
+  // While a build loads or warms up, physics owns the bones but has not posed them.
+  if (!simulated && physics.status === "loading" && physics.enabled) return;
+  for (const { phase, links } of tentacles) {
+    for (const { bone, k, rest, base } of links) {
+      if (simulated) base.copy(bone.quaternion);
+      else base.copy(rest);
+      bone.quaternion.copy(base);
+      if (!moving) continue;
+      const { yaw, pitch } = tentacleWave.angles(phase, k, links.length);
+      tentacleEuler.set(pitch, yaw, 0, "YXZ");
+      bone.quaternion.multiply(tentacleQuat.setFromEuler(tentacleEuler));
+    }
+  }
+  tentacleWaveOn = moving;
+}
+
 /**
  * Step physics last, after every bone layer has posed the body.
  * @param {number} delta Seconds since the previous frame.
@@ -2032,7 +2141,9 @@ function animate() {
   applySway(now / 1000, delta);
   applyIdleMotion();
   applyArmDrift();
+  takeTentacleWaveOff();
   applyPhysics(delta);
+  applyTentacleWave(delta);
   audition?.update(delta);
   audition?.apply();
   // A held preview wins the frame so a visual check is not overwritten by the mood loop.

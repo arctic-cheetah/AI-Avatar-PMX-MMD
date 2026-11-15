@@ -1,7 +1,7 @@
 // Run with: node --test tests/renderer/
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { startFrame, resetFrame, agentEvent, answerFrame, connectBridge } from "../../renderer/bridge-client.js";
+import { startFrame, resetFrame, agentEvent, answerFrame, connectBridge, bridgeEnabled } from "../../renderer/bridge-client.js";
 import { installPage } from "./fake-dom.mjs";
 
 test("typed and spoken prompts share one start frame; history lives in the bridge", () => {
@@ -226,4 +226,31 @@ test("an empty chat submit is not activity (#71)", (t) => {
   page.nodes.get("#chat-input").value = "   ";
   page.nodes.get("#chat-bar").listeners.submit[0]({ preventDefault() {} });
   assert.equal(activity, 0);
+});
+
+// #215: a test page opened with ?bridge=off must never take the live avatar's voice.
+test("only ?bridge=off turns the bridge off", () => {
+  assert.equal(bridgeEnabled("?bridge=off"), false);
+  assert.equal(bridgeEnabled("?mmd=x&bridge=off"), false);
+  assert.equal(bridgeEnabled(""), true);
+  assert.equal(bridgeEnabled("?bridge=on"), true);
+  assert.equal(bridgeEnabled("?bridge=offline"), true);
+});
+
+test("with the bridge off no socket opens, the status says so and chat stays disabled", (t) => {
+  const page = installPage(t);
+  let constructed = 0;
+  globalThis.WebSocket = class { static OPEN = 1; constructor() { constructed += 1; } };
+  connect(page, { bridge: false });
+  assert.equal(constructed, 0);
+  assert.equal(page.nodes.get("#bridge-status").textContent, "Bridge off (test page)");
+  assert.equal(page.nodes.get("#bridge-start").disabled, true);
+  assert.equal(page.nodes.get("#chat-input").disabled, true);
+  assert.equal(page.nodes.get("#chat-send").disabled, true);
+});
+
+test("the bridge still connects by default", (t) => {
+  const page = installPage(t);
+  connect(page);
+  assert.ok(page.socket);
 });

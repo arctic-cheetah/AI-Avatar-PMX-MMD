@@ -226,7 +226,9 @@ test("arm-in swings the arms toward her middle about her front-to-back axis", ()
       if (swing === NO_SWING) {
         const a = localDirection(plain.mesh, plain.get(`${side}腕`), plain.get(`${side}ひじ`));
         const b = localDirection(tucked.mesh, tucked.get(`${side}腕`), tucked.get(`${side}ひじ`));
-        close(a.angleTo(b), angle, `${side} upper arm turns by the arm-in angle`);
+        // Seen from the front (the x-y plane), the arm turns by exactly the arm-in angle.
+        const front = (v) => new THREE.Vector2(v.x, v.y);
+        close(Math.abs(front(a).angle() - front(b).angle()), angle, `${side} upper arm turns by the arm-in angle`);
         close(a.z, b.z, `${side} arm keeps its forward lean`);
       } else {
         close(to.z, legDepth(tucked.mesh, tucked.get, side, to.y) + RELAXED_REST.handForward, `${side} hand stays on the leg line`);

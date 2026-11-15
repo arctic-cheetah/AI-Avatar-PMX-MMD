@@ -484,6 +484,14 @@ above the floor. Played live:
 The sway while speaking is covered by the tests only: the mocked bridge
 plays no speech.
 
+### Frame cost
+
+Timed around the physics step in the browser over 6 s each (the page's timer
+has a 0.1 ms resolution): taking the wave off and adding it back costs a
+median under 0.1 ms and 0.1 ms at p95, both while still and while the wave
+plays. `physics.update` itself takes a median of 2.1–2.3 ms (p95 2.8 ms while
+the wave played). #116 profiles the whole frame on the Strix Halo.
+
 ### Playing them from Animation actions
 
 The **Animation actions · 仕草再生** section (#164) has four more buttons:

@@ -114,18 +114,21 @@ function poseHand(mesh, side, forward, normal, curlAmount) {
  * Arm targets for the chin-rest pose, in model units relative to a bone.
  * - chin: right wrist target, from the head bone.
  * - elbowBend: which way the right elbow bends.
- * - support: left wrist target, from the posed right elbow.
+ * - support: left wrist target, from the posed right elbow (under the bust).
  * - supportBend: which way the left elbow bends.
  */
 export const THINKING_ARM = Object.freeze({
-  chin: Object.freeze([-0.35, -1.5, 2.05]),
-  elbowBend: Object.freeze([-0.35, -1, 0.85]),
-  support: Object.freeze([0.45, -0.3, 0.85]),
-  supportBend: Object.freeze([0.7, -1, 0.2]),
+  // The wrist sits 0.25 further forward than the jaw needs, so the forearm clears the bust.
+  chin: Object.freeze([-0.35, -1.5, 2.3]),
+  // 75° outward from straight down: the forearm passes beside and above the bust (#217).
+  elbowBend: Object.freeze([-0.97, -0.26, 0.8]),
+  // The left forearm folds across her waist under the bust; a hand at the raised elbow would cross it.
+  support: Object.freeze([1.4, -1.6, 0.3]),
+  supportBend: Object.freeze([1, -1, 0]),
 });
 
 /**
- * Build a supported chin-rest pose, retaining exact rest rotations for release.
+ * Build a chin-rest pose, retaining exact rest rotations for release.
  * @param {THREE.Object3D} mesh
  * @param {Partial<typeof THINKING_ARM>} [arm] Overrides for the arm targets, for previews.
  */

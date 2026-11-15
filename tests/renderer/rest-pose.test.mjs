@@ -10,7 +10,7 @@ import * as THREE from "three";
 import {
   DEFAULT_REST_POSE, RELAXED_REST, REST_POSES, REST_POSE_KEY, bindRestPoseSetting, relaxArms,
 } from "../../renderer/rest-pose.js";
-import { buildThinkingRig } from "../../renderer/thinking-rig.js";
+import { THINKING_ARM, buildThinkingRig } from "../../renderer/thinking-rig.js";
 import { DIGITS, JOINTS, LOWER_LENGTH, UPPER_LENGTH, fixture } from "./arm-fixture.mjs";
 
 const DEG = Math.PI / 180;
@@ -207,7 +207,7 @@ test("the thinking pose still reaches the chin from the relaxed rest and release
   for (const { bone, rest } of entries) assert.deepEqual(rest.toArray(), relaxed.get(bone), `${bone.name} rest`);
   for (const { bone, posed } of entries) bone.quaternion.copy(posed);
   mesh.updateMatrixWorld(true);
-  close(at(get("右手首")).distanceTo(head.clone().add(new THREE.Vector3(-0.35, -1.5, 2.05))), 0, "chin wrist target", 1e-5);
+  close(at(get("右手首")).distanceTo(head.clone().add(new THREE.Vector3(...THINKING_ARM.chin))), 0, "chin wrist target", 1e-5);
   for (const { bone, rest } of entries) bone.quaternion.copy(rest);
   assert.deepEqual(snapshot(mesh), relaxed);
 });

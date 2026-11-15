@@ -10,10 +10,10 @@ relaxes the rest of the arm:
 
 | Part | Change | Default |
 | --- | --- | --- |
-| Elbow (`ひじ`) | The forearm turns forward, toward her front, about the elbow | 12° |
-| Wrist (`手首`) | The hand tips toward the palm | 6° |
+| Elbow (`ひじ`) | The forearm turns forward, toward her front, about the elbow | 3° |
+| Wrist (`手首`) | The hand tips toward the palm | 0° (straight) |
 | Fingers (`親指`–`小指` `１–３`) | Each joint curls toward the palm | 15° per joint, scaled per finger |
-| Upper arm (`腕`) | The whole arm swings back from the shoulder until the hand hangs in line with the leg | `handForward` 0.3 |
+| Upper arm (`腕`) | The whole arm swings back from the shoulder until the hand hangs in line with the leg | `handForward` 0 (on the line) |
 
 The finger scale is thumb 0.45, index 0.8, middle 0.9, ring 1.0 and pinky
 1.1, so the curl grows toward the pinky, like a resting hand. The thumb scale
@@ -68,6 +68,23 @@ On 15 November 2026 the user picked candidate C (elbow 12°, wrist 6°, curl
 to hang in line with the legs rather than in front of them. From the
 leg-line grid (old pose, C without the swing, C on the line and C 0.3 ahead),
 they then picked 0.3 ahead.
+
+With the idle hand motion running, the hands still looked like they were
+carrying something. Measured from the side, the thigh tilts 2–3° forward,
+but the forearm tilted 15° and the hand 18°. The user then picked option C
+from a third grid (forearm and hand tilt in each label):
+
+| Option | Elbow | Wrist | `handForward` | Forearm tilt | Hand tilt |
+| --- | --- | --- | --- | --- | --- |
+| A (before) | 12° | 6° | 0.3 | 15° | 18° |
+| B | 5° | 3° | 0.15 | 10° | 13° |
+| **C (picked)** | 3° | 0° | 0 | 7° | 10° |
+| D | 0° | 0° | 0 | 6° | 9° |
+
+Even with no bend, the forearm tilts about 6° forward, because the PMX's
+forearm already leans forward of the upper arm in its bind pose. C keeps a
+hint of bend so the arm does not look stiff again. The 15° finger curl
+stays.
 
 The sizes were picked by eye from labelled front, side and three-quarter
 grids of candidates against the old rest pose (see

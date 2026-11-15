@@ -310,6 +310,7 @@ so their place in the frame doesn't matter to physics.
 | Hip physics · 腰 | `yidhari.physics.hips` | off |
 | Physics steps (65–120 /s) | `yidhari.physics.rate` | 120 |
 | Tentacle wave · 触手 | `yidhari.tentacles` | on |
+| Wave size (0–2) | `yidhari.tentacles.size` | 0.4 |
 
 The main toggle is the kill-switch. The chest and hip toggles change their
 groups independently (a change rebuilds), and they keep their choice while
@@ -404,6 +405,41 @@ grids below on 15 November 2026), a 5 s period, travel 0.35 rad per link,
 lift 0.5. The spike measured 0.25 and 0.5 on either side of it, and both
 stayed clean.
 
+### Wave size slider
+
+The **Wave size** slider under the toggle sets the amplitude from **0 to 2**
+in steps of 0.05 (the user, 16 November 2026: "I love all of them"). It is
+saved as `yidhari.tentacles.size`. `tentacleSize()` clamps and snaps the
+value, and anything unreadable falls back to 0.4. While the tails wave, a new
+size eases in with the same spring as the gain, so a dragged slider never
+jumps. While they are still, it applies at once. At 0 the tails settle
+exactly still. The toggle stays as the quick on/off.
+
+The range was checked before the slider went in. These are the spike's
+overlay numbers, standing still, tips, 6 s. The last three columns are the
+closest a tail came to her body, her other tails and the floor over a full
+cycle (every 5th tail vertex, 20 moments):
+
+| Size | Tip speed | Jitter | Buzz | Swing | Body | Other tail | Floor (y) |
+|---|---|---|---|---|---|---|---|
+| 0 | 0 | 0 | 0 | 0 | 0.098 | 1.53 | 5.27 |
+| 0.4 | 0.86 units/s | 0.0006 | 0.004 | 2.0 | 0.097 | 1.42 | 4.88 |
+| 0.6 | 1.29 units/s | 0.0010 | 0.006 | 3.0 | 0.097 | | |
+| 0.8 | 1.68 units/s | 0.0014 | 0.008 | 3.9 | 0.096 | | |
+| 1.0 | 2.07 units/s | 0.0018 | 0.010 | 4.8 | 0.096 | 1.31 | 4.34 |
+| 1.5 | | | | | 0.094 | 1.12 | 3.96 |
+| 2.0 | | | | | 0.093 | 0.86 | 3.66 |
+
+- Buzz and jitter grow with the tips' speed, as a smooth wave's do. At 1.0
+  the buzz is still below the fringe's (0.011–0.014).
+- No size brings a tail closer to her body: 0.093 is where the tails meet
+  her hips. The tails come closer to each other but never touch, and they
+  stay well above the floor.
+- **By eye:** from 1.5 up the curl turns bold. At 2.0 the near tail sweeps
+  across her legs in the three-quarter back view, passing in front of them,
+  and the tips hook sharply. It's lively rather than calm, so the default
+  stays 0.4.
+
 ### Frame order with the wave
 
 ```
@@ -447,7 +483,7 @@ frame over 6 s (tips, links 14–17), measured at the earlier 0.25 default:
 ### Grids
 
 Labelled grids and GIFs (front, three-quarter front, three-quarter back,
-back × wave off / 0.15 / 0.25 / 0.4 / 0.6) are kept under
+back × wave off / 0.15 / 0.25 / 0.4 / 0.6 / 0.8 / 1.0 / 1.5 / 2.0) are kept under
 `assets/private/tails-182/` (gitignored, since the model is private).
 
 ## Tests

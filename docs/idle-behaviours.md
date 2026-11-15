@@ -266,14 +266,35 @@ top of it.
 | `armSwayLeft/Right` | `右腕` / `左腕` | Swings forward and back, in the shoulder's frame | ±2.5° |
 | `armOutLeft/Right` | `右腕` / `左腕` | Lifts away from the body, never toward it | 0–2° |
 | `elbowLeft/Right` | `右ひじ` / `左ひじ` | Bends a little, never past straight | 0–4° |
-| `wristLeft/Right` | `右手首` / `左手首` | Turns softly about the forearm | ±3.5° |
+| `forearmLeft/Right` | `右手捩` / `左手捩` | Rolls softly about the forearm, on the twist bone | ±4° |
+| `wristLeft/Right` | `右手首` / `左手首` | Tips toward and away from the palm, following the elbow 1.2 s later | ±3° |
+| `curlLeft/Right` | `親指`–`小指` `１–３` | Every finger joint loosens and curls around the rest curl, scaled like it (thumb 0.45 to pinky 1.1) | ±3° per joint |
+
+**Natural hands** (#199 follow-up). The user asked for the lower arms and
+hands to move naturally, not just the upper arms. Three things make a still
+hand look alive:
+- The forearm roll uses the twist bone `手捩`, not the wrist. Twisting at
+  the wrist pinches the skin there, while the twist bone spreads it along
+  the forearm.
+- The wrist does not have its own wave. It replays the elbow's wave 1.2 s
+  later (`wristLag`), so the hand trails the forearm like a loose hand would.
+  The elbow only bends one way, so its 0–4° is mapped to the wrist's ±3°.
+- The fingers curl and loosen on their own slow waves (13–29 s), which do not
+  follow the elbow, so the hand never freezes in one shape.
+
+The axes come from `buildHandDriftRig()` in `renderer/hand-drift-rig.js`,
+found once from the rest pose: the forearm's own direction for the roll, the
+axis between the hand and the palm for the wrist, and, for each finger
+joint, the axis between the joint and the palm, as the rest curl uses. So
+they work whatever the PMX's local bone axes are. Without finger bones there
+is no palm, so only the forearm rolls.
 
 - **Slow and never on a loop.** Each channel adds two sine waves with
-  periods of 17–47 s (up to 53 s on the right) that do not divide evenly.
+  periods of 13–47 s (up to 53 s on the right) that do not divide evenly.
   The right of the screen runs 13 % slower and on its own phases, so the two arms are never mirrored or
   in step. One frame moves each angle by less than 0.02°.
 - **Eased with the idle state.** `IdleMotion.update()` returns the drift's
-  weight as `armDrift` and the eight angles, already scaled by it. A spring
+  weight as `armDrift` and the twelve angles, already scaled by it. A spring
   (rate 2, about 2 s) takes the weight to 1 while idle or stretching, 0.6
   while sleepy or waking, and 0 while active. Blocking (speech, thinking, an
   open ask, a streaming reply or a morph preview) makes her active, so the

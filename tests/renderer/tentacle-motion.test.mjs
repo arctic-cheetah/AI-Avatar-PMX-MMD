@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import {
-  TENTACLE_WAVE, TENTACLE_WAVE_KEY, TentacleWave, tailChains, waveAngles,
+  TENTACLE_SIZE_KEY, TENTACLE_WAVE, TENTACLE_WAVE_KEY, TentacleWave, bindTentacleSize, tailChains, tentacleSize, waveAngles,
 } from "../../renderer/tentacle-motion.js";
 
 const LINKS = 17;
@@ -164,6 +164,120 @@ test("angles scale with the eased gain and the chosen amplitude", () => {
 
 test("the toggle has its own storage key", () => {
   assert.equal(TENTACLE_WAVE_KEY, "yidhari.tentacles");
+});
+
+// The size slider (#182): 0 to 2, measured clean across that range.
+
+/** A range input that records its listeners. */
+function fakeSlider() {
+  const listeners = {};
+  return {
+    value: "",
+    addEventListener(type, fn) { listeners[type] = fn; },
+    fire(type) { listeners[type]?.(); },
+  };
+}
+
+/** localStorage stand-in; `broken` makes every call throw. */
+function fakeStorage(entries = {}, { broken = false } = {}) {
+  const map = new Map(Object.entries(entries));
+  const guard = () => { if (broken) throw new Error("blocked"); };
+  return {
+    getItem(key) { guard(); return map.has(key) ? map.get(key) : null; },
+    setItem(key, value) { guard(); map.set(key, String(value)); },
+    map,
+  };
+}
+
+test("the slider runs from 0 to 2 in steps of 0.05, starting at the picked 0.4", () => {
+  assert.deepEqual(TENTACLE_WAVE.sizeRange, { min: 0, max: 2, step: 0.05 });
+  assert.equal(TENTACLE_WAVE.amplitude, 0.4);
+  assert.equal(TENTACLE_SIZE_KEY, "yidhari.tentacles.size");
+});
+
+test("tentacleSize clamps to the range, snaps to the step, and falls back to the default", () => {
+  assert.equal(tentacleSize(-1), 0);
+  assert.equal(tentacleSize(3), 2);
+  assert.equal(tentacleSize("0.6"), 0.6);
+  assert.equal(tentacleSize(0.63), 0.65);
+  assert.equal(tentacleSize(1.2), 1.2);
+  for (const bad of [NaN, Infinity, "", "big", null, undefined]) assert.equal(tentacleSize(bad), 0.4, String(bad));
+});
+
+test("a new size eases in while the tails wave, without a jump or overshoot", () => {
+  const wave = new TentacleWave();
+  run(wave, "idle", TENTACLE_WAVE.ease * 4);
+  wave.setAmplitude(1.2);
+  assert.equal(wave.amplitudeTarget, 1.2);
+  let previous = wave.amplitude;
+  for (let i = 0; i < 6 * 60; i += 1) {
+    wave.update(1 / 60, "idle");
+    assert.ok(wave.amplitude - previous < 0.05, `frame ${i} jumped`);
+    assert.ok(wave.amplitude >= previous - 1e-12 && wave.amplitude <= 1.2 + 1e-12, "no dip or overshoot");
+    previous = wave.amplitude;
+  }
+  assert.ok(Math.abs(wave.amplitude - 1.2) < 1e-9);
+});
+
+test("a new size applies at once while the tails are still", () => {
+  const wave = new TentacleWave();
+  wave.setAmplitude(1.5);
+  assert.equal(wave.amplitude, 1.5);
+  run(wave, "active", 1);
+  wave.setAmplitude(0.2);
+  assert.equal(wave.amplitude, 0.2);
+});
+
+test("setAmplitude clamps like the slider", () => {
+  const wave = new TentacleWave();
+  wave.setAmplitude(5);
+  assert.equal(wave.amplitudeTarget, 2);
+  wave.setAmplitude("nonsense");
+  assert.equal(wave.amplitudeTarget, 0.4);
+});
+
+test("size 0 settles the tails exactly still, even while idle", () => {
+  const wave = new TentacleWave();
+  run(wave, "idle", TENTACLE_WAVE.ease * 4);
+  wave.setAmplitude(0);
+  run(wave, "idle", TENTACLE_WAVE.ease * 6);
+  assert.equal(wave.amplitude, 0);
+  assert.deepEqual(wave.angles(0.7, 9, LINKS), { yaw: 0, pitch: 0 });
+});
+
+test("bindTentacleSize shows and applies a stored size, and saves the slider's changes", () => {
+  const wave = new TentacleWave();
+  const input = fakeSlider();
+  const shown = [];
+  const local = fakeStorage({ [TENTACLE_SIZE_KEY]: "1.25" });
+  bindTentacleSize(wave, input, { local, show: (size) => shown.push(size) });
+  assert.equal(wave.amplitudeTarget, 1.25);
+  assert.equal(input.value, "1.25");
+  assert.deepEqual(shown, [1.25]);
+  input.value = "2.4";
+  input.fire("input");
+  assert.equal(wave.amplitudeTarget, 2);
+  assert.equal(input.value, "2", "an out-of-range value is written back clamped");
+  assert.equal(local.map.get(TENTACLE_SIZE_KEY), "2");
+  assert.deepEqual(shown, [1.25, 2]);
+});
+
+test("bindTentacleSize starts at the default with nothing stored, and keeps working when storage is blocked", () => {
+  const fresh = new TentacleWave({ amplitude: 1 });
+  bindTentacleSize(fresh, fakeSlider(), { local: fakeStorage() });
+  assert.equal(fresh.amplitudeTarget, 0.4);
+  const wave = new TentacleWave();
+  const input = fakeSlider();
+  bindTentacleSize(wave, input, { local: fakeStorage({}, { broken: true }) });
+  input.value = "0.8";
+  assert.doesNotThrow(() => input.fire("input"));
+  assert.equal(wave.amplitudeTarget, 0.8);
+});
+
+test("bindTentacleSize without a slider still applies the stored size", () => {
+  const wave = new TentacleWave();
+  bindTentacleSize(wave, null, { local: fakeStorage({ [TENTACLE_SIZE_KEY]: "0.6" }) });
+  assert.equal(wave.amplitudeTarget, 0.6);
 });
 
 const PMX = new URL("../../yidhari-mmd/伊德海莉.pmx", import.meta.url);

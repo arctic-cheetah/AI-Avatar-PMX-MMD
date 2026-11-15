@@ -5,7 +5,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import {
-  TENTACLE_SIZE_KEY, TENTACLE_WAVE, TENTACLE_WAVE_KEY, TentacleWave, bindTentacleSize, tailChains, tentacleSize, waveAngles,
+  TENTACLE_ACTIONS, TENTACLE_REACTIONS, TENTACLE_SIZE_KEY, TENTACLE_WAVE, TENTACLE_WAVE_KEY, TentacleWave,
+  bindTentacleSize, tailChains, tentacleSize, waveAngles,
 } from "../../renderer/tentacle-motion.js";
 
 const LINKS = 17;
@@ -278,6 +279,210 @@ test("bindTentacleSize without a slider still applies the stored size", () => {
   const wave = new TentacleWave();
   bindTentacleSize(wave, null, { local: fakeStorage({ [TENTACLE_SIZE_KEY]: "0.6" }) });
   assert.equal(wave.amplitudeTarget, 0.6);
+});
+
+// Reactions (#182): perk, lift and droop with her moods, a sway while she speaks.
+
+/** Step a wave for some seconds at 60 fps with options; returns [gain, lift] after each frame. */
+function trace(wave, state, seconds, options) {
+  const out = [];
+  for (let i = 0; i < Math.round(seconds * 60); i += 1) {
+    wave.update(1 / 60, state, options);
+    out.push([wave.gain, wave.lift]);
+  }
+  return out;
+}
+const lifts = (rows) => rows.map(([, lift]) => lift);
+const peak = (values) => values.reduce((a, b) => (Math.abs(b) > Math.abs(a) ? b : a), 0);
+
+test("each reaction answers its moods, and no mood answers twice", () => {
+  const seen = new Set();
+  for (const [name, reaction] of Object.entries(TENTACLE_REACTIONS)) {
+    assert.ok(reaction.moods.length > 0, name);
+    for (const mood of reaction.moods) {
+      assert.ok(!seen.has(mood), `${mood} appears twice`);
+      seen.add(mood);
+    }
+  }
+  assert.ok(TENTACLE_REACTIONS.perk.moods.includes("surprised"));
+  assert.ok(TENTACLE_REACTIONS.lift.moods.includes("happy"));
+  assert.ok(TENTACLE_REACTIONS.droop.moods.includes("sleepy"));
+  assert.ok(!seen.has("thinking"), "thinking stays composed");
+  assert.ok(TENTACLE_REACTIONS.perk.lift > TENTACLE_REACTIONS.lift.lift && TENTACLE_REACTIONS.lift.lift > 0);
+  assert.ok(TENTACLE_REACTIONS.droop.lift < 0);
+});
+
+test("surprise perks the tails up quickly and they ease back to exactly rest", () => {
+  const wave = new TentacleWave();
+  wave.setMood("surprised");
+  const rows = lifts(trace(wave, "active", 4));
+  const top = peak(rows);
+  assert.ok(Math.abs(top - TENTACLE_REACTIONS.perk.lift) < 1e-6, `peaks at ${top}`);
+  assert.ok(rows.findIndex((lift) => lift >= top - 1e-9) < 0.5 * 60, "up within half a second");
+  for (let i = 1; i < rows.length; i += 1) assert.ok(Math.abs(rows[i] - rows[i - 1]) < 0.05, `frame ${i} jumped`);
+  assert.equal(rows.at(-1), 0);
+  assert.equal(wave.gain, 0, "a reaction alone does not start the wave");
+});
+
+test("happiness lifts them more gently than surprise", () => {
+  const happy = new TentacleWave();
+  happy.setMood("happy");
+  const rows = lifts(trace(happy, "active", 6));
+  assert.ok(Math.abs(peak(rows) - TENTACLE_REACTIONS.lift.lift) < 1e-6);
+  assert.ok(rows.findIndex((lift) => lift >= peak(rows) - 1e-9) > 0.5 * 60, "slower to rise than a perk");
+  assert.equal(rows.at(-1), 0);
+});
+
+test("the same mood again does not fire twice, and other moods do nothing", () => {
+  const wave = new TentacleWave();
+  wave.setMood("happy");
+  trace(wave, "active", 6);
+  wave.setMood("happy");
+  assert.ok(lifts(trace(wave, "active", 1)).every((lift) => lift === 0));
+  for (const mood of ["neutral", "thinking", "serious", "calm"]) {
+    wave.setMood(mood);
+    assert.ok(lifts(trace(wave, "active", 1)).every((lift) => lift === 0), mood);
+  }
+});
+
+test("sleepiness droops the tails for as long as it lasts, then they ease back", () => {
+  const wave = new TentacleWave();
+  wave.setMood("sleepy");
+  const held = lifts(trace(wave, "sleepy", 6));
+  assert.ok(Math.abs(held.at(-1) - TENTACLE_REACTIONS.droop.lift) < 1e-6, `holds at ${held.at(-1)}`);
+  for (let i = 1; i < held.length; i += 1) assert.ok(Math.abs(held[i] - held[i - 1]) < 0.05, `frame ${i} jumped`);
+  wave.setMood("neutral");
+  const after = lifts(trace(wave, "active", 6));
+  assert.ok(after[0] < -0.3, "no snap when the mood clears");
+  assert.equal(after.at(-1), 0);
+});
+
+test("while she speaks the tails sway gently, even though idle is blocked", () => {
+  const wave = new TentacleWave();
+  const rows = trace(wave, "active", TENTACLE_WAVE.ease * 6, { speaking: true });
+  assert.ok(Math.abs(rows.at(-1)[0] - TENTACLE_WAVE.speakingGain) < 0.01);
+  assert.ok(TENTACLE_WAVE.speakingGain > 0 && TENTACLE_WAVE.speakingGain < TENTACLE_WAVE.stateGain.idle);
+  const done = trace(wave, "active", TENTACLE_WAVE.ease * 6);
+  assert.equal(done.at(-1)[0], 0, "and settle when speech ends");
+});
+
+test("moods still react while she speaks", () => {
+  const wave = new TentacleWave();
+  wave.setMood("surprised");
+  assert.ok(peak(lifts(trace(wave, "active", 2, { speaking: true }))) > 0.9 * TENTACLE_REACTIONS.perk.lift);
+});
+
+test("thinking, an open ask or a streaming reply keeps the tails composed", () => {
+  const wave = new TentacleWave();
+  trace(wave, "idle", TENTACLE_WAVE.ease * 4);
+  wave.setMood("sleepy");
+  trace(wave, "idle", 3);
+  const rows = trace(wave, "active", TENTACLE_WAVE.ease * 6, { composed: true });
+  assert.ok(rows[0][0] > 0.9 && rows[0][1] < -0.1, "eases out rather than snapping");
+  assert.deepEqual(rows.at(-1), [0, 0]);
+  wave.setMood("surprised");
+  assert.ok(trace(wave, "active", 2, { composed: true }).every(([gain, lift]) => gain === 0 && lift === 0),
+    "a mood while composed does not move them");
+});
+
+test("the lift bends each link evenly, so the whole tail arcs by the lift", () => {
+  const wave = new TentacleWave();
+  wave.setMood("surprised");
+  for (let i = 0; i < 25; i += 1) wave.update(1 / 60, "active");
+  const total = Array.from({ length: LINKS }, (_, i) => wave.angles(0.7, i + 1, LINKS).pitch).reduce((a, b) => a + b, 0);
+  assert.ok(Math.abs(total - wave.lift) < 1e-9);
+  assert.equal(wave.angles(0.7, 9, LINKS).yaw, 0, "no side-to-side without the wave");
+});
+
+test("reactions follow the size slider up to the default and no further, and stop at 0", () => {
+  const sizes = [[0, 0], [0.2, 0.5], [0.4, 1], [2, 1]];
+  for (const [size, scale] of sizes) {
+    const wave = new TentacleWave({ amplitude: size });
+    wave.setMood("surprised");
+    for (let i = 0; i < 25; i += 1) wave.update(1 / 60, "active");
+    const total = Array.from({ length: LINKS }, (_, i) => wave.angles(0.7, i + 1, LINKS).pitch).reduce((a, b) => a + b, 0);
+    assert.ok(Math.abs(total - wave.lift * scale) < 1e-9, `size ${size}`);
+  }
+});
+
+test("switching the toggle off eases a reaction out and ignores new moods", () => {
+  const wave = new TentacleWave();
+  wave.setMood("sleepy");
+  trace(wave, "sleepy", 4);
+  wave.setEnabled(false);
+  const rows = lifts(trace(wave, "sleepy", 6));
+  assert.ok(rows[0] < -0.3);
+  assert.equal(rows.at(-1), 0);
+  wave.setMood("surprised");
+  assert.ok(lifts(trace(wave, "active", 2)).every((lift) => lift === 0));
+});
+
+// Playing tentacle actions from the Animation actions buttons (#164, #182).
+
+test("each tentacle action has a button label and a length", () => {
+  assert.deepEqual(Object.keys(TENTACLE_ACTIONS).sort(), ["droop", "perk", "sway", "wave"]);
+  for (const [name, action] of Object.entries(TENTACLE_ACTIONS)) {
+    assert.match(action.label, /^Tentacle /, name);
+    assert.ok(action.duration > 0, name);
+  }
+});
+
+test("playing the wave waves the tails while she is active, then they settle", () => {
+  const wave = new TentacleWave();
+  wave.play("wave");
+  assert.equal(wave.playing, "wave");
+  const rows = trace(wave, "active", TENTACLE_ACTIONS.wave.duration + TENTACLE_WAVE.ease * 5);
+  const during = rows.slice(0, TENTACLE_ACTIONS.wave.duration * 60);
+  assert.ok(Math.max(...during.map(([gain]) => gain)) > 0.95);
+  assert.equal(wave.playing, null);
+  assert.equal(rows.at(-1)[0], 0);
+});
+
+test("playing the sway waves them at the speaking size", () => {
+  const wave = new TentacleWave();
+  wave.play("sway");
+  const rows = trace(wave, "active", TENTACLE_ACTIONS.sway.duration);
+  assert.ok(Math.abs(rows.at(-30)[0] - TENTACLE_WAVE.speakingGain) < 0.02);
+});
+
+test("playing perk and droop shows those reactions and eases back", () => {
+  const perk = new TentacleWave();
+  perk.play("perk");
+  const up = lifts(trace(perk, "active", TENTACLE_ACTIONS.perk.duration + 1));
+  assert.ok(Math.abs(peak(up) - TENTACLE_REACTIONS.perk.lift) < 1e-6);
+  assert.equal(up.at(-1), 0);
+  const droop = new TentacleWave();
+  droop.play("droop");
+  const down = lifts(trace(droop, "active", TENTACLE_ACTIONS.droop.duration + 5));
+  assert.ok(Math.abs(peak(down) - TENTACLE_REACTIONS.droop.lift) < 0.01);
+  assert.equal(down.at(-1), 0);
+  assert.equal(droop.playing, null);
+});
+
+test("the same button again stops the action, and another switches to it", () => {
+  const wave = new TentacleWave();
+  wave.toggle("wave");
+  trace(wave, "active", 3);
+  wave.toggle("wave");
+  assert.equal(wave.playing, null);
+  const rows = trace(wave, "active", TENTACLE_WAVE.ease * 5);
+  assert.ok(rows[0][0] > 0.5, "stopping eases out");
+  assert.equal(rows.at(-1)[0], 0);
+  wave.toggle("wave");
+  wave.toggle("droop");
+  assert.equal(wave.playing, "droop");
+  wave.stop();
+  assert.equal(wave.playing, null);
+  assert.throws(() => wave.play("dance"), /Unknown tentacle action/);
+});
+
+test("a played action still respects the toggle and composure", () => {
+  const off = new TentacleWave({ enabled: false });
+  off.play("wave");
+  assert.ok(trace(off, "active", 3).every(([gain]) => gain === 0));
+  const composed = new TentacleWave();
+  composed.play("perk");
+  assert.ok(trace(composed, "active", 2, { composed: true }).every(([, lift]) => lift === 0));
 });
 
 const PMX = new URL("../../yidhari-mmd/伊德海莉.pmx", import.meta.url);

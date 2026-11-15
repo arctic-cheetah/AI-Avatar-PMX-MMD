@@ -339,7 +339,10 @@ while sleepy it is half as big. It eases in over about 1.5 s and eases out
 when she becomes active, including when speech or thinking blocks idle. The
 **Tentacle wave · 触手** toggle (`yidhari.tentacles`, on by default) eases it
 out. The **Wave size** slider under it sets the size from 0 to 2 (default
-0.4, saved as `yidhari.tentacles.size`). How it sits on top of physics is in
+0.4, saved as `yidhari.tentacles.size`). The tails also perk up on surprise,
+lift when she's happy, droop while sleepy or sad, and sway gently while she
+speaks. Four **Tentacle** buttons in Animation actions play the wave, perk,
+droop and sway on demand. How it sits on top of physics is in
 [physics.md](physics.md#tentacle-wave-182).
 
 ## Settings

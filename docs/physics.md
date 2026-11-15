@@ -440,6 +440,40 @@ cycle (every 5th tail vertex, 20 moments):
   and the tips hook sharply. It's lively rather than calm, so the default
   stays 0.4.
 
+### Reactions
+
+Her tails answer her mood, on top of the wave and with the same overlay, so
+physics still owns them:
+
+| Reaction | Moods | Shape | Size (total arc) |
+|---|---|---|---|
+| **Perk** | surprised, shocked, gasp, scared | Up in 0.35 s, hold 0.4 s, down over 1.2 s | +0.5 rad |
+| **Lift** | happy, joyful, excited, grin, lovestruck | Up in 0.8 s, hold 1.2 s, down over 1.6 s | +0.3 rad |
+| **Droop** | sleepy, sad, sorrowful, disappointed, cry | Eases down, held while the mood lasts, eases back | −0.35 rad |
+| **Sway** | while she speaks | The wave at 0.35 of its size | |
+
+- A reaction fires when the mood **changes** to one of its moods. The same
+  mood again does nothing. The lift is spread evenly over the 17 links, so
+  each tail arcs up or down as one curve.
+- **Composed:** while idle is blocked by anything other than speech
+  (thinking, an open ask, a streaming reply, a morph preview), the wave, sway
+  and reactions all ease out, and new moods are ignored. While she speaks,
+  only the sway plays, and her moods still react.
+- Reactions follow the **size slider** up to the default: full size at 0.4
+  and above, half at 0.2, none at 0. The toggle eases them out like the wave.
+- A reaction stopped part-way (composure, the toggle, the Stop button) hands
+  its current lift to the droop spring, so it eases back instead of snapping.
+
+### Playing them from Animation actions
+
+The **Animation actions · 仕草再生** section (#164) has four more buttons:
+**Tentacle wave** (10 s of the full wave), **Tentacle perk**, **Tentacle droop**
+(held 4 s) and **Tentacle sway** (8 s at the speaking size). They work like
+the body actions: the same button again stops the action and eases back,
+another button switches, and they are gated the same way, as well as when the
+**Tentacle wave** toggle is off. A tentacle action plays alongside a body
+action, since they move different bones.
+
 ### Frame order with the wave
 
 ```

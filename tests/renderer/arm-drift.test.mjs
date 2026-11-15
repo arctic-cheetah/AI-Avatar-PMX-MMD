@@ -33,10 +33,11 @@ function storage(initial = {}) {
   return { getItem: (k) => map.get(k) ?? null, setItem: (k, v) => map.set(k, String(v)), map };
 }
 
-test("arm channels are named by screen side for the upper arm, elbow and wrist", () => {
+test("arm channels are named by screen side for the upper arm, elbow, forearm, wrist and fingers", () => {
   assert.deepEqual([...ARM_CHANNELS].sort(), [
     "armOutLeft", "armOutRight", "armSwayLeft", "armSwayRight",
-    "elbowLeft", "elbowRight", "wristLeft", "wristRight",
+    "curlLeft", "curlRight", "elbowLeft", "elbowRight",
+    "forearmLeft", "forearmRight", "wristLeft", "wristRight",
   ]);
 });
 
@@ -56,9 +57,11 @@ test("full drift stays within a few degrees, one-sided where clipping is a risk"
       assert.ok(a[`armOut${side}`] >= 0 && a[`armOut${side}`] <= armDrift.out + 1e-9, `out ${clock}`);
       assert.ok(a[`elbow${side}`] >= 0 && a[`elbow${side}`] <= armDrift.elbow + 1e-9, `elbow ${clock}`);
       assert.ok(Math.abs(a[`wrist${side}`]) <= armDrift.wrist + 1e-9, `wrist ${clock}`);
+      assert.ok(Math.abs(a[`forearm${side}`]) <= armDrift.forearm + 1e-9, `forearm ${clock}`);
+      assert.ok(Math.abs(a[`curl${side}`]) <= armDrift.curl + 1e-9, `curl ${clock}`);
     }
   }
-  for (const key of ["sway", "out", "elbow", "wrist"]) {
+  for (const key of ["sway", "out", "elbow", "wrist", "forearm", "curl"]) {
     assert.ok(armDrift[key] > 0 && armDrift[key] <= 5 * DEG, `${key} is a few degrees`);
   }
 });
@@ -69,7 +72,7 @@ test("the two sides are phase-offset, never mirrored or identical", () => {
   let samples = 0;
   for (let clock = 0; clock < 120; clock += 0.5) {
     const a = armDriftAngles(clock, 1);
-    for (const part of ["armSway", "armOut", "elbow", "wrist"]) {
+    for (const part of ["armSway", "armOut", "elbow", "wrist", "forearm", "curl"]) {
       samples += 1;
       if (Math.abs(a[`${part}Left`] - a[`${part}Right`]) < 0.05 * DEG) same += 1;
       if (Math.abs(a[`${part}Left`] + a[`${part}Right`]) < 0.05 * DEG) mirrored += 1;
@@ -93,6 +96,32 @@ test("the drift is slow: tens of seconds per swing and tiny per-frame steps", ()
   // A 10 s or longer swing crosses zero at most about twice per 10 s.
   assert.ok(crossings <= 24, `armSwayLeft crossed zero ${crossings} times in 2 min`);
   assert.ok(crossings >= 2, "it still moves");
+});
+
+test("the wrist follows the elbow a moment later, like a relaxed hand trailing the arm", () => {
+  const lag = armDrift.wristLag;
+  assert.ok(lag >= 0.5 && lag <= 2, "a lag of about a second");
+  for (let clock = lag; clock < 120; clock += 0.37) {
+    const now = armDriftAngles(clock, 1);
+    const before = armDriftAngles(clock - lag, 1);
+    for (const side of ["Left", "Right"]) {
+      // The elbow only bends one way (0..size); the wrist swings both ways around rest.
+      const elbow = (2 * before[`elbow${side}`]) / armDrift.elbow - 1;
+      assert.ok(Math.abs(now[`wrist${side}`] / armDrift.wrist - elbow) < 1e-9, `${side} wrist at ${clock}`);
+    }
+  }
+});
+
+test("the forearm roll and finger curl move on their own, not with the elbow", () => {
+  let forearmMoves = 0;
+  let curlMoves = 0;
+  for (let clock = 0; clock < 120; clock += 0.5) {
+    const a = armDriftAngles(clock, 1);
+    const b = armDriftAngles(clock + 0.5, 1);
+    if (Math.sign(b.forearmLeft - a.forearmLeft) !== Math.sign(b.elbowLeft - a.elbowLeft)) forearmMoves += 1;
+    if (Math.sign(b.curlLeft - a.curlLeft) !== Math.sign(b.elbowLeft - a.elbowLeft)) curlMoves += 1;
+  }
+  assert.ok(forearmMoves > 40 && curlMoves > 40, `independent ${forearmMoves}, ${curlMoves} of 240`);
 });
 
 test("the drift does not repeat on a short loop", () => {

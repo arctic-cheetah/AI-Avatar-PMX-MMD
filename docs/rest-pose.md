@@ -47,7 +47,7 @@ Two rest poses can now be picked in **Animation actions · 仕草再生**:
 | Button | Pose | Sizes |
 | --- | --- | --- |
 | **Idle-pose-clean** | The user's pick C, the default | elbow 3°, wrist 0°, curl 15°, hands on the leg line |
-| **Idle-pose-natural** | The same, with the arms swung in toward the thighs | as clean, plus `armIn` (see below) |
+| **Idle-pose-natural** | The same, with the arms swung in toward the thighs | as clean, plus `armIn` 4° |
 
 - `armIn` swings each upper arm toward her middle about her front-to-back
   axis (the mesh's z) through the shoulder, before the leg-line swing. So the
@@ -60,6 +60,10 @@ Two rest poses can now be picked in **Animation actions · 仕草再生**:
   pose already shown does nothing.
 - The idle motion (sway, inward and outward drift, forearm roll, finger
   ripple and spread) plays on top of either pose.
+- The user picked 4° from a front and three-quarter grid of 0°, 4°, 6°, 8°
+  and 10° (right hand centre x −2.98, −2.57, −2.37, −2.16 and −1.96, with
+  the hip joint at −1.11). At 6° the hands press against the outer thighs,
+  and from 8° they sink into them.
 - The pose switch is instant, not eased. Both poses are rest poses, so the
   change is small.
 

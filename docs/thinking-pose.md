@@ -11,7 +11,7 @@ solves both arms once, from the targets in `THINKING_ARM`:
 | `fist` | The right hand's finger direction | World space | 0.15, 0.643, −0.766 (tilted 50° back) |
 | `fistPalm` | The right palm normal | World space | 0, −0.766, −0.643 |
 | `support` | The left wrist | The posed right elbow (`右ひじ`) | 0.5, −0.6, 0.1 |
-| `supportBend` | Which way the left elbow bends | The analytic two-segment solver | 1, −1, 0 |
+| `supportBend` | Which way the left elbow bends | The analytic two-segment solver | 1, −0.3, 0.3 (lifted, #221) |
 
 ## The clipping
 
@@ -106,6 +106,35 @@ The upper-arm readings near the armpits sometimes count as inside the bust
 bins, because the upper arm passes beside the body there; it is hidden and is
 not counted.
 
+## Left elbow lift (#221)
+
+With `supportBend` 1, −1, 0 (L2), the left elbow hung near her waist, 0.99
+below the right one. Her left shoulder line looked lower than the right, and
+the forearm across her waist looked as if it cut into her bust. On 17 November
+2026 the user asked to raise the left arm so her shoulders look balanced. The
+#217 rule still holds: the arm bone must not clip, and the cuff and sleeve may
+press in a little, because cloth is flexible.
+
+The left wrist target (`support`) did not change, so the left hand still cups
+the right elbow. Only the left elbow's bend hint moved, which lifts the elbow
+up and out. The candidates were labelled grids from the front, from below and
+of the shoulders, on a `?bridge=off` page (`grid-left-higher.png` in
+`assets/private/thinking-221/`):
+
+| Option | `supportBend` | Left elbow below the right | Left forearm bone | Cuff vertices in the bust |
+| --- | --- | --- | --- | --- |
+| L2 (before) | 1, −1, 0 | 0.99 | never over the bust | 0 |
+| H1 | 1, −0.4, 0.3 | 0.52 | never over the bust | 3 |
+| **Picked** | **1, −0.3, 0.3** | **0.43** | **0.18 in front of it** | **2, ≤ 0.18 deep** |
+| H2 | 1, −0.2, 0.3 | 0.33 | 0.26 in front of it | 4 |
+| H3 (level) | 1, 0, 0.3 | 0.08 | 0.02 in front of it | 2 |
+
+The user liked H1, then asked for more lift. Of the grid, the user picked
+**halfway between H1 and H2**. On the PMX the picked pose keeps the left hand
+0.79 from the right elbow, puts no hand vertex in the bust, and passes the
+left forearm bone 0.21 below the bottom of the bust. These readings were steady
+over 3 s of bust physics.
+
 ## Tests
 
 `tests/renderer/thinking-rig.test.mjs` uses a bust stand-in in the synthetic
@@ -116,7 +145,10 @@ at x ±0.7, y 16.7, z 0.6 and radii 1.0, 1.05 and 1.25.
 - **Bones out of the bust.** Each forearm bone is sampled from elbow to wrist
   and must stay outside the ellipsoids grown by `ARM_BONE_RADIUS` (0.2). The
   original pose sinks 0.34 (normalised) into them; the final pose stays 0.08
-  clear on the right and 0.16 on the left.
+  clear on the right and 0.03 on the left (0.16 before the #221 lift).
+- **Left elbow lifted (#221).** The left upper arm swings at least 40° out
+  from hanging straight down (48.6°; the right is 58.9°, L2 was 31.8°), and
+  the left elbow sits within 0.7 of the right elbow's height (0.43).
 - **Left hand at the elbow.** The left wrist sits within 0.9 of the right
   elbow and below it (0.79 in the final pose; 2.15 in A).
 - **Fist setting.** The right hand's finger direction follows `fist`.

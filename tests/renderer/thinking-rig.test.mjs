@@ -144,6 +144,19 @@ test("the left hand rests at the right elbow, cupping it from below (#217)", () 
   assert.ok(wrist.y < elbow.y, "left hand sits under the right elbow");
 });
 
+test("the left elbow lifts out toward the right one, so her shoulders look balanced (#221)", () => {
+  const { mesh, get } = fixture();
+  applyPose(mesh, buildThinkingRig(mesh), 1);
+  // How far an upper arm swings out from hanging straight down, in degrees.
+  const swing = (side) => {
+    const down = worldPosition(get(`${side}ひじ`)).sub(worldPosition(get(`${side}腕`))).normalize();
+    return THREE.MathUtils.radToDeg(Math.acos(-down.y));
+  };
+  assert.ok(swing("左") >= 40, `left upper arm swings ${swing("左").toFixed(1)}° out (right: ${swing("右").toFixed(1)}°)`);
+  const gap = worldPosition(get("右ひじ")).y - worldPosition(get("左ひじ")).y;
+  assert.ok(gap <= 0.7, `left elbow sits ${gap.toFixed(2)} below the right one`);
+});
+
 test("the right fist follows the fist setting, so it can tilt under the chin (#217)", () => {
   for (const fist of [THINKING_ARM.fist, [0.15, 0.64, -0.77]]) {
     const { mesh } = fixture();

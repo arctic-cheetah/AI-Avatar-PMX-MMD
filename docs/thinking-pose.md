@@ -185,6 +185,12 @@ off, so only the fidget moved. The fidget was held at one moment with
 | Right forearm bone in front of the bust | 0.818 | 0.818, in every frame |
 | Right hand top vs bottom of chin | 0.23 above | 0.20–0.26 above (roll 5°), 0.23 (squeeze 4°) |
 
+After the commit, the defaults were sampled every 0.25 s over 20 s of held
+clocks (`final-check.js`, `grid-final.png`): the wrists moved 0.000, the right
+forearm bone stayed 0.818 in front of the bust, and the hand top stayed
+0.203–0.259 above the bottom of the chin. The held pinky lies on the sleeve
+from the side, before and during its tap.
+
 The hand top stays inside the 0.21–0.26 that #217 agreed (the fingers on the
 side of the jaw, the face uncovered), give or take 0.01 at the roll's far end.
 

@@ -1,4 +1,5 @@
 import { Spring, TIMING } from "./smoothing.js";
+import { thinkingFidgetAngles } from "./thinking-fidget.js";
 
 /** Pure timing and angle rules for the optional thinking gesture. */
 export const THINKING_POSE = Object.freeze({
@@ -24,6 +25,8 @@ export class ThinkingPose {
   constructor() {
     this.active = false;
     this.spring = new Spring(0);
+    /** Seconds the pose has had weight, for the fidget (#218); 0 once fully released. */
+    this.clock = 0;
   }
 
   /** @returns {number} Displayed pose weight from 0 to 1. */
@@ -40,6 +43,16 @@ export class ThinkingPose {
     this.spring.step(target, delta, THINKING_POSE.easeRate);
     this.spring.clamp(0, 1);
     if (!this.active) this.spring.settle(0, 1e-3);
+    this.clock = this.spring.value > 0 ? this.clock + Math.max(0, Number(delta) || 0) : 0;
     return this.spring.value;
+  }
+
+  /**
+   * The finger and fist fidget for this frame, eased by the pose weight (#218).
+   * @param {Partial<import("./thinking-fidget.js").THINKING_FIDGET>} [sizes] Overrides for previews.
+   * @returns {Record<string, number>} Radians per hand drift channel.
+   */
+  fidget(sizes) {
+    return thinkingFidgetAngles(this.clock, this.weight, sizes);
   }
 }

@@ -40,6 +40,7 @@ import { LastSpeechReplay, dropQueuedReplay, replayQueueItems } from "./speech-r
 import { FillerSession } from "./filler-session.js";
 import { ThinkingPose, THINKING_POSE, headGazeScale } from "./thinking-pose.js";
 import { buildThinkingRig } from "./thinking-rig.js";
+import { handAngles, thinkingFidgetAngles } from "./thinking-fidget.js";
 import { REST_POSES, bindRestPoseSetting, relaxArms } from "./rest-pose.js";
 import { buildHandDriftRig } from "./hand-drift-rig.js";
 import { GazeController, normalisePointer, clampEyePitch } from "./gaze-tracking.js";
@@ -247,6 +248,8 @@ const thinkingPose = new ThinkingPose();
 let thinkingBones = [];
 /** Arm-target overrides from the preview hook (#217); empty uses THINKING_ARM. */
 let thinkingArm = {};
+/** Fidget size overrides from the preview hook (#218); a `clock` holds one moment. */
+let thinkingFidget = {};
 /** @type {{ bone: THREE.Bone, rest: THREE.Quaternion }[]} */
 let swayBones = [];
 const swayEuler = new THREE.Euler();
@@ -582,10 +585,14 @@ function setupArmDrift(object) {
 /**
  * Multiply the arm drift (#193) on top of the thinking pose, which owns the
  * arms: the drift fades as the hand goes to the chin and returns as it drops.
+ * Below the elbows the thinking fidget (#218) takes over as the drift fades.
  * @returns {void}
  */
 function applyArmDrift() {
   const fade = 1 - thinkingPose.weight;
+  const { clock, ...sizes } = thinkingFidget;
+  const fidget = clock === undefined ? thinkingPose.fidget(sizes) : thinkingFidgetAngles(clock, thinkingPose.weight, sizes);
+  const hands = handAngles(idlePose, fidget, thinkingPose.weight);
   const sum = (parts = []) => fade * parts.reduce((total, [key, sign]) => total + (idlePose[key] ?? 0) * sign, 0);
   for (const { bone, rest, frame, x, y, z } of armBones) {
     if (rest) bone.quaternion.copy(rest);
@@ -599,7 +606,7 @@ function applyArmDrift() {
   }
   for (const { bone, rest, axis, channel, scale } of handBones) {
     if (rest) bone.quaternion.copy(rest);
-    const angle = fade * scale * (idlePose[channel] ?? 0);
+    const angle = scale * (hands[channel] ?? 0);
     if (angle !== 0) bone.quaternion.multiply(idleQuat.setFromAxisAngle(axis, angle));
   }
 }
@@ -1739,6 +1746,15 @@ function onModelLoaded(loaded, data) {
       // Rebuild from the rest pose, not from the currently blended thinking pose.
       for (const { bone, rest } of thinkingBones) bone.quaternion.copy(rest);
       setupThinkingPose(mesh, arm);
+    },
+    /**
+     * Override the thinking fidget's sizes for comparison grids (#218).
+     * @param {Partial<typeof import("./thinking-fidget.js").THINKING_FIDGET> & { clock?: number }} [sizes]
+     *   `clock` holds one moment; no argument restores the defaults and the running clock.
+     * @returns {void}
+     */
+    thinkingFidget(sizes = {}) {
+      thinkingFidget = { ...sizes };
     },
     /** The loaded PMX mesh, for clearance measurements. */
     get mesh() {

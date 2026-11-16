@@ -133,7 +133,8 @@ The user liked H1, then asked for more lift. Of the grid, the user picked
 **halfway between H1 and H2**. On the PMX the picked pose keeps the left hand
 0.79 from the right elbow, puts no hand vertex in the bust, and passes the
 left forearm bone 0.21 below the bottom of the bust. These readings were steady
-over 3 s of bust physics.
+over 3 s of bust physics. After the commit, the same readings were checked on
+the committed default, from the front and from below (`grid-final.png`).
 
 ## Tests
 

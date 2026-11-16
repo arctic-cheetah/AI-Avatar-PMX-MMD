@@ -322,8 +322,9 @@ is no palm, so only the forearm rolls.
   comes back as it drops. If the thinking rig failed to build, the drift
   keeps its own copy of the rest pose. Later hand poses (#177, #150) must
   follow the same rule. While she thinks, the **thinking fidget** (#218)
-  takes over the forearm twist and finger channels instead: a slow roll of
-  the right fist under her chin and an occasional finger tap on her elbow,
+  takes over the forearm twist and finger channels instead: a roll and
+  squeeze of the right fist under her chin, a finger tap on her elbow every
+  7 s and the left little finger held open, out of the sleeve,
   on the thinking pose's own clock. See
   [thinking-pose.md](thinking-pose.md#thinking-fidget-218).
 - **Shoulders stay with their owners.** The shrugs and the sigh (#149) keep

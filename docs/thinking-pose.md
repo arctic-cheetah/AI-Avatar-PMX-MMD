@@ -131,22 +131,19 @@ the finger ripple fade out by `1 − thinkingPose.weight`. The thinking fidget
 adds a small, slow idle on top of the pose instead, from
 `renderer/thinking-fidget.js`:
 
-| Part | Channel (screen side) | Bones | Motion |
-| --- | --- | --- | --- |
-| Fist roll | `forearmLeft` | `右手捩` | The right fist rolls gently under her chin, on two slow sine waves |
-| Fist squeeze | `curl{Thumb…Little}Left` | `右親指`–`右小指` `１–３` | The fist tightens and loosens a little, on its own slow waves |
-| Finger tap | `curl{Index…Little}Right` | `左人指`–`左小指` `１–３` | Now and then the left fingers lift off the sleeve and come back, little finger first, like drumming on her elbow; the thumb keeps holding |
-
-The sizes are in `THINKING_FIDGET`, picked with the user from comparison grids
-(see below).
+| Part | Channel (screen side) | Bones | Motion | Size (`THINKING_FIDGET`) |
+| --- | --- | --- | --- | --- |
+| Fist roll | `forearmLeft` | `右手捩` | The right fist rolls under her chin, on two sine waves | ±5°, waves of 5 s and 8 s |
+| Fist squeeze | `curl{Thumb…Little}Left` | `右親指`–`右小指` `１–３` | The fist tightens and loosens, on its own two waves | ±4° per joint, waves of 7 s and 11 s |
+| Finger tap | `curl{Index…Little}Right` | `左人指`–`左小指` `１–３` | Every 7 s the left fingers lift off the sleeve and come back, little finger first, like drumming on her elbow; the thumb keeps holding | 5° lift, 0.5 s per finger, 0.15 s apart, first tap 2 s in |
+| Pinky lift | `curlLittleRight` | `左小指` `１–３` | The left little finger is held open while she thinks, so it lies on the sleeve instead of sinking into it; it taps from there | 18° |
 
 - **It cannot move the arms.** The fidget only uses the forearm twist bone and
   the finger joints, through the axes of the hand drift rig
   (`buildHandDriftRig()`). The twist bone rolls about the elbow→wrist line, so
   the elbows and wrists stay exactly where #217 put them: the forearm bones
   keep their bust clearance, the fist stays under the bottom of her chin and
-  the left hand stays at the right elbow. Only the fingertips move, by a few
-  hundredths of a unit.
+  the left hand stays at the right elbow. Only the fist and fingers move.
 - **Its own clock.** Thinking blocks the idle state, so the arm drift's clock
   and weight cannot drive it. `ThinkingPose` counts its own `clock` while the
   pose has weight, and resets it once the pose has fully released, so each
@@ -161,7 +158,40 @@ The sizes are in `THINKING_FIDGET`, picked with the user from comparison grids
   (and `clock` holds one moment) for comparison grids. Calling it with no
   argument restores `THINKING_FIDGET` and the running clock.
 
-Tests: `tests/renderer/thinking-fidget.test.mjs` checks the channels, the
-sizes and speed, the tap order and rests, the mix with the drift, the clock,
-and, on the posed synthetic rig, that the elbows, wrists and forearm bust
-clearance never change while the fingertips move.
+### How the sizes were picked
+
+On 16–17 November 2026 the user picked from labelled grids and real-speed
+clips, on a `?bridge=off` test page with sway, cursor gaze, idle and blinking
+off, so only the fidget moved. The fidget was held at one moment with
+`thinkingFidget({ clock })`. Grids and clips are in the gitignored
+`assets/private/thinking-218/`.
+
+1. **Finger tap (`grid-tap.png`, `clip-tap.mp4`).** Lifts of 5°, 8° and 12°,
+   and an 8° press into the sleeve, seen from her right side so the fingers
+   on the sleeve face the camera. Pressing in hid the fingertips in the
+   sleeve. The user loved **A, a 5° lift**: the fingertips move 0.06–0.08.
+2. **Pinky lift (`grid-pinky.png`).** In the #217 pose the left little
+   finger's tip sinks into the sleeve, so the user asked to avoid that. Held
+   open by 0°, 6°, 12° and 18°: from 12° the whole nail sits on the sleeve.
+   The user picked **18°**.
+3. **Fist (`grid-fist.png`, `clip-fist.mp4`).** Rolls of 2°, 3° and 5° and
+   squeezes of 2° and 4°, then three clips: 3° + 2° on 9–19 s waves, 5° + 4°
+   on the same waves, and 5° + 4° on faster 5–11 s waves. The user picked
+   **roll 5° and squeeze 4° on the faster waves**.
+
+| Check on the PMX | Still | With the fidget |
+| --- | --- | --- |
+| Right and left wrists | — | 0.000 moved, in every frame |
+| Right forearm bone in front of the bust | 0.818 | 0.818, in every frame |
+| Right hand top vs bottom of chin | 0.23 above | 0.20–0.26 above (roll 5°), 0.23 (squeeze 4°) |
+
+The hand top stays inside the 0.21–0.26 that #217 agreed (the fingers on the
+side of the jaw, the face uncovered), give or take 0.01 at the roll's far end.
+
+### Tests
+
+`tests/renderer/thinking-fidget.test.mjs` checks the channels, the sizes and
+speed around each finger's held angle, the tap order and rests, the held
+pinky, the mix with the drift, the clock, and, on the posed synthetic rig,
+that the elbows, wrists and forearm bust clearance never change while the
+fingertips move.

@@ -82,9 +82,25 @@ test("the left fingers tap in turn, little finger first, with rests between taps
   }));
   assert.ok(peaks.Little < peaks.Ring && peaks.Ring < peaks.Middle && peaks.Middle < peaks.Index,
     `fingers tap from little to index: ${JSON.stringify(peaks)}`);
-  const resting = frames.filter(({ angles }) => tapping.every((finger) => Math.abs(angles[`curl${finger}Right`]) < 1e-9));
+  // Between taps each finger is back at its held angle (the little finger is held open, see below).
+  const held = thinkingFidgetAngles(THINKING_FIDGET.tapStart / 2, 1);
+  const resting = frames.filter(({ angles }) => tapping.every((finger) => Math.abs(angles[`curl${finger}Right`] - held[`curl${finger}Right`]) < 1e-9));
   assert.ok(resting.length > frames.length * 0.5, "the hand rests still for most of the time between taps");
   assert.ok(frames.every(({ angles }) => (angles.curlThumbRight ?? 0) === 0), "the thumb holds the elbow and never taps");
+});
+
+test("the left little finger is held a little open while thinking, so it stays out of the sleeve", () => {
+  assert.ok(THINKING_FIDGET.pinkyLift > 0 && THINKING_FIDGET.pinkyLift <= 20 * DEG, "a small, positive lift");
+  const before = THINKING_FIDGET.tapStart / 2;
+  assert.equal(thinkingFidgetAngles(before, 1).curlLittleRight, -THINKING_FIDGET.pinkyLift, "held open before the first tap");
+  assert.equal(thinkingFidgetAngles(before, 0.5).curlLittleRight, -0.5 * THINKING_FIDGET.pinkyLift, "eased with the pose");
+  assert.equal(thinkingFidgetAngles(before, 0).curlLittleRight, 0, "gone when not thinking");
+  for (const finger of ["Index", "Middle", "Ring"]) {
+    assert.equal(thinkingFidgetAngles(before, 1)[`curl${finger}Right`], 0, `${finger} keeps the pose's curl`);
+  }
+  // During its tap the little finger lifts further, and comes back to the held angle.
+  const peak = THINKING_FIDGET.tapStart + THINKING_FIDGET.tapDuration / 2;
+  assert.ok(thinkingFidgetAngles(peak, 1).curlLittleRight < -THINKING_FIDGET.pinkyLift);
 });
 
 test("the hand mix hands the drift over to the fidget as the pose comes in", () => {

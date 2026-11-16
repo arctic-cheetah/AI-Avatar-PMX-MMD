@@ -659,6 +659,25 @@ Listening (9 Nov 2026): the elongated words sounded very good.
 Done: the word-delivery list with surprise "whaaat?", affection "sooo cute"
 and hesitation "hmmm" (§2g). Next: a quotation pace (§2f).
 
+## 2i. Pronunciation table (#188)
+
+Some whole words come out of espeak wrong. `PRONUNCIATIONS` in
+`controller/kokoro_worker.py` maps a lower-case word to the phonemes chosen by
+listening. The worker swaps them in, keeping the word's punctuation and quotes,
+whenever the phoneme words line up with the text, with or without other voice
+options (like the "Aww" and hum fixes, §2e and §2g). Entries are American, so
+British voices (`b…`) keep espeak's own phonemes.
+
+| Word | espeak | Heard | Now |
+| --- | --- | --- | --- |
+| comparison(s) | `kəmpˈæɹɪsən` | r cut short ("cat" vowel; Kokoro gives `æ` and `ɹ` 2 frames each) | `kəmpˈɛɹːɪsən` |
+
+Listening (15 Nov 2026): of `kəmpˈæɹɪsən`, `kəmpˈɛɹɪsən`, `kəmpˈɛɹəsən`,
+`kəmpˈæɹːɪsən` and `kəmpˈɛɹːɪsən`, the last ("care" vowel and a length mark)
+was just right. Clips: `assets/private/speech/comparison/`. Other `æɹ` words
+("carry", "marry", "garrison", "parish") have the same short r and are left
+for listening.
+
 ## 3. Test on the avatar
 
 Run these commands in separate terminals:

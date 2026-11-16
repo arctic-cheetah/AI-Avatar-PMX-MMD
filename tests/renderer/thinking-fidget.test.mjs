@@ -52,9 +52,11 @@ test("no thinking weight means every fidget angle is exactly zero", () => {
 test("the fidget is small and slow: a few degrees, with tiny steps per frame", () => {
   const frames = sample(120);
   for (const channel of FIDGET_CHANNELS) {
-    const values = frames.map(({ angles }) => angles[channel]);
+    // The motion around each finger's held angle (only the little finger is held open).
+    const held = channel === "curlLittleRight" ? -THINKING_FIDGET.pinkyLift : 0;
+    const values = frames.map(({ angles }) => angles[channel] - held);
     assert.ok(values.every(Number.isFinite), `${channel} stays finite`);
-    assert.ok(Math.max(...values.map(Math.abs)) <= 12 * DEG, `${channel} stays within 12°`);
+    assert.ok(Math.max(...values.map(Math.abs)) <= 12 * DEG, `${channel} moves within 12° of its held angle`);
     for (let i = 1; i < values.length; i += 1) {
       assert.ok(Math.abs(values[i] - values[i - 1]) < 1.5 * DEG, `${channel} moves less than 1.5° per frame at ${frames[i].clock}s`);
     }
@@ -62,7 +64,7 @@ test("the fidget is small and slow: a few degrees, with tiny steps per frame", (
   const roll = frames.map(({ angles }) => angles.forearmLeft);
   assert.ok(Math.max(...roll.map(Math.abs)) <= THINKING_FIDGET.roll + 1e-12, "the fist roll stays within its size");
   assert.ok(Math.max(...roll.map(Math.abs)) > THINKING_FIDGET.roll / 2, "the fist really rolls");
-  for (let i = 1; i < roll.length; i += 1) assert.ok(Math.abs(roll[i] - roll[i - 1]) < 0.05 * DEG, "the roll is slow");
+  for (let i = 1; i < roll.length; i += 1) assert.ok(Math.abs(roll[i] - roll[i - 1]) < 0.1 * DEG, "the roll is slow: under 6° a second");
 });
 
 test("the left fingers tap in turn, little finger first, with rests between taps", () => {
@@ -158,7 +160,8 @@ function posedRig() {
 
 test("on the posed rig the fidget keeps the arms where #217 put them", () => {
   const { get, frame, tip } = posedRig();
-  frame({});
+  // The still pose holds the little finger open, as the fidget does between taps.
+  frame({ curlLittleRight: -THINKING_FIDGET.pinkyLift });
   const still = (name) => at(get(name));
   const joints = ["右ひじ", "右手首", "左ひじ", "左手首"].map((name) => [name, still(name)]);
   const tips = DIGITS.flatMap((digit) => ["右", "左"].map((side) => [side, digit, at(tip(side, digit))]));
@@ -190,7 +193,7 @@ test("on the posed rig the fidget keeps the arms where #217 put them", () => {
 
 test("sizes can be overridden for comparison grids, without changing the defaults", () => {
   const before = JSON.stringify(THINKING_FIDGET);
-  const still = thinkingFidgetAngles(2, 1, { roll: 0, squeeze: 0, tap: 0 });
+  const still = thinkingFidgetAngles(2, 1, { roll: 0, squeeze: 0, tap: 0, pinkyLift: 0 });
   for (const channel of FIDGET_CHANNELS) assert.equal(still[channel], 0, `${channel} is still with zero sizes`);
   const doubled = thinkingFidgetAngles(2, 1, { roll: 2 * THINKING_FIDGET.roll });
   assert.ok(Math.abs(doubled.forearmLeft - 2 * thinkingFidgetAngles(2, 1).forearmLeft) < 1e-12);

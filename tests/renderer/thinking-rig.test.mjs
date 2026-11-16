@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { buildThinkingRig, elbowForTarget } from "../../renderer/thinking-rig.js";
-import { DIGITS, JOINTS, LOWER_LENGTH, UPPER_LENGTH, fixture } from "./arm-fixture.mjs";
+import { THINKING_ARM, buildThinkingRig, elbowForTarget, handFrame } from "../../renderer/thinking-rig.js";
+import { DIGITS, JOINTS, LOWER_LENGTH, UPPER_LENGTH, bustDepth, fixture } from "./arm-fixture.mjs";
 
 const TOLERANCE = 1e-7;
 
@@ -110,13 +110,59 @@ test("cached pose reaches the chin and supports the lowered right elbow through 
   const head = worldPosition(get("頭"));
   const entries = buildThinkingRig(mesh);
   applyPose(mesh, entries, 1);
-  vectorClose(worldPosition(get("右手首")), head.clone().add(new THREE.Vector3(-0.35, -1.5, 2.05)), "chin wrist target");
+  vectorClose(worldPosition(get("右手首")), head.clone().add(new THREE.Vector3(...THINKING_ARM.chin)), "chin wrist target");
   const elbow = worldPosition(get("右ひじ"));
   assert.ok(elbow.y < worldPosition(get("右手首")).y, "right elbow hangs below the wrist");
-  vectorClose(worldPosition(get("左手首")), elbow.clone().add(new THREE.Vector3(0.45, -0.3, 0.85)), "support wrist target");
+  vectorClose(worldPosition(get("左手首")), elbow.clone().add(new THREE.Vector3(...THINKING_ARM.support)), "support wrist target");
   for (const side of ["右", "左"]) {
     close(worldPosition(get(`${side}腕`)).distanceTo(worldPosition(get(`${side}ひじ`))), UPPER_LENGTH, "posed upper length");
     close(worldPosition(get(`${side}ひじ`)).distanceTo(worldPosition(get(`${side}手首`))), LOWER_LENGTH, "posed lower length");
+  }
+});
+
+test("posed forearm bones keep clear of the bust; only cloth may press in (#217)", () => {
+  const { mesh, get } = fixture();
+  applyPose(mesh, buildThinkingRig(mesh), 1);
+  for (const side of ["右", "左"]) {
+    const elbow = worldPosition(get(`${side}ひじ`));
+    const wrist = worldPosition(get(`${side}手首`));
+    for (let step = 0; step <= 20; step++) {
+      const point = elbow.clone().lerp(wrist, step / 20);
+      const depth = bustDepth(point);
+      assert.ok(depth <= 0, `${side} forearm bone at ${step * 5}% from the elbow sinks ${depth.toFixed(3)} into the bust `
+        + `at (${point.toArray().map((value) => value.toFixed(2)).join(", ")})`);
+    }
+  }
+});
+
+test("the left hand rests at the right elbow, cupping it from below (#217)", () => {
+  const { mesh, get } = fixture();
+  applyPose(mesh, buildThinkingRig(mesh), 1);
+  const elbow = worldPosition(get("右ひじ"));
+  const wrist = worldPosition(get("左手首"));
+  assert.ok(wrist.distanceTo(elbow) <= 0.9, `left wrist is ${wrist.distanceTo(elbow).toFixed(2)} from the right elbow`);
+  assert.ok(wrist.y < elbow.y, "left hand sits under the right elbow");
+});
+
+test("the left elbow lifts out toward the right one, so her shoulders look balanced (#221)", () => {
+  const { mesh, get } = fixture();
+  applyPose(mesh, buildThinkingRig(mesh), 1);
+  // How far an upper arm swings out from hanging straight down, in degrees.
+  const swing = (side) => {
+    const down = worldPosition(get(`${side}ひじ`)).sub(worldPosition(get(`${side}腕`))).normalize();
+    return THREE.MathUtils.radToDeg(Math.acos(-down.y));
+  };
+  assert.ok(swing("左") >= 40, `left upper arm swings ${swing("左").toFixed(1)}° out (right: ${swing("右").toFixed(1)}°)`);
+  const gap = worldPosition(get("右ひじ")).y - worldPosition(get("左ひじ")).y;
+  assert.ok(gap <= 0.7, `left elbow sits ${gap.toFixed(2)} below the right one`);
+});
+
+test("the right fist follows the fist setting, so it can tilt under the chin (#217)", () => {
+  for (const fist of [THINKING_ARM.fist, [0.15, 0.64, -0.77]]) {
+    const { mesh } = fixture();
+    applyPose(mesh, buildThinkingRig(mesh, { fist, fistPalm: [0, -0.77, -0.64] }), 1);
+    const expected = new THREE.Vector3(...fist).normalize();
+    close(handFrame(mesh, "右").finger.angleTo(expected), 0, `finger direction for ${fist}`, 1e-6);
   }
 });
 

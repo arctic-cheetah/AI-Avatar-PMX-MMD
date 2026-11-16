@@ -127,7 +127,8 @@ export const THINKING_ARM = Object.freeze({
   elbowBend: Object.freeze([-0.5, -0.866, 0.8]),
   // The left hand cups the right elbow from below, against the puffy sleeve.
   support: Object.freeze([0.5, -0.6, 0.1]),
-  supportBend: Object.freeze([1, -1, 0]),
+  // The left elbow lifts up and out, so her shoulders look balanced; only the cuff presses in (#221).
+  supportBend: Object.freeze([1, -0.3, 0.3]),
   // Fingers tilted 50° back, so the fist is short enough to fit under the chin.
   fist: Object.freeze([0.15, 0.643, -0.766]),
   fistPalm: Object.freeze([0, -0.766, -0.643]),

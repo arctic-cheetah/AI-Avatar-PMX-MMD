@@ -321,7 +321,11 @@ is no palm, so only the forearm rolls.
   `1 − thinkingPose.weight`, so it fades as the hand goes to the chin and
   comes back as it drops. If the thinking rig failed to build, the drift
   keeps its own copy of the rest pose. Later hand poses (#177, #150) must
-  follow the same rule.
+  follow the same rule. While she thinks, the **thinking fidget** (#218)
+  takes over the forearm twist and finger channels instead: a slow roll of
+  the right fist under her chin and an occasional finger tap on her elbow,
+  on the thinking pose's own clock. See
+  [thinking-pose.md](thinking-pose.md#thinking-fidget-218).
 - **Shoulders stay with their owners.** The shrugs and the sigh (#149) keep
   `左肩`/`右肩`. The drift only uses `腕`, `ひじ` and `手首`.
 - **Physics runs after it**, so sleeves, hair and tails react to the arms.

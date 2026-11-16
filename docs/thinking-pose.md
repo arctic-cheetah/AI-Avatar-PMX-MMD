@@ -123,3 +123,45 @@ at x ±0.7, y 16.7, z 0.6 and radii 1.0, 1.05 and 1.25.
 
 This is tuned clearance, not mesh collision. A new model, outfit or pose needs
 the measurement again.
+
+## Thinking fidget (#218)
+
+Once the pose is in, her hands used to be perfectly still: the arm drift and
+the finger ripple fade out by `1 − thinkingPose.weight`. The thinking fidget
+adds a small, slow idle on top of the pose instead, from
+`renderer/thinking-fidget.js`:
+
+| Part | Channel (screen side) | Bones | Motion |
+| --- | --- | --- | --- |
+| Fist roll | `forearmLeft` | `右手捩` | The right fist rolls gently under her chin, on two slow sine waves |
+| Fist squeeze | `curl{Thumb…Little}Left` | `右親指`–`右小指` `１–３` | The fist tightens and loosens a little, on its own slow waves |
+| Finger tap | `curl{Index…Little}Right` | `左人指`–`左小指` `１–３` | Now and then the left fingers lift off the sleeve and come back, little finger first, like drumming on her elbow; the thumb keeps holding |
+
+The sizes are in `THINKING_FIDGET`, picked with the user from comparison grids
+(see below).
+
+- **It cannot move the arms.** The fidget only uses the forearm twist bone and
+  the finger joints, through the axes of the hand drift rig
+  (`buildHandDriftRig()`). The twist bone rolls about the elbow→wrist line, so
+  the elbows and wrists stay exactly where #217 put them: the forearm bones
+  keep their bust clearance, the fist stays under the bottom of her chin and
+  the left hand stays at the right elbow. Only the fingertips move, by a few
+  hundredths of a unit.
+- **Its own clock.** Thinking blocks the idle state, so the arm drift's clock
+  and weight cannot drive it. `ThinkingPose` counts its own `clock` while the
+  pose has weight, and resets it once the pose has fully released, so each
+  thinking spell starts with a still hand. `fidget()` returns the angles
+  already scaled by the pose weight, so the fidget eases in and out with the
+  arm.
+- **One writer.** `applyArmDrift()` in `renderer/main.js` mixes both layers
+  with `handAngles(idlePose, fidget, weight)`: each hand channel is
+  `(1 − weight) × drift + fidget`. As the hand goes to the chin the drift
+  hands over to the fidget, and back as it drops.
+- **Previews.** `__yidhariPreview.thinkingFidget({ ... })` overrides the sizes
+  (and `clock` holds one moment) for comparison grids. Calling it with no
+  argument restores `THINKING_FIDGET` and the running clock.
+
+Tests: `tests/renderer/thinking-fidget.test.mjs` checks the channels, the
+sizes and speed, the tap order and rests, the mix with the drift, the clock,
+and, on the posed synthetic rig, that the elbows, wrists and forearm bust
+clearance never change while the fingertips move.

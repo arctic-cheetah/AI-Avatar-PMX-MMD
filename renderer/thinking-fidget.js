@@ -17,17 +17,19 @@ const DEG = Math.PI / 180;
  * - tap: how far each left finger lifts off the sleeve in a tap (negative curl).
  * - tapEvery: seconds from one tap to the next; tapStart: when the first tap begins.
  * - tapDuration: one finger's lift and return; tapLag: the next finger starts this much later.
+ * - pinkyLift: the left little finger is held this much open (negative curl), so it stays out of the sleeve.
  */
 export const THINKING_FIDGET = Object.freeze({
-  roll: 3 * DEG,
-  rollPeriods: Object.freeze([9, 14]),
-  squeeze: 2 * DEG,
-  squeezePeriods: Object.freeze([13, 19]),
-  tap: 8 * DEG,
+  roll: 5 * DEG,
+  rollPeriods: Object.freeze([5, 8]),
+  squeeze: 4 * DEG,
+  squeezePeriods: Object.freeze([7, 11]),
+  tap: 5 * DEG,
   tapEvery: 7,
   tapStart: 2,
   tapDuration: 0.5,
   tapLag: 0.15,
+  pinkyLift: 18 * DEG,
 });
 
 /** Her right arm is on the left of the screen. The fist squeezes with every finger. */
@@ -65,6 +67,7 @@ export function thinkingFidgetAngles(clock, amount, sizes = {}) {
   for (const [index, channel] of TAP.entries()) {
     angles[channel] = started ? -weight * fidget.tap * bump(inCycle - index * fidget.tapLag, fidget.tapDuration) : 0;
   }
+  angles.curlLittleRight -= weight * fidget.pinkyLift;
   // A zero size or a still moment is exactly 0, never −0.
   for (const channel of FIDGET_CHANNELS) angles[channel] ||= 0;
   return angles;

@@ -5,8 +5,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import {
-  TENTACLE_ACTIONS, TENTACLE_REACTIONS, TENTACLE_SIZE_KEY, TENTACLE_WAVE, TENTACLE_WAVE_KEY, TentacleWave,
-  bindTentacleSize, tailChains, tentacleBlocks, tentacleSize, waveAngles,
+  TENTACLE_ACTIONS, TENTACLE_HEIGHT_KEY, TENTACLE_REACTIONS, TENTACLE_SIZE_KEY, TENTACLE_WAVE, TENTACLE_WAVE_KEY, TentacleWave,
+  bindTentacleHeight, bindTentacleSize, tailChains, tentacleBlocks, tentacleHeight, tentacleSize, waveAngles,
 } from "../../renderer/tentacle-motion.js";
 
 const LINKS = 17;
@@ -284,6 +284,81 @@ test("bindTentacleSize starts at the default with nothing stored, and keeps work
   input.value = "0.8";
   assert.doesNotThrow(() => input.fire("input"));
   assert.equal(wave.amplitudeTarget, 0.8);
+});
+
+// Tail height slider (#231): the rest arc from 0 to 3 rad, saved like the size.
+
+test("the tail height runs from 0 to 3 rad in steps of 0.05, starting at the picked 1.7", () => {
+  assert.deepEqual(TENTACLE_WAVE.heightRange, { min: 0, max: 3, step: 0.05 });
+  assert.equal(TENTACLE_HEIGHT_KEY, "yidhari.tentacles.height");
+  assert.notEqual(TENTACLE_HEIGHT_KEY, TENTACLE_SIZE_KEY);
+  assert.equal(new TentacleWave().restLiftTarget, TENTACLE_WAVE.restLift);
+});
+
+test("tentacleHeight clamps to the range, snaps to the step, and falls back to the default", () => {
+  for (const [value, height] of [[2.5, 2.5], ["0.33", 0.35], [-1, 0], [3.4, 3], [0, 0], ["", 1.7], [null, 1.7], ["tall", 1.7], [Number.NaN, 1.7]]) {
+    assert.equal(tentacleHeight(value), height, `${value}`);
+  }
+});
+
+test("a new tail height eases in, without a jump or overshoot, even while the wave is still", () => {
+  const wave = new TentacleWave();
+  wave.setRestLift(3);
+  assert.equal(wave.restLiftTarget, 3);
+  assert.equal(wave.restLift, TENTACLE_WAVE.restLift, "no snap on the first frame");
+  const heights = [];
+  for (let i = 0; i < Math.round(TENTACLE_WAVE.ease * 6 * 60); i += 1) {
+    wave.update(1 / 60, "active", { composed: true });
+    heights.push(wave.restLift);
+  }
+  assert.equal(wave.gain, 0, "the wave stays still");
+  for (let i = 1; i < heights.length; i += 1) {
+    assert.ok(heights[i] >= heights[i - 1] && heights[i] - heights[i - 1] < 0.05, `frame ${i} jumped`);
+  }
+  assert.equal(heights.at(-1), 3, "settles exactly");
+  const total = Array.from({ length: LINKS }, (_, i) => wave.angles(0.7, i + 1, LINKS).pitch).reduce((a, b) => a + b, 0);
+  assert.ok(Math.abs(total - 3) < 1e-9, "the tails arc by the new height");
+});
+
+test("setRestLift clamps like the slider, and can apply at once", () => {
+  const wave = new TentacleWave();
+  wave.setRestLift(9, { instant: true });
+  assert.equal(wave.restLift, 3);
+  wave.setRestLift(-2, { instant: true });
+  assert.equal(wave.restLift, 0);
+  assert.deepEqual(wave.angles(0.7, 9, LINKS), { yaw: 0, pitch: 0 });
+});
+
+test("bindTentacleHeight applies a stored height at once, and saves and eases the slider's changes", () => {
+  const wave = new TentacleWave();
+  const input = fakeSlider();
+  const shown = [];
+  const local = fakeStorage({ [TENTACLE_HEIGHT_KEY]: "2.5" });
+  bindTentacleHeight(wave, input, { local, show: (height) => shown.push(height) });
+  assert.equal(wave.restLift, 2.5, "the stored height is there on the first frame");
+  assert.equal(input.value, "2.5");
+  input.value = "3.4";
+  input.fire("input");
+  assert.equal(wave.restLiftTarget, 3);
+  assert.equal(wave.restLift, 2.5, "a slider change eases rather than snapping");
+  assert.equal(input.value, "3", "an out-of-range value is written back clamped");
+  assert.equal(local.map.get(TENTACLE_HEIGHT_KEY), "3");
+  assert.deepEqual(shown, [2.5, 3]);
+});
+
+test("bindTentacleHeight starts at 1.7 with nothing stored, and keeps working when storage is blocked or the slider is missing", () => {
+  const fresh = new TentacleWave();
+  bindTentacleHeight(fresh, fakeSlider(), { local: fakeStorage() });
+  assert.equal(fresh.restLift, 1.7);
+  const wave = new TentacleWave();
+  const input = fakeSlider();
+  bindTentacleHeight(wave, input, { local: fakeStorage({}, { broken: true }) });
+  input.value = "0.5";
+  assert.doesNotThrow(() => input.fire("input"));
+  assert.equal(wave.restLiftTarget, 0.5);
+  const headless = new TentacleWave();
+  bindTentacleHeight(headless, null, { local: fakeStorage({ [TENTACLE_HEIGHT_KEY]: "1" }) });
+  assert.equal(headless.restLift, 1);
 });
 
 test("bindTentacleSize without a slider still applies the stored size", () => {

@@ -25,10 +25,24 @@ This is a companion project, kept outside `my_code_pc` so it does not compete fo
 - 👁️ **Gaze tracking:** her eyes (and gently, her head) follow your mouse cursor and/or your face on webcam — see [docs/gaze-tracking.md](docs/gaze-tracking.md). The webcam only starts when you toggle it on, and frames never leave the browser.
 - 📌 **Pop-out window:** click **📌 Pop out** to float her portrait in an always-on-top picture-in-picture window while you work in other apps (Chrome/Edge 116+; Firefox and VS Code's browser get a popup window; on Ubuntu Wayland pin either with **Super+T**). **💬** adds the chat and settings panel beside her; speech, moods and agent voice keep working — see [docs/pop-out-window.md](docs/pop-out-window.md).
 
-## 🧭 How it works
+## 🔬 Prototypes beyond the avatar
 
-For Yidhari's name and friendly reply style in VS Code through EasyCLIProxyAPI,
-see the optional [native wording plugin setup](docs/easycliproxyapi-yidhari.md).
+The [prototypes folder](prototypes/) holds standalone experiments for features
+outside the avatar application.
+
+The [Yidhari Copilot Name prototype](prototypes/yidhari-copilot-name/README.md)
+is an experimental VS Code extension that replaces recognised Copilot identity
+instructions with `yidhari` and changes “short and impersonal” to “friendly and
+concise.” It preserves user/tool messages and other instructions, offers
+reversible proxy routing and replacement diagnostics, and can be packaged locally
+as a VSIX. It runs independently of the avatar.
+
+For models routed through EasyCLIProxyAPI, the preferred approach is the
+[native wording plugin](docs/easycliproxyapi-yidhari.md), which applies the edits
+inside the existing core without an additional proxy or certificate setup.
+The extension's proxy modes remain experimental alternatives.
+
+## 🧭 How it works
 
 ```mermaid
 flowchart TD

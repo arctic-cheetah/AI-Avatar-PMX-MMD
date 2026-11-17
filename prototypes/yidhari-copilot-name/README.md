@@ -1,5 +1,9 @@
 # Yidhari Copilot Name — experimental VS Code extension
 
+**Installing on another machine?** The native EasyCLIProxyAPI plugin lives in
+[`../yidhari-native-wording/`](../yidhari-native-wording/README.md), not this
+extension folder. Follow its [portable installation steps](../yidhari-native-wording/install.md).
+
 **Preferred EasyCLIProxyAPI setup:** use the [native wording plugin guide](../../docs/easycliproxyapi-yidhari.md).
 It applies one shared map inside the existing core and was confirmed in the
 user's live chat. The VSIX/mitmproxy routes below are retained as experiments;

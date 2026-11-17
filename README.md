@@ -25,6 +25,40 @@ This is a companion project, kept outside `my_code_pc` so it does not compete fo
 - 👁️ **Gaze tracking:** her eyes (and gently, her head) follow your mouse cursor and/or your face on webcam — see [docs/gaze-tracking.md](docs/gaze-tracking.md). The webcam only starts when you toggle it on, and frames never leave the browser.
 - 📌 **Pop-out window:** click **📌 Pop out** to float her portrait in an always-on-top picture-in-picture window while you work in other apps (Chrome/Edge 116+; Firefox and VS Code's browser get a popup window; on Ubuntu Wayland pin either with **Super+T**). **💬** adds the chat and settings panel beside her; speech, moods and agent voice keep working — see [docs/pop-out-window.md](docs/pop-out-window.md).
 
+## 🗂️ Directory structure
+
+```text
+AI-Avatar-PMX-MMD/
+├── controller/                 # Python bridge, MCP/agent interface and speech pipeline
+│   ├── bridge.py               # Chat/agent orchestration and renderer WebSocket bridge
+│   └── mcp_server.py           # Avatar tools exposed to coding agents
+├── renderer/                   # Browser avatar, expressions, animation and chat UI
+│   ├── index.html              # Browser entry page
+│   └── serve.py                # Local web server and optional speech-to-text endpoint
+├── docs/                       # Setup guides, architecture and feature documentation
+│   └── research/               # Research chronology, decisions and validation records
+├── prototypes/                 # Standalone experiments outside the avatar application
+│   ├── yidhari-native-wording/  # Native EasyCLIProxyAPI persona/name/style plugin
+│   └── yidhari-copilot-name/    # Earlier experimental VS Code extension and proxy
+├── tests/                      # Python checks and renderer JavaScript tests
+├── tools/                      # Latency reports, model probes and morph comparison grids
+├── models/                     # Local speech/model files (gitignored)
+├── assets/private/             # Private clips, comparison grids and other local artifacts
+├── yidhari-mmd/                # Private PMX model pack (gitignored)
+├── requirements*.txt           # Python dependencies for the optional runtime components
+└── package.json                # JavaScript editor dependencies
+```
+
+The avatar runtime lives in `controller/` and `renderer/`; prototypes have their
+own build, test and installation instructions. Start with the
+[native plugin installation guide](prototypes/yidhari-native-wording/install.md)
+for persona persistence through EasyCLIProxyAPI, or the
+[avatar setup guide](docs/setup.md) for the avatar itself.
+
+Local model packs, `assets/private/`, generated plugin binaries/VSIX packages
+and Python virtual environments are not distributed with the tracked source.
+Follow the relevant setup guide to supply or generate them on another machine.
+
 ## 🔬 Prototypes beyond the avatar
 
 The [prototypes folder](prototypes/) holds standalone experiments for features

@@ -62,7 +62,7 @@ import { fetchTurn, turnFile } from "./turn-replay.js";
 import { createAmmoLoader } from "./ammo-loader.js";
 import { filterPhysics } from "./physics-groups.js";
 import { PhysicsLayer } from "./physics-layer.js";
-import { TENTACLE_ACTIONS, TENTACLE_WAVE_KEY, TentacleWave, bindTentacleSize, tailChains } from "./tentacle-motion.js";
+import { TENTACLE_ACTIONS, TENTACLE_WAVE_KEY, TentacleWave, bindTentacleSize, tailChains, tentacleBlocks } from "./tentacle-motion.js";
 import { bindStoredToggle } from "./stored-toggle.js";
 import {
   HAIR_FOLLOW, RIGID_STRANDS, blendWeights, pinTargets, pinnedBones, sameMotionAs, stiffStrands,
@@ -2094,11 +2094,20 @@ function takeTentacleWaveOff() {
  * @returns {void}
  */
 function applyTentacleWave(delta) {
-  // Her mood drives the reactions; speech sways the tails, anything else that blocks idle keeps them composed.
+  // Her mood drives the reactions; speech sways the tails, thinking ponders (#225),
+  // and anything else that blocks idle keeps them composed.
   if (expressions) tentacleWave.setMood(expressions.activeExpression);
   const speaking = !speechIdle();
-  tentacleWave.update(delta, idle.state, { speaking, composed: idle.blocked && !speaking });
-  const moving = tentacleWave.gain > 0 || tentacleWave.lift !== 0;
+  // An ask or a morph preview always settles the tails; thinking ponders over
+  // the rest (a streaming reply). The split is testable in tentacleBlocks().
+  tentacleWave.update(delta, idle.state, {
+    speaking,
+    ...tentacleBlocks({
+      blocked: idle.blocked, speaking, thinking: thinkingPose.active,
+      askOpen, previewing: Boolean(audition?.sweeping || globalThis.__yidhariHold),
+    }),
+  });
+  const moving = tentacleWave.gain > 0 || tentacleWave.lift !== 0 || tentacleWave.restLift !== 0;
   const simulated = physics.status === "on";
   // While a build loads or warms up, physics owns the bones but has not posed them.
   if (!simulated && physics.status === "loading" && physics.enabled) return;

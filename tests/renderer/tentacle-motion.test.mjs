@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import {
   TENTACLE_ACTIONS, TENTACLE_REACTIONS, TENTACLE_SIZE_KEY, TENTACLE_WAVE, TENTACLE_WAVE_KEY, TentacleWave,
-  bindTentacleSize, tailChains, tentacleSize, waveAngles,
+  bindTentacleSize, tailChains, tentacleBlocks, tentacleSize, waveAngles,
 } from "../../renderer/tentacle-motion.js";
 
 const LINKS = 17;
@@ -79,10 +79,13 @@ test("a zero amplitude bends nothing", () => {
   for (const t of [0, 1, 2.5]) assert.deepEqual(waveAngles(t, 0.7, 9, LINKS, 0), { yaw: 0, pitch: 0 });
 });
 
-test("while she is active the tails stay still", () => {
+/** Each link's share of the raised rest arc. */
+const REST = TENTACLE_WAVE.restLift / LINKS;
+
+test("while she is active the tails stay still, at their raised rest", () => {
   const wave = new TentacleWave();
   assert.ok(run(wave, "active", 5).every((gain) => gain === 0));
-  assert.deepEqual(wave.angles(0.7, 9, LINKS), { yaw: 0, pitch: 0 });
+  assert.deepEqual(wave.angles(0.7, 9, LINKS), { yaw: 0, pitch: REST });
 });
 
 test("the wave eases in when she idles, without a snap or overshoot", () => {
@@ -159,7 +162,7 @@ test("angles scale with the eased gain and the chosen amplitude", () => {
   const full = waveAngles(wave.time, 0.7, 9, LINKS, wave.amplitude);
   const scaled = wave.angles(0.7, 9, LINKS);
   assert.ok(Math.abs(scaled.yaw - full.yaw * wave.gain) < 1e-12);
-  assert.ok(Math.abs(scaled.pitch - full.pitch * wave.gain) < 1e-12);
+  assert.ok(Math.abs(scaled.pitch - REST - full.pitch * wave.gain) < 1e-12);
   assert.equal(new TentacleWave({ amplitude: 0.1 }).amplitude, 0.1);
 });
 
@@ -246,7 +249,7 @@ test("size 0 settles the tails exactly still, even while idle", () => {
   wave.setAmplitude(0);
   run(wave, "idle", TENTACLE_WAVE.ease * 6);
   assert.equal(wave.amplitude, 0);
-  assert.deepEqual(wave.angles(0.7, 9, LINKS), { yaw: 0, pitch: 0 });
+  assert.deepEqual(wave.angles(0.7, 9, LINKS), { yaw: 0, pitch: REST });
 });
 
 test("bindTentacleSize shows and applies a stored size, and saves the slider's changes", () => {
@@ -315,7 +318,7 @@ test("each reaction answers its moods, and no mood answers twice", () => {
   assert.ok(TENTACLE_REACTIONS.perk.moods.includes("surprised"));
   assert.ok(TENTACLE_REACTIONS.lift.moods.includes("happy"));
   assert.ok(TENTACLE_REACTIONS.droop.moods.includes("sleepy"));
-  assert.ok(!seen.has("thinking"), "thinking stays composed");
+  assert.ok(!seen.has("thinking"), "thinking has no reaction: it keeps a slow wave instead (#225)");
   assert.ok(TENTACLE_REACTIONS.perk.lift > TENTACLE_REACTIONS.lift.lift && TENTACLE_REACTIONS.lift.lift > 0);
   assert.ok(TENTACLE_REACTIONS.droop.lift < 0);
 });
@@ -380,7 +383,7 @@ test("moods still react while she speaks", () => {
   assert.ok(peak(lifts(trace(wave, "active", 2, { speaking: true }))) > 0.9 * TENTACLE_REACTIONS.perk.lift);
 });
 
-test("thinking, an open ask or a streaming reply keeps the tails composed", () => {
+test("an open ask or a streaming reply keeps the tails composed", () => {
   const wave = new TentacleWave();
   trace(wave, "idle", TENTACLE_WAVE.ease * 4);
   wave.setMood("sleepy");
@@ -393,13 +396,88 @@ test("thinking, an open ask or a streaming reply keeps the tails composed", () =
     "a mood while composed does not move them");
 });
 
+test("tentacleBlocks keeps asks and previews composed while thinking ponders (#225, PR #227)", () => {
+  // An open ask or a morph preview is a hard block: it never lets thinking wave.
+  for (const hard of [{ askOpen: true }, { previewing: true }]) {
+    const base = { blocked: true, speaking: false, thinking: true, askOpen: false, previewing: false, ...hard };
+    assert.deepEqual(tentacleBlocks(base), { thinking: false, composed: true });
+  }
+  // A streaming reply (blocked, not speaking, thinking) still ponders.
+  assert.deepEqual(
+    tentacleBlocks({ blocked: true, speaking: false, thinking: true, askOpen: false, previewing: false }),
+    { thinking: true, composed: false });
+  // Speech alone is handled by the sway, not the ponder.
+  assert.deepEqual(
+    tentacleBlocks({ blocked: true, speaking: true, thinking: true, askOpen: false, previewing: false }),
+    { thinking: true, composed: false });
+  // Nothing blocked: no composed either way.
+  assert.deepEqual(
+    tentacleBlocks({ blocked: false, speaking: false, thinking: true, askOpen: false, previewing: false }),
+    { thinking: true, composed: false });
+});
+
+test("while she thinks the tails keep a slow wave, even though idle is blocked (#225)", () => {
+  const wave = new TentacleWave();
+  // main.js never sends thinking while an ask or a morph preview is up, but a
+  // streaming reply (the remaining composed block) still lets the wave play.
+  const rows = trace(wave, "active", TENTACLE_WAVE.ease * 6, { thinking: true, composed: true });
+  assert.ok(TENTACLE_WAVE.thinkingGain > 0 && TENTACLE_WAVE.thinkingGain <= TENTACLE_WAVE.stateGain.idle);
+  assert.ok(Math.abs(rows.at(-1)[0] - TENTACLE_WAVE.thinkingGain) < 0.01, `settles at ${rows.at(-1)[0]}`);
+  for (let i = 1; i < rows.length; i += 1) assert.ok(Math.abs(rows[i][0] - rows[i - 1][0]) < 0.05, `frame ${i} jumped`);
+  const done = trace(wave, "active", TENTACLE_WAVE.ease * 6, { composed: true });
+  assert.ok(done[0][0] > 0.9 * TENTACLE_WAVE.thinkingGain, "eases out rather than snapping");
+  assert.equal(done.at(-1)[0], 0, "and settles when thinking ends");
+});
+
+test("the thinking wave runs at its own pace, and idle keeps the usual one (#225)", () => {
+  assert.ok(TENTACLE_WAVE.thinkingTempo > 0 && TENTACLE_WAVE.thinkingTempo <= 1);
+  const thinking = new TentacleWave();
+  trace(thinking, "active", TENTACLE_WAVE.ease * 6, { thinking: true });
+  const before = thinking.time;
+  trace(thinking, "active", 1, { thinking: true });
+  assert.ok(Math.abs(thinking.time - before - TENTACLE_WAVE.thinkingTempo) < 1e-6, `advanced ${thinking.time - before}`);
+  const idle = new TentacleWave();
+  trace(idle, "idle", TENTACLE_WAVE.ease * 6);
+  const idleBefore = idle.time;
+  trace(idle, "idle", 1);
+  assert.ok(Math.abs(idle.time - idleBefore - 1) < 1e-6, "idle waves at the usual pace");
+});
+
+test("speech keeps its usual pace while she thinks (#225)", () => {
+  const speaking = new TentacleWave();
+  const rows = trace(speaking, "active", TENTACLE_WAVE.ease * 6, { thinking: true, speaking: true });
+  assert.ok(Math.abs(rows.at(-1)[0] - Math.max(TENTACLE_WAVE.speakingGain, TENTACLE_WAVE.thinkingGain)) < 0.01);
+  const before = speaking.time;
+  trace(speaking, "active", 1, { thinking: true, speaking: true });
+  assert.ok(Math.abs(speaking.time - before - 1) < 1e-6, "speech sways at the usual pace");
+});
+
+test("with the toggle off the tails stay still while she thinks (#225)", () => {
+  const wave = new TentacleWave({ enabled: false });
+  assert.ok(trace(wave, "active", 3, { thinking: true }).every(([gain]) => gain === 0));
+});
+
 test("the lift bends each link evenly, so the whole tail arcs by the lift", () => {
   const wave = new TentacleWave();
   wave.setMood("surprised");
   for (let i = 0; i < 25; i += 1) wave.update(1 / 60, "active");
   const total = Array.from({ length: LINKS }, (_, i) => wave.angles(0.7, i + 1, LINKS).pitch).reduce((a, b) => a + b, 0);
-  assert.ok(Math.abs(total - wave.lift) < 1e-9);
+  assert.ok(Math.abs(total - wave.lift - TENTACLE_WAVE.restLift) < 1e-9);
   assert.equal(wave.angles(0.7, 9, LINKS).yaw, 0, "no side-to-side without the wave");
+});
+
+test("the tails rest raised by an even arc, so all four show in the bust shot", () => {
+  // The user picked 1.7 rad from bust-camera grids: higher than 1.5, where only some tips showed.
+  assert.ok(TENTACLE_WAVE.restLift > 1.5, `rest arc ${TENTACLE_WAVE.restLift}`);
+  for (const wave of [new TentacleWave(), new TentacleWave({ enabled: false }), new TentacleWave({ amplitude: 0 })]) {
+    run(wave, "active", 2);
+    const pitches = Array.from({ length: LINKS }, (_, i) => wave.angles(0.7, i + 1, LINKS));
+    assert.ok(pitches.every(({ yaw, pitch }) => yaw === 0 && Math.abs(pitch - REST) < 1e-12),
+      "every link bends up by the same share, with the toggle off and at size 0 too");
+  }
+  const preview = new TentacleWave();
+  preview.restLift = 0;
+  assert.deepEqual(preview.angles(0.7, 9, LINKS), { yaw: 0, pitch: 0 }, "previews can change the rest arc");
 });
 
 test("reactions follow the size slider up to the default and no further, and stop at 0", () => {
@@ -409,7 +487,7 @@ test("reactions follow the size slider up to the default and no further, and sto
     wave.setMood("surprised");
     for (let i = 0; i < 25; i += 1) wave.update(1 / 60, "active");
     const total = Array.from({ length: LINKS }, (_, i) => wave.angles(0.7, i + 1, LINKS).pitch).reduce((a, b) => a + b, 0);
-    assert.ok(Math.abs(total - wave.lift * scale) < 1e-9, `size ${size}`);
+    assert.ok(Math.abs(total - wave.lift * scale - TENTACLE_WAVE.restLift) < 1e-9, `size ${size}`);
   }
 });
 

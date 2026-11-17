@@ -455,14 +455,31 @@ physics still owns them:
 | **Lift** | happy, joyful, excited, grin, lovestruck | Up in 0.8 s, hold 1.2 s, down over 1.6 s | +0.3 rad |
 | **Droop** | sleepy, sad, sorrowful, disappointed, cry | Eases down, held while the mood lasts, eases back | −0.35 rad |
 | **Sway** | while she speaks | The wave at 0.35 of its size | |
+| **Ponder** (#225) | while she thinks | The full wave (`thinkingGain` 1), at 0.8 of its pace (`thinkingTempo`) | |
 
 - A reaction fires when the mood **changes** to one of its moods. The same
   mood again does nothing. The lift is spread evenly over the 17 links, so
   each tail arcs up or down as one curve.
-- **Composed:** while idle is blocked by anything other than speech
-  (thinking, an open ask, a streaming reply, a morph preview), the wave, sway
+- **Composed:** while idle is blocked by anything other than speech or
+  thinking (an open ask, a streaming reply, a morph preview), the wave, sway
   and reactions all ease out, and new moods are ignored. While she speaks,
   only the sway plays, and her moods still react.
+- **Ponder (#225):** thinking blocks idle too, but her tails used to freeze
+  next to her fidgeting hands (#218), so the user asked for them to keep
+  moving. While the thinking pose is active, `applyTentacleWave()` passes
+  `thinking` to `TentacleWave.update()`, and the tails ease to a slower wave
+  (`TENTACLE_WAVE.thinkingGain` 1, `thinkingTempo` 0.8) instead of going
+  still. The wave's clock runs at `thinkingTempo` while she thinks, so the
+  pace changes without a jump. If she speaks while thinking, the larger of
+  the two sizes plays at the usual pace. The precedence is decided in
+  `tentacleBlocks()`: an open ask or a morph preview is a **hard block** that
+  always settles the tails, while thinking only ponders over the remaining
+  blocks (a streaming reply) — before the review fix, `!thinking` had cleared
+  composed for every block at once. The toggle and the size slider work
+  as usual. On 17 November 2026 the user was offered 0.35 of the size at the
+  usual pace (the speaking sway), 0.5 and 0.7 at 0.6 of the pace, or the full
+  idle wave, and picked **the full size at 0.8 of the pace**: one wave takes
+  6.25 s instead of 5 s.
 - Reactions follow the **size slider** up to the default: full size at 0.4
   and above, half at 0.2, none at 0. The toggle eases them out like the wave.
 - A reaction stopped part-way (composure, the toggle, the Stop button) hands
@@ -521,7 +538,8 @@ the bodies from `bone.matrixWorld`, which still holds the last drawn wave. With 
 the wave is added to the tails' rest pose instead.
 
 Speech, a streaming reply, an open ask and real thinking block idle, so the
-idle state returns to active and the wave eases out. The reactions from #182
+idle state returns to active and the wave eases out. Speech keeps a sway and
+thinking keeps a slow wave (#225). The reactions from #182
 (lift, droop, the sway while speaking) are planned separately.
 
 ### Checked in the browser

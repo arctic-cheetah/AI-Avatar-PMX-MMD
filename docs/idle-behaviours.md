@@ -341,7 +341,10 @@ is no palm, so only the forearm rolls.
 
 While she is idle or stretching, a slow wave travels along her four tails;
 while sleepy it is half as big. It eases in over about 1.5 s and eases out
-when she becomes active, including when speech or thinking blocks idle. The
+when she becomes active, including when speech or other blocks stop idle.
+While she thinks, the tails keep the full wave at 0.8 of its pace instead of
+going still (#225) — unless an ask is open or a morph preview is running,
+which always settles them (`tentacleBlocks()`, PR #227). The
 **Tentacle wave · 触手** toggle (`yidhari.tentacles`, on by default) eases it
 out. The **Wave size** slider under it sets the size from 0 to 2 (default
 0.4, saved as `yidhari.tentacles.size`). The tails also perk up on surprise,

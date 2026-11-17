@@ -310,7 +310,7 @@ so their place in the frame doesn't matter to physics.
 | Hip physics · 腰 | `yidhari.physics.hips` | off |
 | Physics steps (65–120 /s) | `yidhari.physics.rate` | 120 |
 | Tentacle wave · 触手 | `yidhari.tentacles` | on |
-| Wave size (0–2) | `yidhari.tentacles.size` | 0.4 |
+| Wave size (0–6) | `yidhari.tentacles.size` | 0.4 |
 
 The main toggle is the kill-switch. The chest and hip toggles change their
 groups independently (a change rebuilds), and they keep their choice while
@@ -407,8 +407,9 @@ stayed clean.
 
 ### Wave size slider
 
-The **Wave size** slider under the toggle sets the amplitude from **0 to 2**
-in steps of 0.05 (the user, 16 November 2026: "I love all of them"). It is
+The **Wave size** slider under the toggle sets the amplitude from **0 to 6**
+in steps of 0.05; it ran 0–2 until 17 November 2026, when the user asked for
+bigger waves (3–6). It is
 saved as `yidhari.tentacles.size`. `tentacleSize()` clamps and snaps the
 value, and anything unreadable falls back to 0.4. While the tails wave, a new
 size eases in with the same spring as the gain, so a dragged slider never
@@ -439,6 +440,9 @@ cycle (every 5th tail vertex, 20 moments):
   across her legs in the three-quarter back view, passing in front of them,
   and the tips hook sharply. It's lively rather than calm, so the default
   stays 0.4.
+- Sizes **3–6** were added on request (17 November 2026). They scale the same
+  curve — bigger arcs, faster tips — rather than adding new behaviour, so the
+  same clip and collision margins apply proportionally.
 
 ### Reactions
 

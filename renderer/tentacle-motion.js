@@ -14,8 +14,8 @@ import { Spring } from "./smoothing.js";
 export const TENTACLE_WAVE = Object.freeze({
   /** Wave size; a tail bends at most 1.5x this from root to tip. Picked from the #182 grids. */
   amplitude: 0.4,
-  /** The size slider's range, checked clean from 0 to 2 (docs/physics.md#wave-size-slider). */
-  sizeRange: Object.freeze({ min: 0, max: 2, step: 0.05 }),
+  /** The size slider's range, extended from 0–2 to 0–6 for bigger waves (docs/physics.md#wave-size-slider). */
+  sizeRange: Object.freeze({ min: 0, max: 6, step: 0.05 }),
   /** Each link bends at most amplitude / linkDivisor, scaled up toward the tip. */
   linkDivisor: 6,
   /** Seconds per wave. */

@@ -190,15 +190,16 @@ function fakeStorage(entries = {}, { broken = false } = {}) {
   };
 }
 
-test("the slider runs from 0 to 2 in steps of 0.05, starting at the picked 0.4", () => {
-  assert.deepEqual(TENTACLE_WAVE.sizeRange, { min: 0, max: 2, step: 0.05 });
+test("the slider runs from 0 to 6 in steps of 0.05, starting at the picked 0.4", () => {
+  assert.deepEqual(TENTACLE_WAVE.sizeRange, { min: 0, max: 6, step: 0.05 });
   assert.equal(TENTACLE_WAVE.amplitude, 0.4);
   assert.equal(TENTACLE_SIZE_KEY, "yidhari.tentacles.size");
 });
 
 test("tentacleSize clamps to the range, snaps to the step, and falls back to the default", () => {
   assert.equal(tentacleSize(-1), 0);
-  assert.equal(tentacleSize(3), 2);
+  assert.equal(tentacleSize(7), 6);
+  assert.equal(tentacleSize(3), 3);
   assert.equal(tentacleSize("0.6"), 0.6);
   assert.equal(tentacleSize(0.63), 0.65);
   assert.equal(tentacleSize(1.2), 1.2);
@@ -232,7 +233,9 @@ test("a new size applies at once while the tails are still", () => {
 test("setAmplitude clamps like the slider", () => {
   const wave = new TentacleWave();
   wave.setAmplitude(5);
-  assert.equal(wave.amplitudeTarget, 2);
+  assert.equal(wave.amplitudeTarget, 5);
+  wave.setAmplitude(9);
+  assert.equal(wave.amplitudeTarget, 6);
   wave.setAmplitude("nonsense");
   assert.equal(wave.amplitudeTarget, 0.4);
 });
@@ -257,10 +260,15 @@ test("bindTentacleSize shows and applies a stored size, and saves the slider's c
   assert.deepEqual(shown, [1.25]);
   input.value = "2.4";
   input.fire("input");
-  assert.equal(wave.amplitudeTarget, 2);
-  assert.equal(input.value, "2", "an out-of-range value is written back clamped");
-  assert.equal(local.map.get(TENTACLE_SIZE_KEY), "2");
-  assert.deepEqual(shown, [1.25, 2]);
+  assert.equal(wave.amplitudeTarget, 2.4);
+  assert.equal(input.value, "2.4", "an in-range value is written back snapped");
+  assert.equal(local.map.get(TENTACLE_SIZE_KEY), "2.4");
+  input.value = "7.2";
+  input.fire("input");
+  assert.equal(wave.amplitudeTarget, 6);
+  assert.equal(input.value, "6", "an out-of-range value is written back clamped");
+  assert.equal(local.map.get(TENTACLE_SIZE_KEY), "6");
+  assert.deepEqual(shown, [1.25, 2.4, 6]);
 });
 
 test("bindTentacleSize starts at the default with nothing stored, and keeps working when storage is blocked", () => {

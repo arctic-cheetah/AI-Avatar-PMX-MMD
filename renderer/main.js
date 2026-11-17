@@ -2107,7 +2107,7 @@ function applyTentacleWave(delta) {
       askOpen, previewing: Boolean(audition?.sweeping || globalThis.__yidhariHold),
     }),
   });
-  const moving = tentacleWave.gain > 0 || tentacleWave.lift !== 0;
+  const moving = tentacleWave.gain > 0 || tentacleWave.lift !== 0 || tentacleWave.restLift !== 0;
   const simulated = physics.status === "on";
   // While a build loads or warms up, physics owns the bones but has not posed them.
   if (!simulated && physics.status === "loading" && physics.enabled) return;

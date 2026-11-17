@@ -28,6 +28,8 @@ export const TENTACLE_WAVE = Object.freeze({
   ease: 1.5,
   /** Wave size while she speaks: a gentle sway, even though speech blocks idle. */
   speakingGain: 0.35,
+  /** Total arc each tail rests raised by, so all four show in the bust shot (the user picked 1.7); a posture, not a motion. */
+  restLift: 1.7,
   /** Wave size while she thinks (#225): the full idle wave instead of going still (the user's pick). */
   thinkingGain: 1,
   /** The wave's pace while she thinks, as a share of the usual pace (the user's pick). */
@@ -213,6 +215,8 @@ export class TentacleWave {
     this._droopMood = false;
     /** A played tentacle action: {name, t}. */
     this._manual = null;
+    /** The raised rest arc; previews may change it. */
+    this.restLift = TENTACLE_WAVE.restLift;
     /** The thinking wave's size and pace (#225); previews may change them. */
     this.thinkingGain = TENTACLE_WAVE.thinkingGain;
     this.thinkingTempo = TENTACLE_WAVE.thinkingTempo;
@@ -377,7 +381,8 @@ export class TentacleWave {
   angles(phase, k, count) {
     // Reactions follow the slider up to the default size, and stop at 0.
     const scale = Math.min(1, this.amplitude / TENTACLE_WAVE.amplitude);
-    const lift = (this.lift * scale) / count;
+    // The raised rest arc does not follow the slider: it is where the tails rest.
+    const lift = (this.lift * scale + this.restLift) / count;
     if (this.gain === 0) return { yaw: 0, pitch: lift };
     const { yaw, pitch } = waveAngles(this.time, phase, k, count, this.amplitude);
     return { yaw: yaw * this.gain, pitch: pitch * this.gain + lift };

@@ -467,6 +467,18 @@ still owns the tails.
   - A stored height applies at once when the page loads.
   - Previews can set `tentacleWave.restLift` directly, which also applies at
     once.
+- **The top of the range was checked by eye** on a `?bridge=off` page, with the
+  wave off, at 1.7, 2, 2.5 and 3 rad. The grids are in the gitignored
+  `assets/private/tail-height/`.
+  - In the bust camera all four tails stay beside her. From 2.0, a tail's
+    marking shows behind her neck.
+  - From the side, the tails curl up and back over her, and the innermost
+    curl comes close behind her hat at 3.
+  - A held perk on top of 3 (3.5 in total) hooks the tips forward above her
+    head like horns, still behind her. No grid showed a tail through her head
+    or face.
+  - The range is not capped below 3. Closeness to her head is checked by eye
+    only, not measured.
 
 ### Reactions
 

@@ -1,0 +1,8 @@
+.dev-profile/**
+test/**
+tools/**
+.vscode/**
+**/__pycache__/**
+**/*.pyc
+*.vsix
+.gitignore

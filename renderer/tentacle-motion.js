@@ -28,10 +28,10 @@ export const TENTACLE_WAVE = Object.freeze({
   ease: 1.5,
   /** Wave size while she speaks: a gentle sway, even though speech blocks idle. */
   speakingGain: 0.35,
-  /** Wave size while she thinks (#225): a slow ponder instead of going still. */
-  thinkingGain: 0.5,
-  /** The wave's pace while she thinks, as a share of the usual pace. */
-  thinkingTempo: 0.6,
+  /** Wave size while she thinks (#225): the full idle wave instead of going still (the user's pick). */
+  thinkingGain: 1,
+  /** The wave's pace while she thinks, as a share of the usual pace (the user's pick). */
+  thinkingTempo: 0.8,
   /** Wave size per idle state; any other state is still. */
   stateGain: Object.freeze({ active: 0, waking: 0, idle: 1, stretching: 1, sleepy: 0.5 }),
   /** A phase per tail, so no two wave in step. */

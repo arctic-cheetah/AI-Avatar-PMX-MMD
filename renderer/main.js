@@ -62,7 +62,7 @@ import { fetchTurn, turnFile } from "./turn-replay.js";
 import { createAmmoLoader } from "./ammo-loader.js";
 import { filterPhysics } from "./physics-groups.js";
 import { PhysicsLayer } from "./physics-layer.js";
-import { TENTACLE_ACTIONS, TENTACLE_WAVE_KEY, TentacleWave, bindTentacleSize, tailChains, tentacleBlocks } from "./tentacle-motion.js";
+import { TENTACLE_ACTIONS, TENTACLE_WAVE_KEY, TentacleWave, bindTentacleHeight, bindTentacleSize, tailChains, tentacleBlocks } from "./tentacle-motion.js";
 import { bindStoredToggle } from "./stored-toggle.js";
 import {
   HAIR_FOLLOW, RIGID_STRANDS, blendWeights, pinTargets, pinnedBones, sameMotionAs, stiffStrands,
@@ -128,6 +128,8 @@ const idleToggle = document.querySelector("#idle-toggle");
 const tentacleToggle = document.querySelector("#tentacle-toggle");
 const tentacleSizeInput = document.querySelector("#tentacle-size");
 const tentacleSizeOutput = document.querySelector("#tentacle-size-value");
+const tentacleHeightInput = document.querySelector("#tentacle-height");
+const tentacleHeightOutput = document.querySelector("#tentacle-height-value");
 const idleAfterInput = document.querySelector("#idle-after");
 const sleepAfterInput = document.querySelector("#sleep-after");
 const sleepActionEveryInput = document.querySelector("#sleep-action-every");
@@ -263,6 +265,9 @@ const tentacleWave = new TentacleWave();
 bindStoredToggle(tentacleToggle, TENTACLE_WAVE_KEY, (on) => tentacleWave.setEnabled(on));
 bindTentacleSize(tentacleWave, tentacleSizeInput, {
   show: (size) => { if (tentacleSizeOutput) tentacleSizeOutput.textContent = size.toFixed(2); },
+});
+bindTentacleHeight(tentacleWave, tentacleHeightInput, {
+  show: (height) => { if (tentacleHeightOutput) tentacleHeightOutput.textContent = height.toFixed(2); },
 });
 bindIdleSettings(idle, { toggle: idleToggle, idleAfterInput, sleepAfterInput, sleepActionEveryInput });
 /** Whether an agent ask is waiting for an answer; idle waits too. */

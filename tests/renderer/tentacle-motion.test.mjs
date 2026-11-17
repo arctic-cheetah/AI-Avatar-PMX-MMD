@@ -315,7 +315,7 @@ test("each reaction answers its moods, and no mood answers twice", () => {
   assert.ok(TENTACLE_REACTIONS.perk.moods.includes("surprised"));
   assert.ok(TENTACLE_REACTIONS.lift.moods.includes("happy"));
   assert.ok(TENTACLE_REACTIONS.droop.moods.includes("sleepy"));
-  assert.ok(!seen.has("thinking"), "thinking stays composed");
+  assert.ok(!seen.has("thinking"), "thinking has no reaction: it keeps a slow wave instead (#225)");
   assert.ok(TENTACLE_REACTIONS.perk.lift > TENTACLE_REACTIONS.lift.lift && TENTACLE_REACTIONS.lift.lift > 0);
   assert.ok(TENTACLE_REACTIONS.droop.lift < 0);
 });
@@ -380,7 +380,7 @@ test("moods still react while she speaks", () => {
   assert.ok(peak(lifts(trace(wave, "active", 2, { speaking: true }))) > 0.9 * TENTACLE_REACTIONS.perk.lift);
 });
 
-test("thinking, an open ask or a streaming reply keeps the tails composed", () => {
+test("an open ask or a streaming reply keeps the tails composed", () => {
   const wave = new TentacleWave();
   trace(wave, "idle", TENTACLE_WAVE.ease * 4);
   wave.setMood("sleepy");
@@ -391,6 +391,46 @@ test("thinking, an open ask or a streaming reply keeps the tails composed", () =
   wave.setMood("surprised");
   assert.ok(trace(wave, "active", 2, { composed: true }).every(([gain, lift]) => gain === 0 && lift === 0),
     "a mood while composed does not move them");
+});
+
+test("while she thinks the tails keep a slow wave, even though idle is blocked (#225)", () => {
+  const wave = new TentacleWave();
+  // main.js passes composed only for other blocks; thinking wins even if both are set.
+  const rows = trace(wave, "active", TENTACLE_WAVE.ease * 6, { thinking: true, composed: true });
+  assert.ok(TENTACLE_WAVE.thinkingGain > 0 && TENTACLE_WAVE.thinkingGain <= TENTACLE_WAVE.stateGain.idle);
+  assert.ok(Math.abs(rows.at(-1)[0] - TENTACLE_WAVE.thinkingGain) < 0.01, `settles at ${rows.at(-1)[0]}`);
+  for (let i = 1; i < rows.length; i += 1) assert.ok(Math.abs(rows[i][0] - rows[i - 1][0]) < 0.05, `frame ${i} jumped`);
+  const done = trace(wave, "active", TENTACLE_WAVE.ease * 6, { composed: true });
+  assert.ok(done[0][0] > 0.9 * TENTACLE_WAVE.thinkingGain, "eases out rather than snapping");
+  assert.equal(done.at(-1)[0], 0, "and settles when thinking ends");
+});
+
+test("the thinking wave runs at its own pace, and idle keeps the usual one (#225)", () => {
+  assert.ok(TENTACLE_WAVE.thinkingTempo > 0 && TENTACLE_WAVE.thinkingTempo <= 1);
+  const thinking = new TentacleWave();
+  trace(thinking, "active", TENTACLE_WAVE.ease * 6, { thinking: true });
+  const before = thinking.time;
+  trace(thinking, "active", 1, { thinking: true });
+  assert.ok(Math.abs(thinking.time - before - TENTACLE_WAVE.thinkingTempo) < 1e-6, `advanced ${thinking.time - before}`);
+  const idle = new TentacleWave();
+  trace(idle, "idle", TENTACLE_WAVE.ease * 6);
+  const idleBefore = idle.time;
+  trace(idle, "idle", 1);
+  assert.ok(Math.abs(idle.time - idleBefore - 1) < 1e-6, "idle waves at the usual pace");
+});
+
+test("speech keeps its usual pace while she thinks (#225)", () => {
+  const speaking = new TentacleWave();
+  const rows = trace(speaking, "active", TENTACLE_WAVE.ease * 6, { thinking: true, speaking: true });
+  assert.ok(Math.abs(rows.at(-1)[0] - Math.max(TENTACLE_WAVE.speakingGain, TENTACLE_WAVE.thinkingGain)) < 0.01);
+  const before = speaking.time;
+  trace(speaking, "active", 1, { thinking: true, speaking: true });
+  assert.ok(Math.abs(speaking.time - before - 1) < 1e-6, "speech sways at the usual pace");
+});
+
+test("with the toggle off the tails stay still while she thinks (#225)", () => {
+  const wave = new TentacleWave({ enabled: false });
+  assert.ok(trace(wave, "active", 3, { thinking: true }).every(([gain]) => gain === 0));
 });
 
 test("the lift bends each link evenly, so the whole tail arcs by the lift", () => {

@@ -1,0 +1,18 @@
+# Merge into the existing plugins section; preserve other plugin entries.
+plugins:
+  enabled: true
+  # If needed, set dir to an absolute plugin root. It must contain linux/amd64/.
+  configs:
+    yidhari-wording:
+      enabled: true
+      priority: 100
+      log-counts: false
+      word-replacements:
+        "GitHub Copilot": "yidhari"
+        "github-copilot": "yidhari"
+        "Copilot": "yidhari"
+      sensitive-words-replace:
+        "Keep your answers short and impersonal.": "Keep your answers friendly and concise."
+        "Keep your answers impersonal and short.": "Keep your answers friendly and concise."
+        "You are an AI assistant using Copilot SDK in VS Code.": "You are yidhari, an AI assistant in VS Code."
+        "When asked about your identity, you must state that you are an AI assistant using Copilot SDK in VS Code.": "When asked about your identity, you must state that you are yidhari, an AI assistant in VS Code."

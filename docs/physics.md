@@ -444,6 +444,42 @@ cycle (every 5th tail vertex, 20 moments):
   curve — bigger arcs, faster tips — rather than adding new behaviour, so the
   same clip and collision margins apply proportionally.
 
+### Raised rest and tail height slider (#229, #231)
+
+Her tails used to rest low behind her, so the bust camera never showed them.
+Each tail now rests bent up by an even arc, `TENTACLE_WAVE.restLift`, spread
+over its 17 links like the reactions' lift. `TentacleWave.angles()` adds it to
+every link's pitch, on top of the wave and the reactions. It uses the same
+overlay, added after physics and taken off before the next step, so physics
+still owns the tails.
+- **A posture, not a motion.** The rest arc does not follow the wave size
+  slider, and it stays with the **Tentacle wave** toggle off.
+- **The default, 1.7 rad, is the user's pick (#229).** In the bust camera,
+  two tails rise beside her head and two show at the lower corners. The grids
+  went from 0 to 1.5 in steps. From 0.9 two tips peek out beside her
+  shoulders, and the user asked for higher than 1.5 so that all four show.
+- **Tail height slider (#231).** The **Tail height** slider under **Wave
+  size** sets the rest arc from **0 to 3 rad** in 0.05 steps. It is saved as
+  `yidhari.tentacles.height`. `tentacleHeight()` clamps and snaps the value,
+  and anything unreadable falls back to 1.7.
+  - A slider change eases in with the same spring as the gain, even while the
+    wave is still, so the tails never jump.
+  - A stored height applies at once when the page loads.
+  - Previews can set `tentacleWave.restLift` directly, which also applies at
+    once.
+- **The top of the range was checked by eye** on a `?bridge=off` page, with the
+  wave off, at 1.7, 2, 2.5 and 3 rad. The grids are in the gitignored
+  `assets/private/tail-height/`.
+  - In the bust camera all four tails stay beside her. From 2.0, a tail's
+    marking shows behind her neck.
+  - From the side, the tails curl up and back over her, and the innermost
+    curl comes close behind her hat at 3.
+  - A held perk on top of 3 (3.5 in total) hooks the tips forward above her
+    head like horns, still behind her. No grid showed a tail through her head
+    or face.
+  - The range is not capped below 3. Closeness to her head is checked by eye
+    only, not measured.
+
 ### Reactions
 
 Her tails answer her mood, on top of the wave and with the same overlay, so

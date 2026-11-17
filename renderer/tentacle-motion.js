@@ -30,6 +30,8 @@ export const TENTACLE_WAVE = Object.freeze({
   speakingGain: 0.35,
   /** Total arc each tail rests raised by, so all four show in the bust shot (the user picked 1.7); a posture, not a motion. */
   restLift: 1.7,
+  /** The tail height slider's range (#231). */
+  heightRange: Object.freeze({ min: 0, max: 3, step: 0.05 }),
   /** Wave size while she thinks (#225): the full idle wave instead of going still (the user's pick). */
   thinkingGain: 1,
   /** The wave's pace while she thinks, as a share of the usual pace (the user's pick). */
@@ -67,6 +69,8 @@ export const TENTACLE_ACTIONS = Object.freeze({
 export const TENTACLE_WAVE_KEY = "yidhari.tentacles";
 /** localStorage key of the size slider. */
 export const TENTACLE_SIZE_KEY = "yidhari.tentacles.size";
+/** localStorage key of the tail height slider (#231). */
+export const TENTACLE_HEIGHT_KEY = "yidhari.tentacles.height";
 
 /**
  * A wave size from the slider or storage: clamped, snapped to the step.
@@ -78,6 +82,19 @@ export function tentacleSize(value) {
   const size = value === null || value === "" ? NaN : Number(value);
   if (!Number.isFinite(size)) return TENTACLE_WAVE.amplitude;
   const snapped = Math.round(Math.min(max, Math.max(min, size)) / step) * step;
+  return Number(snapped.toFixed(2));
+}
+
+/**
+ * A tail height (rest arc) from the slider or storage: clamped, snapped to the step (#231).
+ * @param {unknown} value
+ * @returns {number} Radians; anything unreadable gives the default.
+ */
+export function tentacleHeight(value) {
+  const { min, max, step } = TENTACLE_WAVE.heightRange;
+  const height = value === null || value === "" ? NaN : Number(value);
+  if (!Number.isFinite(height)) return TENTACLE_WAVE.restLift;
+  const snapped = Math.round(Math.min(max, Math.max(min, height)) / step) * step;
   return Number(snapped.toFixed(2));
 }
 
@@ -197,6 +214,38 @@ export function bindTentacleSize(wave, input, { local, show = () => {} } = {}) {
   });
 }
 
+/**
+ * Bind the Tail height slider (#231): apply the stored height at once, then
+ * ease to each change and store it. Storage can throw (private mode); the
+ * height then lasts for the session.
+ * @param {TentacleWave} wave
+ * @param {HTMLInputElement|null} input
+ * @param {{local?: Storage, show?: (height: number) => void}} [options]
+ * @returns {void}
+ */
+export function bindTentacleHeight(wave, input, { local, show = () => {} } = {}) {
+  try {
+    local ??= globalThis.localStorage;
+  } catch { /* Storage access itself can throw. */ }
+  let stored = null;
+  try {
+    stored = local?.getItem(TENTACLE_HEIGHT_KEY) ?? null;
+  } catch { /* Blocked: the default. */ }
+  const apply = (value, instant) => {
+    wave.setRestLift(value, { instant });
+    if (input) input.value = String(wave.restLiftTarget);
+    show(wave.restLiftTarget);
+  };
+  apply(stored, true);
+  if (!input) return;
+  input.addEventListener("input", () => {
+    apply(input.value, false);
+    try {
+      local?.setItem(TENTACLE_HEIGHT_KEY, String(wave.restLiftTarget));
+    } catch { /* Session-only. */ }
+  });
+}
+
 export class TentacleWave {
   /** @param {{enabled?: boolean, amplitude?: number}} [options] */
   constructor({ enabled = true, amplitude = TENTACLE_WAVE.amplitude } = {}) {
@@ -215,8 +264,9 @@ export class TentacleWave {
     this._droopMood = false;
     /** A played tentacle action: {name, t}. */
     this._manual = null;
-    /** The raised rest arc; previews may change it. */
-    this.restLift = TENTACLE_WAVE.restLift;
+    /** The raised rest arc (#229) and the tail height it eases to (#231). */
+    this._rest = new Spring(TENTACLE_WAVE.restLift);
+    this._restTarget = TENTACLE_WAVE.restLift;
     /** The thinking wave's size and pace (#225); previews may change them. */
     this.thinkingGain = TENTACLE_WAVE.thinkingGain;
     this.thinkingTempo = TENTACLE_WAVE.thinkingTempo;
@@ -289,6 +339,32 @@ export class TentacleWave {
     this._bumpLift = 0;
   }
 
+  /** @returns {number} The eased rest arc along each tail, in radians. */
+  get restLift() {
+    return this._rest.value;
+  }
+
+  /** Previews set the rest arc directly; it applies at once. */
+  set restLift(value) {
+    this.setRestLift(value, { instant: true });
+  }
+
+  /** @returns {number} The height the slider asked for. */
+  get restLiftTarget() {
+    return this._restTarget;
+  }
+
+  /**
+   * Set the tail height from the slider. It eases in, even while the wave is still.
+   * @param {unknown} value Clamped and snapped by tentacleHeight().
+   * @param {{instant?: boolean}} [options] Apply at once, as on page load.
+   * @returns {void}
+   */
+  setRestLift(value, { instant = false } = {}) {
+    this._restTarget = tentacleHeight(value);
+    if (instant) settle(this._rest, this._restTarget);
+  }
+
   /** @returns {number} The eased wave size, 0 to 1. */
   get gain() {
     return this._spring.value;
@@ -331,6 +407,10 @@ export class TentacleWave {
    */
   update(delta, state, { speaking = false, thinking = false, composed = false } = {}) {
     if (!(Number.isFinite(delta) && delta > 0)) return this.gain;
+    // The tail height eases whether or not the wave plays.
+    this._rest.step(this._restTarget, delta, SPRING_RATE);
+    this._rest.clamp(TENTACLE_WAVE.heightRange.min, TENTACLE_WAVE.heightRange.max);
+    settleNear(this._rest, this._restTarget);
     const still = (composed && !thinking) || !this.enabled;
     if (this._manual) {
       this._manual.t += delta;

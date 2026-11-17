@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"gopkg.in/yaml.v3"
+	"os"
 	"testing"
 )
 
@@ -102,5 +104,26 @@ func TestWordRulesPreserveUserContentAndDoNotRescan(t *testing.T) {
 	_ = json.Unmarshal(decoded["system"], &system)
 	if n != 2 || system != "Your name is yidhari. github-copilot" || !bytes.Contains(decoded["messages"], []byte("Copilot github-copilot")) {
 		t.Fatalf("got %s count=%d", result, n)
+	}
+}
+
+func TestPortableExampleWordRules(t *testing.T) {
+	raw, err := os.ReadFile("config.example.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg struct {
+		Plugins struct{ Configs map[string]pluginConfig }
+	}
+	if err = yaml.Unmarshal(raw, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	c := cfg.Plugins.Configs["yidhari-wording"]
+	r := compileAll(c.Rules, c.WordRules)
+	original := `{"messages":[{"role":"system","content":"COPILOT / github copilot / GitHub-Copilot / IMPERSONAL. Keep copilot-cli, my_copilot and impersonally."},{"role":"user","content":"copilot impersonal"}]}`
+	got, n := rewriteWith([]byte(original), r)
+	want := `yidhari / yidhari / yidhari / friendly. Keep copilot-cli, my_copilot and impersonally.`
+	if n != 4 || !bytes.Contains(got, []byte(want)) || !bytes.Contains(got, []byte(`"content":"copilot impersonal"`)) {
+		t.Fatalf("count=%d result=%s", n, got)
 	}
 }

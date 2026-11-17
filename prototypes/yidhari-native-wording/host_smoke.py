@@ -33,6 +33,10 @@ def main():
         shutil.copy2(ROOT/'yidhari-wording.so', plugins/'yidhari-wording.so')
         plugin = yaml.safe_load((ROOT/'config.example.yaml').read_text())['plugins']
         plugin['dir'] = str(tmp/'plugins')
+        persona_path = os.environ.get('YIDHARI_TEST_PERSONA')
+        persona = Path(persona_path).read_text() if persona_path else ''
+        if persona_path:
+            plugin['configs']['yidhari-wording']['persona-file'] = persona_path
         cfg = {'config-version': 8, 'server': {'host': '127.0.0.1', 'port': port, 'kv-store': {'disabled': True}},
                'management': {'disable-control-panel': True}, 'access': {'api-keys': ['synthetic-client']},
                'oauth': {'auth-dir': str(tmp/'empty-auth')}, 'plugins': plugin,
@@ -53,7 +57,7 @@ def main():
                 except OSError: pass
                 if time.monotonic()>deadline: raise RuntimeError('Isolated core readiness timeout')
                 time.sleep(.1)
-            text = 'Keep your answers short and impersonal. You are an AI assistant using Copilot SDK in VS Code. When asked about your identity, you must state that you are an AI assistant using Copilot SDK in VS Code. Names: Copilot, github-copilot, GitHub Copilot. Keep copilot-cli intact.'
+            text = 'Keep your answers short and impersonal. You are an AI assistant using Copilot SDK in VS Code. When asked about your identity, you must state that you are an AI assistant using Copilot SDK in VS Code. Names: Copilot, github-copilot, GitHub Copilot. IMPERSONAL. Keep copilot-cli and impersonally intact.'
             body = {'model': 'synthetic', 'messages': [{'role': 'system', 'content': text}, {'role': 'user', 'content': text}]}
             conn = http.client.HTTPConnection('127.0.0.1', port, timeout=10)
             conn.request('POST', '/v1/chat/completions', json.dumps(body), {'Authorization': 'Bearer synthetic-client', 'Content-Type': 'application/json'})
@@ -62,8 +66,14 @@ def main():
             assert seen, 'No fake upstream request'
             expected = text.replace('short and impersonal', 'friendly and concise').replace('an AI assistant using Copilot SDK in VS Code', 'yidhari, an AI assistant in VS Code')
             expected = expected.replace('Names: Copilot, github-copilot, GitHub Copilot.', 'Names: yidhari, yidhari, yidhari.')
+            expected = expected.replace('IMPERSONAL.', 'friendly.')
+            if persona:
+                expected += '\n\n<!-- yidhari-persona:start -->\n' + persona + '\n<!-- yidhari-persona:end -->'
             assert seen[-1]['messages'][0]['content'] == expected, 'Native host did not apply plugin'
             assert seen[-1]['messages'][1]['content'] == text, 'User content changed'
+            if persona:
+                assert seen[-1]['messages'][0]['content'].count('yidhari-persona:start') == 1
+                print('PASS: supplied persona reached mock upstream verbatim, exactly once; harness rewrite and user preservation verified.')
             print('PASS: installed CLIProxyAPI 8.0.76 loaded native plugin; synthetic OpenAI-compatible request rewritten before fake upstream; user content preserved. Live service untouched.')
         except Exception:
             log.flush(); log.seek(0)

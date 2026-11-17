@@ -4,6 +4,7 @@ import ctypes as C
 import json
 from pathlib import Path
 import yaml
+import tempfile
 
 ROOT = Path(__file__).resolve().parent
 class Buffer(C.Structure):
@@ -35,14 +36,15 @@ def call(method, request):
 cfg = yaml.safe_load((ROOT / 'config.example.yaml').read_text())['plugins']['configs']['yidhari-wording']
 registration = call('plugin.register', {'config_yaml': base64.b64encode(yaml.safe_dump(cfg).encode()).decode()})
 assert registration['schema_version'] == 10
-assert registration['metadata']['Version'] == '0.2.0'
+assert registration['metadata']['Version'] == '0.3.1'
 assert all(registration['metadata'].get(k) for k in ['Name', 'Version', 'Author', 'GitHubRepository'])
 assert registration['capabilities'] == {'request_interceptor': True}
 text = ('Keep your answers short and impersonal. You are an AI assistant using Copilot SDK in VS Code. '
         'When asked about your identity, you must state that you are an AI assistant using Copilot SDK in VS Code. '
-        'Names: Copilot, github-copilot, GitHub Copilot. Keep copilot-cli and my_copilot intact.')
+        'Names: Copilot, github-copilot, GitHub Copilot. IMPERSONAL. Keep copilot-cli, my_copilot and impersonally intact.')
 expected = text.replace('short and impersonal', 'friendly and concise').replace('an AI assistant using Copilot SDK in VS Code', 'yidhari, an AI assistant in VS Code')
 expected = expected.replace('Names: Copilot, github-copilot, GitHub Copilot.', 'Names: yidhari, yidhari, yidhari.')
+expected = expected.replace('IMPERSONAL.', 'friendly.')
 vectors = [
  ('openai', {'messages': [{'role': 'system', 'content': text}, {'role': 'user', 'content': text}]}),
  ('responses', {'instructions': text, 'input': [{'role': 'user', 'content': text}]}),
@@ -70,6 +72,22 @@ for provider in ['devin', 'antigravity', 'codex', 'claude', 'gemini', 'openai-co
         # After-auth sees either already-edited or original data; both are valid.
         assert call('request.intercept_after', {**request, 'Body': response['Body']}) == {}
         assert 'Body' in call('request.intercept_after', request)
+with tempfile.TemporaryDirectory(prefix='yidhari-persona-abi-') as directory:
+    persona_path = Path(directory) / 'persona.md'
+    persona = 'You are Yidhari. Preserve Copilot inside this configured persona.\n'
+    persona_path.write_text(persona)
+    persona_cfg = {**cfg, 'persona-file': str(persona_path)}
+    call('plugin.reconfigure', {'config_yaml': base64.b64encode(yaml.safe_dump(persona_cfg).encode()).decode()})
+    for provider in ['devin', 'antigravity', 'codex', 'claude', 'gemini', 'openai-compatibility', 'xai', 'meta']:
+        for source, body in vectors:
+            request = {'SourceFormat': source, 'Body': base64.b64encode(json.dumps(body).encode()).decode(), 'Metadata': {'provider': provider}}
+            response = call('request.intercept_before', request)
+            raw = base64.b64decode(response['Body'])
+            assert json.dumps(persona)[1:-1] in raw.decode(), 'Persona not preserved verbatim'
+            assert raw.count(b'yidhari-persona:start') == 1
+            assert call('request.intercept_after', {**request, 'Body': response['Body']}) == {}, 'Duplicate or rewritten persona'
+    print('PASS: persona file cached and injected verbatim across 32 protocol/provider-label cases; second hook is a no-op.')
+
 call('plugin.reconfigure', {'config_yaml': base64.b64encode(b'sensitive-words-replace: {}').decode()})
 assert call('request.intercept_before', {'Body': base64.b64encode(json.dumps(vectors[0][1]).encode()).decode()}) == {}
 shutdown_fn()

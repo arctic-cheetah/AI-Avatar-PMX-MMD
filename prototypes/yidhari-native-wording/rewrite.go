@@ -115,7 +115,7 @@ func rewriteWith(body []byte, r *replacer) ([]byte, int) {
 		if json.Unmarshal(raw, &text) != nil {
 			return raw
 		}
-		changed, n := r.replaceText(text)
+		changed, n := r.replaceOutsidePersona(text)
 		if n == 0 {
 			return raw
 		}

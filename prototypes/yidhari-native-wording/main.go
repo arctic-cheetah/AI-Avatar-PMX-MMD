@@ -26,13 +26,15 @@ import (
 )
 
 type pluginConfig struct {
-	Rules     map[string]string `yaml:"sensitive-words-replace"`
-	WordRules map[string]string `yaml:"word-replacements"`
-	LogCounts bool              `yaml:"log-counts"`
+	Rules       map[string]string `yaml:"sensitive-words-replace"`
+	WordRules   map[string]string `yaml:"word-replacements"`
+	LogCounts   bool              `yaml:"log-counts"`
+	PersonaFile string            `yaml:"persona-file"`
 }
 type settings struct {
 	rewrite   *replacer
 	logCounts bool
+	persona   string
 }
 
 var current atomic.Pointer[settings]
@@ -103,17 +105,25 @@ func handleMethod(method string, raw []byte) (any, error) {
 		if len(req.ConfigYAML) > 0 && yaml.Unmarshal(req.ConfigYAML, &cfg) != nil {
 			return nil, errors.New("invalid configuration")
 		}
-		current.Store(&settings{compileAll(cfg.Rules, cfg.WordRules), cfg.LogCounts})
+		persona, err := loadPersona(cfg.PersonaFile)
+		if err != nil {
+			return nil, err
+		}
+		current.Store(&settings{rewrite: compileAll(cfg.Rules, cfg.WordRules), logCounts: cfg.LogCounts, persona: persona})
 		return map[string]any{
 			"schema_version": 10,
-			"metadata": map[string]any{"Name": "yidhari-wording", "Version": "0.2.0", "Author": "AI-assisted", "GitHubRepository": "https://github.com/arctic-cheetah/AI-Avatar-PMX-MMD", "ConfigFields": []map[string]string{
+			"metadata": map[string]any{"Name": "yidhari-wording", "Version": "0.3.1", "Author": "AI-assisted", "GitHubRepository": "https://github.com/arctic-cheetah/AI-Avatar-PMX-MMD", "ConfigFields": []map[string]string{
+				{"Name": "persona-file", "Type": "string", "Description": "Absolute UTF-8 Markdown instruction file, cached until reconfiguration"},
 				{"Name": "sensitive-words-replace", "Type": "object", "Description": "Literal replacements in instruction fields, independent of provider"},
 				{"Name": "word-replacements", "Type": "object", "Description": "Whole-name replacements in instruction fields; preserves longer hyphenated or underscored identifiers"},
 				{"Name": "log-counts", "Type": "boolean", "Description": "Log replacement counts only; never prompt text"}}},
 			"capabilities": map[string]bool{"request_interceptor": true},
 		}, nil
 	case "request.intercept_before", "request.intercept_after":
-		var req struct{ Body []byte }
+		var req struct {
+			Body         []byte
+			SourceFormat string
+		}
 		if json.Unmarshal(raw, &req) != nil {
 			return nil, errors.New("invalid request")
 		}
@@ -122,7 +132,8 @@ func handleMethod(method string, raw []byte) (any, error) {
 			return map[string]any{}, nil
 		}
 		body, n := rewriteWith(req.Body, cfg.rewrite)
-		if n == 0 {
+		body, injected := injectPersona(body, cfg.persona, req.SourceFormat)
+		if n == 0 && !injected {
 			return map[string]any{}, nil
 		}
 		if cfg.logCounts {

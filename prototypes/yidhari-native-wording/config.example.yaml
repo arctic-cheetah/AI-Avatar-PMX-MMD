@@ -7,10 +7,13 @@ plugins:
       enabled: true
       priority: 100
       log-counts: false
+      # Optional: absolute UTF-8 Markdown file, loaded at registration/reload.
+      # persona-file: /absolute/path/to/yidhari-identity.instructions.md
       word-replacements:
         "GitHub Copilot": "yidhari"
         "github-copilot": "yidhari"
         "Copilot": "yidhari"
+        "impersonal": "friendly"
       sensitive-words-replace:
         "Keep your answers short and impersonal.": "Keep your answers friendly and concise."
         "Keep your answers impersonal and short.": "Keep your answers friendly and concise."

@@ -27,6 +27,9 @@ This is a companion project, kept outside `my_code_pc` so it does not compete fo
 
 ## 🧭 How it works
 
+For Yidhari's name and friendly reply style in VS Code through EasyCLIProxyAPI,
+see the optional [native wording plugin setup](docs/easycliproxyapi-yidhari.md).
+
 ```mermaid
 flowchart TD
     U([🧑 You]) -->|chat bar or 🎤 mic| R

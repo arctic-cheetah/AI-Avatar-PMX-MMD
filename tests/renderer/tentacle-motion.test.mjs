@@ -79,10 +79,13 @@ test("a zero amplitude bends nothing", () => {
   for (const t of [0, 1, 2.5]) assert.deepEqual(waveAngles(t, 0.7, 9, LINKS, 0), { yaw: 0, pitch: 0 });
 });
 
-test("while she is active the tails stay still", () => {
+/** Each link's share of the raised rest arc. */
+const REST = TENTACLE_WAVE.restLift / LINKS;
+
+test("while she is active the tails stay still, at their raised rest", () => {
   const wave = new TentacleWave();
   assert.ok(run(wave, "active", 5).every((gain) => gain === 0));
-  assert.deepEqual(wave.angles(0.7, 9, LINKS), { yaw: 0, pitch: 0 });
+  assert.deepEqual(wave.angles(0.7, 9, LINKS), { yaw: 0, pitch: REST });
 });
 
 test("the wave eases in when she idles, without a snap or overshoot", () => {
@@ -159,7 +162,7 @@ test("angles scale with the eased gain and the chosen amplitude", () => {
   const full = waveAngles(wave.time, 0.7, 9, LINKS, wave.amplitude);
   const scaled = wave.angles(0.7, 9, LINKS);
   assert.ok(Math.abs(scaled.yaw - full.yaw * wave.gain) < 1e-12);
-  assert.ok(Math.abs(scaled.pitch - full.pitch * wave.gain) < 1e-12);
+  assert.ok(Math.abs(scaled.pitch - REST - full.pitch * wave.gain) < 1e-12);
   assert.equal(new TentacleWave({ amplitude: 0.1 }).amplitude, 0.1);
 });
 
@@ -246,7 +249,7 @@ test("size 0 settles the tails exactly still, even while idle", () => {
   wave.setAmplitude(0);
   run(wave, "idle", TENTACLE_WAVE.ease * 6);
   assert.equal(wave.amplitude, 0);
-  assert.deepEqual(wave.angles(0.7, 9, LINKS), { yaw: 0, pitch: 0 });
+  assert.deepEqual(wave.angles(0.7, 9, LINKS), { yaw: 0, pitch: REST });
 });
 
 test("bindTentacleSize shows and applies a stored size, and saves the slider's changes", () => {
@@ -459,8 +462,22 @@ test("the lift bends each link evenly, so the whole tail arcs by the lift", () =
   wave.setMood("surprised");
   for (let i = 0; i < 25; i += 1) wave.update(1 / 60, "active");
   const total = Array.from({ length: LINKS }, (_, i) => wave.angles(0.7, i + 1, LINKS).pitch).reduce((a, b) => a + b, 0);
-  assert.ok(Math.abs(total - wave.lift) < 1e-9);
+  assert.ok(Math.abs(total - wave.lift - TENTACLE_WAVE.restLift) < 1e-9);
   assert.equal(wave.angles(0.7, 9, LINKS).yaw, 0, "no side-to-side without the wave");
+});
+
+test("the tails rest raised by an even arc, so all four show in the bust shot", () => {
+  // The user picked 1.7 rad from bust-camera grids: higher than 1.5, where only some tips showed.
+  assert.ok(TENTACLE_WAVE.restLift > 1.5, `rest arc ${TENTACLE_WAVE.restLift}`);
+  for (const wave of [new TentacleWave(), new TentacleWave({ enabled: false }), new TentacleWave({ amplitude: 0 })]) {
+    run(wave, "active", 2);
+    const pitches = Array.from({ length: LINKS }, (_, i) => wave.angles(0.7, i + 1, LINKS));
+    assert.ok(pitches.every(({ yaw, pitch }) => yaw === 0 && Math.abs(pitch - REST) < 1e-12),
+      "every link bends up by the same share, with the toggle off and at size 0 too");
+  }
+  const preview = new TentacleWave();
+  preview.restLift = 0;
+  assert.deepEqual(preview.angles(0.7, 9, LINKS), { yaw: 0, pitch: 0 }, "previews can change the rest arc");
 });
 
 test("reactions follow the size slider up to the default and no further, and stop at 0", () => {
@@ -470,7 +487,7 @@ test("reactions follow the size slider up to the default and no further, and sto
     wave.setMood("surprised");
     for (let i = 0; i < 25; i += 1) wave.update(1 / 60, "active");
     const total = Array.from({ length: LINKS }, (_, i) => wave.angles(0.7, i + 1, LINKS).pitch).reduce((a, b) => a + b, 0);
-    assert.ok(Math.abs(total - wave.lift * scale) < 1e-9, `size ${size}`);
+    assert.ok(Math.abs(total - wave.lift * scale - TENTACLE_WAVE.restLift) < 1e-9, `size ${size}`);
   }
 });
 

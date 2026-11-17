@@ -1,0 +1,239 @@
+{
+  "schemaVersion": 1,
+  "threadId": "01a1e8d3-ffca-7752-8934-c20e9dabe163",
+  "branch": "codex/research-yidhari-easycliproxyapi",
+  "baseCommit": "e9ab58d",
+  "archiveCreatedLocalDate": "2026-11-18",
+  "timezone": "Australia/Sydney",
+  "timestampPolicy": "Retrospective commits; both Git dates equal the final covered completedAt, or startedAt for the active final turn. Original chat turn metadata, not embedded transcript times.",
+  "checkpoints": [
+    {
+      "number": 1,
+      "title": "Investigate identity changes in the managed harness",
+      "path": "01-harness-feasibility.md",
+      "gitDate": "2026-11-17T09:33:00.000Z",
+      "timestampField": "completedAt",
+      "sourceTurns": [
+        {
+          "id": "01a1e8d8-500e-7f42-9c91-72738b7bcc5e",
+          "startedAt": "2026-11-17T09:30:52.000Z",
+          "completedAt": "2026-11-17T09:33:00.000Z",
+          "userMessageCount": 1
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "title": "Build and try the separate extension prototype",
+      "path": "02-proxy-proof-of-concept.md",
+      "gitDate": "2026-11-17T09:48:35.000Z",
+      "timestampField": "completedAt",
+      "sourceTurns": [
+        {
+          "id": "01a1e8e1-1558-7340-98ef-015a3fd2b324",
+          "startedAt": "2026-11-17T09:40:27.000Z",
+          "completedAt": "2026-11-17T09:48:35.000Z",
+          "userMessageCount": 2
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "title": "Extend the identity and friendly-style requirements",
+      "path": "03-sdk-identity-and-style.md",
+      "gitDate": "2026-11-17T10:34:49.000Z",
+      "timestampField": "completedAt",
+      "sourceTurns": [
+        {
+          "id": "01a1e910-97db-7302-80c9-63c454a49df9",
+          "startedAt": "2026-11-17T10:32:21.000Z",
+          "completedAt": "2026-11-17T10:34:49.000Z",
+          "userMessageCount": 1
+        }
+      ]
+    },
+    {
+      "number": 4,
+      "title": "Make local VSIX generation reproducible",
+      "path": "04-self-service-vsix.md",
+      "gitDate": "2026-11-17T10:41:35.000Z",
+      "timestampField": "completedAt",
+      "sourceTurns": [
+        {
+          "id": "01a1e916-f860-7781-9b74-146d5eb1efb8",
+          "startedAt": "2026-11-17T10:39:19.000Z",
+          "completedAt": "2026-11-17T10:39:37.000Z",
+          "userMessageCount": 1
+        },
+        {
+          "id": "01a1e917-95f1-7740-a457-a467f0f29795",
+          "startedAt": "2026-11-17T10:39:59.000Z",
+          "completedAt": "2026-11-17T10:41:35.000Z",
+          "userMessageCount": 0
+        }
+      ]
+    },
+    {
+      "number": 5,
+      "title": "Separate certificate preparation, acknowledgement and routing",
+      "path": "05-enablement-and-trust.md",
+      "gitDate": "2026-11-17T10:58:54.000Z",
+      "timestampField": "completedAt",
+      "sourceTurns": [
+        {
+          "id": "01a1e91f-6f1d-75a3-9010-b1bdc2e2fd82",
+          "startedAt": "2026-11-17T10:48:33.000Z",
+          "completedAt": "2026-11-17T10:54:18.000Z",
+          "userMessageCount": 3
+        },
+        {
+          "id": "01a1e928-6293-7da3-9381-7f392094c3fa",
+          "startedAt": "2026-11-17T10:58:20.000Z",
+          "completedAt": "2026-11-17T10:58:54.000Z",
+          "userMessageCount": 1
+        }
+      ]
+    },
+    {
+      "number": 6,
+      "title": "Diagnose the runtime certificate boundary",
+      "path": "06-client-tls-failures.md",
+      "gitDate": "2026-11-17T11:05:10.000Z",
+      "timestampField": "completedAt",
+      "sourceTurns": [
+        {
+          "id": "01a1e92b-c875-71f3-b598-7581364d8c94",
+          "startedAt": "2026-11-17T11:02:03.000Z",
+          "completedAt": "2026-11-17T11:05:10.000Z",
+          "userMessageCount": 1
+        }
+      ]
+    },
+    {
+      "number": 7,
+      "title": "Verify CA installation and investigate stale processes",
+      "path": "07-trust-store-verification.md",
+      "gitDate": "2026-11-17T11:17:15.000Z",
+      "timestampField": "completedAt",
+      "sourceTurns": [
+        {
+          "id": "01a1e938-3fab-7a11-966f-0fbf3940b965",
+          "startedAt": "2026-11-17T11:15:40.000Z",
+          "completedAt": "2026-11-17T11:17:15.000Z",
+          "userMessageCount": 1
+        }
+      ]
+    },
+    {
+      "number": 8,
+      "title": "Investigate partial replacement counts and the extra-hop experiment",
+      "path": "08-partial-rewrites-and-forwarding.md",
+      "gitDate": "2026-11-17T11:34:54.000Z",
+      "timestampField": "completedAt",
+      "sourceTurns": [
+        {
+          "id": "01a1e944-d38b-7343-8f84-01beda619d82",
+          "startedAt": "2026-11-17T11:29:24.000Z",
+          "completedAt": "2026-11-17T11:34:54.000Z",
+          "userMessageCount": 1
+        }
+      ]
+    },
+    {
+      "number": 9,
+      "title": "Prefer the existing proxy's provider-specific controls",
+      "path": "09-existing-proxy-controls.md",
+      "gitDate": "2026-11-17T11:42:49.000Z",
+      "timestampField": "completedAt",
+      "sourceTurns": [
+        {
+          "id": "01a1e94e-93ad-7522-ad86-70ad33f8949d",
+          "startedAt": "2026-11-17T11:40:03.000Z",
+          "completedAt": "2026-11-17T11:42:49.000Z",
+          "userMessageCount": 1
+        }
+      ]
+    },
+    {
+      "number": 10,
+      "title": "Implement shared instruction rewriting inside the existing core",
+      "path": "10-provider-independent-plugin.md",
+      "gitDate": "2026-11-17T11:55:45.000Z",
+      "timestampField": "completedAt",
+      "sourceTurns": [
+        {
+          "id": "01a1e953-22b9-7123-9ac9-fab7817040ee",
+          "startedAt": "2026-11-17T11:45:02.000Z",
+          "completedAt": "2026-11-17T11:55:45.000Z",
+          "userMessageCount": 1
+        }
+      ]
+    },
+    {
+      "number": 11,
+      "title": "Record the live result and document the primary route",
+      "path": "11-live-result-and-guide.md",
+      "gitDate": "2026-11-17T12:12:06.000Z",
+      "timestampField": "completedAt",
+      "sourceTurns": [
+        {
+          "id": "01a1e968-dddf-7e93-aaed-192b1d0ddc5b",
+          "startedAt": "2026-11-17T12:08:46.000Z",
+          "completedAt": "2026-11-17T12:12:06.000Z",
+          "userMessageCount": 1
+        }
+      ]
+    },
+    {
+      "number": 12,
+      "title": "Add whole-name aliases and reassess the MITM detour",
+      "path": "12-whole-names-and-architecture.md",
+      "gitDate": "2026-11-17T12:50:13.000Z",
+      "timestampField": "completedAt",
+      "sourceTurns": [
+        {
+          "id": "01a1e989-c17e-7730-ac90-e3670881684c",
+          "startedAt": "2026-11-17T12:44:41.000Z",
+          "completedAt": "2026-11-17T12:50:13.000Z",
+          "userMessageCount": 1
+        }
+      ]
+    },
+    {
+      "number": 13,
+      "title": "Plan request persona injection without implementing it",
+      "path": "13-persona-injection-plan.md",
+      "gitDate": "2026-11-17T12:55:05.000Z",
+      "timestampField": "completedAt",
+      "sourceTurns": [
+        {
+          "id": "01a1e992-006b-7872-af79-b849cc231a03",
+          "startedAt": "2026-11-17T12:53:42.000Z",
+          "completedAt": "2026-11-17T12:55:05.000Z",
+          "userMessageCount": 1
+        }
+      ]
+    },
+    {
+      "number": 14,
+      "title": "Archive the conversation in the avatar repository",
+      "path": "14-retrospective-and-handoff.md",
+      "gitDate": "2026-11-17T13:31:31.000Z",
+      "timestampField": "startedAt",
+      "sourceTurns": [
+        {
+          "id": "01a1e9b3-b1f5-76d1-94dd-d6d31fd3301e",
+          "startedAt": "2026-11-17T13:30:30.000Z",
+          "completedAt": "2026-11-17T13:31:06.000Z",
+          "userMessageCount": 1
+        },
+        {
+          "id": "01a1e9b4-a147-7b42-ba22-2bd61ccd21cb",
+          "startedAt": "2026-11-17T13:31:31.000Z",
+          "completedAt": null,
+          "userMessageCount": 2
+        }
+      ]
+    }
+  ]
+}

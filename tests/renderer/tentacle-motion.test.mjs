@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import {
   TENTACLE_ACTIONS, TENTACLE_REACTIONS, TENTACLE_SIZE_KEY, TENTACLE_WAVE, TENTACLE_WAVE_KEY, TentacleWave,
-  bindTentacleSize, tailChains, tentacleSize, waveAngles,
+  bindTentacleSize, tailChains, tentacleBlocks, tentacleSize, waveAngles,
 } from "../../renderer/tentacle-motion.js";
 
 const LINKS = 17;
@@ -393,9 +393,30 @@ test("an open ask or a streaming reply keeps the tails composed", () => {
     "a mood while composed does not move them");
 });
 
+test("tentacleBlocks keeps asks and previews composed while thinking ponders (#225, PR #227)", () => {
+  // An open ask or a morph preview is a hard block: it never lets thinking wave.
+  for (const hard of [{ askOpen: true }, { previewing: true }]) {
+    const base = { blocked: true, speaking: false, thinking: true, askOpen: false, previewing: false, ...hard };
+    assert.deepEqual(tentacleBlocks(base), { thinking: false, composed: true });
+  }
+  // A streaming reply (blocked, not speaking, thinking) still ponders.
+  assert.deepEqual(
+    tentacleBlocks({ blocked: true, speaking: false, thinking: true, askOpen: false, previewing: false }),
+    { thinking: true, composed: false });
+  // Speech alone is handled by the sway, not the ponder.
+  assert.deepEqual(
+    tentacleBlocks({ blocked: true, speaking: true, thinking: true, askOpen: false, previewing: false }),
+    { thinking: true, composed: false });
+  // Nothing blocked: no composed either way.
+  assert.deepEqual(
+    tentacleBlocks({ blocked: false, speaking: false, thinking: true, askOpen: false, previewing: false }),
+    { thinking: true, composed: false });
+});
+
 test("while she thinks the tails keep a slow wave, even though idle is blocked (#225)", () => {
   const wave = new TentacleWave();
-  // main.js passes composed only for other blocks; thinking wins even if both are set.
+  // main.js never sends thinking while an ask or a morph preview is up, but a
+  // streaming reply (the remaining composed block) still lets the wave play.
   const rows = trace(wave, "active", TENTACLE_WAVE.ease * 6, { thinking: true, composed: true });
   assert.ok(TENTACLE_WAVE.thinkingGain > 0 && TENTACLE_WAVE.thinkingGain <= TENTACLE_WAVE.stateGain.idle);
   assert.ok(Math.abs(rows.at(-1)[0] - TENTACLE_WAVE.thinkingGain) < 0.01, `settles at ${rows.at(-1)[0]}`);

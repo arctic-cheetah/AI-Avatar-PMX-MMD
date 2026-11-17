@@ -137,6 +137,21 @@ function bumpAt({ rise, hold, fall }, t) {
   return 1 - smooth((t - rise - hold) / fall);
 }
 
+/**
+ * Split idle's blocks into the wave's `thinking` and `composed` options, so
+ * the precedence lives in one place (#225, PR #227 review).
+ * Thinking ponders over a streaming reply, but an open ask or a morph
+ * preview always settles the tails — those are hard blocks and never ponder.
+ * @param {{blocked: boolean, speaking: boolean, thinking: boolean, askOpen: boolean, previewing: boolean}} input
+ *   `blocked` is IdleController's; `thinking` is the thinking pose's activity.
+ * @returns {{thinking: boolean, composed: boolean}} Options for TentacleWave.update().
+ */
+export function tentacleBlocks({ blocked, speaking, thinking, askOpen, previewing }) {
+  const hard = Boolean(askOpen || previewing);
+  const ponder = Boolean(thinking) && !hard;
+  return { thinking: ponder, composed: Boolean(blocked) && !speaking && !ponder };
+}
+
 /** Put a spring exactly at rest on its target. */
 function settle(spring, target) {
   spring.value = target;

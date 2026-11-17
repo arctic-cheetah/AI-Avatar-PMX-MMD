@@ -471,7 +471,11 @@ physics still owns them:
   (`TENTACLE_WAVE.thinkingGain` 1, `thinkingTempo` 0.8) instead of going
   still. The wave's clock runs at `thinkingTempo` while she thinks, so the
   pace changes without a jump. If she speaks while thinking, the larger of
-  the two sizes plays at the usual pace. The toggle and the size slider work
+  the two sizes plays at the usual pace. The precedence is decided in
+  `tentacleBlocks()`: an open ask or a morph preview is a **hard block** that
+  always settles the tails, while thinking only ponders over the remaining
+  blocks (a streaming reply) — before the review fix, `!thinking` had cleared
+  composed for every block at once. The toggle and the size slider work
   as usual. On 17 November 2026 the user was offered 0.35 of the size at the
   usual pace (the speaking sway), 0.5 and 0.7 at 0.6 of the pace, or the full
   idle wave, and picked **the full size at 0.8 of the pace**: one wave takes

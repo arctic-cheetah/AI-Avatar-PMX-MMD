@@ -4,15 +4,24 @@ A native request-interceptor plugin for CLIProxyAPI 8.0.76. One replacement map
 applies independent of the selected provider; no listener, proxy hop, CA, model
 routing, auth or response modification is introduced.
 
+**Looking for the installable plugin?** This is its source directory; the sibling
+`yidhari-copilot-name` folder contains the earlier VS Code extension experiment.
+Build this directory to generate `yidhari-wording.so` (ignored by Git), then
+install it in the core's plugin directory. See [install on another machine](install.md).
+
 **Primary user guide:** [Yidhari identity and friendly replies through
 EasyCLIProxyAPI](../../docs/easycliproxyapi-yidhari.md). It includes the complete
 setup, daily use, configuration, verification, upgrades and rollback workflow.
 
 ## Intended behavior
 
+- Version 0.3.1 adds a cached `persona-file`: inject a local Markdown instruction
+  file once per supported model request, preserving its exact text and the
+  existing harness instructions. See [persona setup and validation](persona.md).
 - Version 0.2.0 adds `word-replacements` alongside the existing literal phrase
   map. The example maps `Copilot`, `github-copilot`, and `GitHub Copilot` to
-  `yidhari`, case-insensitively. Whole-name boundaries exclude adjacent Unicode
+  `yidhari`, and standalone `impersonal` to `friendly`, case-insensitively.
+  Whole-name boundaries exclude adjacent Unicode
   letters/numbers/combining marks, underscores and hyphens: `copilot-cli` and
   `my_copilot` remain intact. Punctuation around a standalone name is allowed.
   This intentionally changes ordinary standalone name mentions in instruction
@@ -48,7 +57,7 @@ go build -buildmode=c-shared -o yidhari-wording.so .
 ```
 
 The generated .so base filename is the plugin ID: `yidhari-wording`. The core
-also recognises `yidhari-wording-v0.2.0.so`. Install it into
+also recognises `yidhari-wording-v0.3.1.so`. Install it into
 `plugins/linux/amd64/` under the configured core plugin directory. Merge the
 provided `config.example.yaml` into the existing plugins section, retaining
 other plugins and settings. Use an absolute plugins.dir if configuring a custom
@@ -65,7 +74,7 @@ host indicates unloading requires a restart. Keep the library until unloaded.
 No live configuration is edited by the build or tests. All local integration
 checks use the real shared library with synthetic requests and no model calls.
 
-## Installed instance
+## Historical installation (17 November 2026)
 
 The plugin was installed for the user's CLIProxyAPI 8.0.76 instance at:
 

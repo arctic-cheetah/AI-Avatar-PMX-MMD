@@ -5,6 +5,10 @@ using VS Code's Copilot harness with models routed through EasyCLIProxyAPI.
 It uses the **native `yidhari-wording` plugin inside CLIProxyAPI**, the core
 that EasyCLIProxyAPI runs. The existing model endpoint stays on port **8317**.
 
+Plugin **0.3.1** also supports loading your Markdown identity/persona file into
+supported requests. See [persona configuration](../prototypes/yidhari-native-wording/persona.md)
+for setup, reload behaviour, validation and rollout status.
+
 The working setup was confirmed on **17 November 2026** with EasyCLIProxyAPI
 0.3.22, CLIProxyAPI core 8.0.76, and the Linux amd64 plugin version 0.1.0.
 

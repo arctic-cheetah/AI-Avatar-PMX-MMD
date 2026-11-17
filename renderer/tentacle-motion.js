@@ -28,6 +28,10 @@ export const TENTACLE_WAVE = Object.freeze({
   ease: 1.5,
   /** Wave size while she speaks: a gentle sway, even though speech blocks idle. */
   speakingGain: 0.35,
+  /** Wave size while she thinks (#225): a slow ponder instead of going still. */
+  thinkingGain: 0.5,
+  /** The wave's pace while she thinks, as a share of the usual pace. */
+  thinkingTempo: 0.6,
   /** Wave size per idle state; any other state is still. */
   stateGain: Object.freeze({ active: 0, waking: 0, idle: 1, stretching: 1, sleepy: 0.5 }),
   /** A phase per tail, so no two wave in step. */
@@ -194,6 +198,9 @@ export class TentacleWave {
     this._droopMood = false;
     /** A played tentacle action: {name, t}. */
     this._manual = null;
+    /** The thinking wave's size and pace (#225); previews may change them. */
+    this.thinkingGain = TENTACLE_WAVE.thinkingGain;
+    this.thinkingTempo = TENTACLE_WAVE.thinkingTempo;
   }
 
   /** @returns {number} This frame's total arc along each tail, in radians (positive lifts). */
@@ -298,13 +305,14 @@ export class TentacleWave {
    * Advance the wave and reactions, easing toward the idle state's wave size.
    * @param {number} delta Seconds since the previous frame; invalid values change nothing.
    * @param {string} state Idle state from IdleController.
-   * @param {{speaking?: boolean, composed?: boolean}} [options] She is speaking (a gentle
-   *   sway), or idle is blocked by anything else (everything eases out).
+   * @param {{speaking?: boolean, thinking?: boolean, composed?: boolean}} [options] She is
+   *   speaking (a gentle sway), thinking (a slow ponder, #225), or idle is blocked by
+   *   anything else (everything eases out). Thinking wins over composed.
    * @returns {number} The eased gain.
    */
-  update(delta, state, { speaking = false, composed = false } = {}) {
+  update(delta, state, { speaking = false, thinking = false, composed = false } = {}) {
     if (!(Number.isFinite(delta) && delta > 0)) return this.gain;
-    const still = composed || !this.enabled;
+    const still = (composed && !thinking) || !this.enabled;
     if (this._manual) {
       this._manual.t += delta;
       if (this._manual.t >= TENTACLE_ACTIONS[this._manual.name].duration) this._manual = null;
@@ -324,12 +332,16 @@ export class TentacleWave {
     this._lift.step(liftTarget, delta, SPRING_RATE);
     settleNear(this._lift, liftTarget);
     const manualGain = { wave: 1, sway: TENTACLE_WAVE.speakingGain }[this.playing] ?? 0;
-    const target = still ? 0 : Math.max(TENTACLE_WAVE.stateGain[state] ?? 0, speaking ? TENTACLE_WAVE.speakingGain : 0, manualGain);
+    const stateGain = TENTACLE_WAVE.stateGain[state] ?? 0;
+    const thinkingGain = thinking ? this.thinkingGain : 0;
+    const target = still ? 0 : Math.max(stateGain, speaking ? TENTACLE_WAVE.speakingGain : 0, thinkingGain, manualGain);
+    // Only the ponder alone runs slower; speech, idle and played waves keep the usual pace.
+    const pondering = thinking && !speaking && !this._manual && thinkingGain > stateGain;
     if (target === 0 && this.gain === 0) {
       settle(this._size, this._sizeTarget);
       return 0;
     }
-    this.time += delta;
+    this.time += delta * (pondering ? this.thinkingTempo : 1);
     this._spring.step(target, delta, SPRING_RATE);
     this._spring.clamp(0, 1);
     settleNear(this._spring, target);

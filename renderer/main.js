@@ -2094,10 +2094,12 @@ function takeTentacleWaveOff() {
  * @returns {void}
  */
 function applyTentacleWave(delta) {
-  // Her mood drives the reactions; speech sways the tails, anything else that blocks idle keeps them composed.
+  // Her mood drives the reactions; speech sways the tails, thinking ponders (#225),
+  // and anything else that blocks idle keeps them composed.
   if (expressions) tentacleWave.setMood(expressions.activeExpression);
   const speaking = !speechIdle();
-  tentacleWave.update(delta, idle.state, { speaking, composed: idle.blocked && !speaking });
+  const thinking = thinkingPose.active;
+  tentacleWave.update(delta, idle.state, { speaking, thinking, composed: idle.blocked && !speaking && !thinking });
   const moving = tentacleWave.gain > 0 || tentacleWave.lift !== 0;
   const simulated = physics.status === "on";
   // While a build loads or warms up, physics owns the bones but has not posed them.

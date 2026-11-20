@@ -221,8 +221,20 @@ panel picks it up by itself.
   rest pose: the tilt on the head after gaze, the rest on the sway layer. They
   never replace another layer's pose.
 - Bone signs were checked on the model with exaggerated angles (15–20°):
-  negative pitch tips the spine and head back, and a shrug is `左肩` negative
-  and `右肩` positive roll.
+  negative pitch tips the spine and head back.
+- **Shoulder lift (#236).** A shrug is `右肩` negative and `左肩` positive
+  roll (`SHOULDER_LIFT` in `renderer/shoulder-lift.js`). Before #236 the
+  signs were the other way round. The pivot of `肩` sits by the neck, so that
+  roll *dropped* the shoulder tip by 0.2 and swung the hanging arm inward.
+  At 12° the wrist moved 1.2 inward (x −2.72 to −1.54), and the hand sank
+  into the hip. The stretch (6°), the sighs and the hiccup used the same
+  sign. Now a lift raises the tip, and `counterShoulder()` turns that side's
+  `腕` back by the same rotation, through `肩C`. The arm keeps its world
+  direction, so the hand rises with the shoulder joint and never swings in
+  or out. The counter runs at the end of `applyArmDrift()`, on top of the
+  drift and the thinking pose, so all three keep working. It is exactly zero
+  when the shoulders are at rest. The shiver's tremble keeps its signs: it
+  is symmetric, and the counter cancels its arm swing too.
 - For previews and comparison grids, `globalThis.__yidhariIdlePose = { tilt, chest,
   shoulders, back, headPitch, glance }` holds a pose (radians, normalised
   glance) until it is set back to `null`.
@@ -328,7 +340,10 @@ is no palm, so only the forearm rolls.
   on the thinking pose's own clock. See
   [thinking-pose.md](thinking-pose.md#thinking-fidget-218).
 - **Shoulders stay with their owners.** The shrugs and the sigh (#149) keep
-  `左肩`/`右肩`. The drift only uses `腕`, `ひじ` and `手首`.
+  `左肩`/`右肩`. The drift only uses `腕`, `ひじ` and `手首`. The shoulder
+  counter (#236) is then multiplied onto `腕` in its parent's frame, so the
+  drift still sways the arm relative to the body. The shoulder's lift only
+  carries the arm up.
 - **Physics runs after it**, so sleeves, hair and tails react to the arms.
 - **Off switch:** the **Arm drift** tick at the end of the **Actions** list
   turns it off. It eases out rather than stopping. It is saved as

@@ -43,6 +43,7 @@ import { buildThinkingRig } from "./thinking-rig.js";
 import { handAngles, thinkingFidgetAngles } from "./thinking-fidget.js";
 import { REST_POSES, bindRestPoseSetting, relaxArms } from "./rest-pose.js";
 import { buildHandDriftRig } from "./hand-drift-rig.js";
+import { SHOULDER_LIFT, counterShoulder } from "./shoulder-lift.js";
 import { GazeController, normalisePointer, clampEyePitch } from "./gaze-tracking.js";
 import { CameraGaze } from "./camera-gaze.js";
 import { CameraControls } from "./camera-controls.js";
@@ -409,11 +410,15 @@ const IDLE_BONES = Object.freeze([
   { name: "首", pitch: [["headPitch", -0.4]] },
   { name: "頭", pitch: [["headPitch", -0.6], ["bobPitch", 1]], roll: [["tilt", 1], ["bobRoll", 1]] },
   // Her left shoulder is on the right of the screen (#149 shrugs are named by screen side).
-  { name: "左肩", roll: [["shoulders", -1], ["shoulderRight", -1], ["shiverWave", -0.8]], own: true },
-  { name: "右肩", roll: [["shoulders", 1], ["shoulderLeft", 1], ["shiverWave", 0.8]], own: true },
+  // The signs lift the shoulder tip; 腕 turns back so the arm keeps hanging (#236).
+  ...Object.entries(SHOULDER_LIFT).map(([name, { channel, sign }]) => ({
+    name, roll: [["shoulders", sign], [channel, sign], ["shiverWave", -0.8 * Math.sign(sign)]], own: true,
+  })),
 ]);
-/** @type {{ bone: THREE.Bone, rest: THREE.Quaternion | null, pitch?: [string, number][], roll?: [string, number][] }[]} */
+/** @type {{ bone: THREE.Bone, rest: THREE.Quaternion | null, delta: THREE.Quaternion, pitch?: [string, number][], roll?: [string, number][] }[]} */
 let idleBones = [];
+/** Each shoulder with its arm, to turn the arm back by the shoulder's lift (#236). */
+let shoulderArms = [];
 /**
  * Arm drift bones (#193). Her right arm is on the left of the screen. The
  * upper arms turn in the shoulder's frame (x swings forward and back, z
@@ -560,7 +565,12 @@ function setupIdleMotion(object) {
   idleBones = [];
   for (const { name, pitch, roll, own } of IDLE_BONES) {
     const bone = object.skeleton?.getBoneByName(name);
-    if (bone) idleBones.push({ bone, rest: own ? bone.quaternion.clone() : null, pitch, roll });
+    if (bone) idleBones.push({ bone, rest: own ? bone.quaternion.clone() : null, delta: new THREE.Quaternion(), pitch, roll });
+  }
+  shoulderArms = [];
+  for (const entry of idleBones) {
+    const arm = SHOULDER_LIFT[entry.bone.name] && object.skeleton.getBoneByName(SHOULDER_LIFT[entry.bone.name].arm);
+    if (arm) shoulderArms.push({ shoulder: entry.bone, arm, delta: entry.delta });
   }
   setupArmDrift(object);
 }
@@ -614,6 +624,8 @@ function applyArmDrift() {
     const angle = scale * (hands[channel] ?? 0);
     if (angle !== 0) bone.quaternion.multiply(idleQuat.setFromAxisAngle(axis, angle));
   }
+  // Last, so the arm keeps hanging the way the drift and thinking pose left it as the shoulder lifts (#236).
+  for (const { shoulder, arm, delta } of shoulderArms) counterShoulder(shoulder, arm, delta);
 }
 
 /**
@@ -644,13 +656,16 @@ function applyYawn() {
  */
 function applyIdleMotion() {
   const sum = (parts = []) => parts.reduce((total, [key, sign]) => total + (idlePose[key] ?? 0) * sign, 0);
-  for (const { bone, rest, pitch, roll } of idleBones) {
+  for (const { bone, rest, delta, pitch, roll } of idleBones) {
     const x = sum(pitch);
     const z = sum(roll);
     if (rest) bone.quaternion.copy(rest);
-    if (x === 0 && z === 0) continue;
+    if (x === 0 && z === 0) {
+      delta.identity();
+      continue;
+    }
     idleEuler.set(x, 0, z, "YXZ");
-    bone.quaternion.multiply(idleQuat.setFromEuler(idleEuler));
+    bone.quaternion.multiply(delta.setFromEuler(idleEuler));
   }
 }
 
@@ -1739,6 +1754,8 @@ function onModelLoaded(loaded, data) {
       relaxAfterSpeech();
     },
     frameCamera,
+    /** The loaded PMX mesh, for clearance checks in comparison grids (#236). */
+    get mesh() { return mesh; },
     /** Reapply the relaxed rest pose with other sizes for comparison grids (#199). */
     relax: previewRest,
     /**

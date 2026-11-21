@@ -138,6 +138,7 @@ inverted-hull outline.
 - **Use a perspective camera.** With an orthographic camera, `Set Depth` misplaces the face: it draws over the fringe as a flat mask, with a dark band across it, even in the reference.
 - **The `look` tool cannot frame these meshes.** The evaluated mesh of objects with the outline modifier reports 0 vertices through the Python API, so auto-framing gets a 0 × 0 × 0 box. Final renders are fine. The grids use their own camera script instead.
 - **The reference is posed with a wink.** For the grids, its rig was switched to Rest Position (in memory only, never saved). The wink is a shape key, so it remains.
+- **The bone-parented Head Controller breaks VPD morph export.** mmd_tools' `firstMesh()` picks the controller instead of the PMX mesh, so `export_vpd` writes no morphs. Use a Child Of constraint instead, as V1.4 does; see [pmx-sit-pose.md](pmx-sit-pose.md#gotchas).
 - The PMX default row was rendered in stock Blender 4.4.3 (EEVEE Next) from the untouched pose file. That file has no lights, so the row is dim. That is its real default state, not a regression.
 
 ## MMD Tools data after the swap

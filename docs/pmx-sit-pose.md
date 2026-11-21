@@ -78,26 +78,68 @@ What drives the larger errors:
 - **Max errors** (about 0.6 m): a few hundred mis-mapped vertices from mirrored UV islands. The robust fit already ignores them.
 - **Accessories p90.** The physics chains (front and back chains, the bag) hang differently in the reference.
 
-**Face morphs** (`ウィンク`, `口*`):
+**Face morphs** (`ウィンク`, `口*`): the fitted weights are below.
 
-| Morph | Weight |
-| --- | --- |
-| ウィンク | 0.83 |
-| ウィンク２ | 0.19 |
-| 口下 | 0.26 |
-| 口右 | 0.25 |
-| い | 0.22 |
-| 口左 | 0.12 |
-| 口上 | 0.10 |
+| Morph | Fitted | Kept in V1.4 |
+| --- | --- | --- |
+| ウィンク | 0.83 | 0.83 |
+| ウィンク２ | 0.19 | 0.19 |
+| 口下 | 0.26 | 0.26 |
+| 口右 | 0.25 | 0.25 |
+| い | 0.22 | **0** |
+| 口左 | 0.12 | 0.12 |
+| 口上 | 0.10 | 0.10 |
 
-They bring the face residual down from 4.6 mm to 1.6 mm RMS. The reference's
-own keys are `Fac_Eye_L_Wink` 1.0 and `Fac_Mth_*` at 0.18–0.82. The PMX morph
-set doesn't match them one to one, which is why the weights were fitted rather
-than mapped.
+With these weights, the face residual drops from 4.6 mm to 1.6 mm RMS.
+
+**`い` is set to 0 by hand.** At 0.22 it parts the lips just enough for the upper
+teeth to show over the bottom lip, which in the side view looks like she is
+biting her lip. Lip close-ups (`assets/private/sit-pose-247/grid_lips.png`)
+compare the reference, the fitted weights, `い` off and `い`+`口下` off. With
+`い` at 0 the side profile matches the reference. Turning off `口下` changes
+almost nothing.
+
+The face error stays at 2.0 mm median and 3.1 mm p90.
+
+The reference's own keys are `Fac_Eye_L_Wink` 1.0 and `Fac_Mth_*` at
+0.18–0.82. The PMX morph set doesn't match them one to one.
 
 **🚫 Hammer.** `Hammer` and `Hammer Rig` are left out of both the targets and
 the renders. This pose has no grip: the left hand points up, and the right
 hand rests near the lap. So the fitted fingers are kept as they are.
+
+**Manual edits after the fit.** The user posed the fingers of both hands by hand,
+so they don't clip, and gave the right hand a V-sign. From then on, the arm and
+finger errors against the reference are larger on purpose. The exported VPD
+holds the edited hands.
+
+## Body-part hide masks (V1.4)
+
+One mesh can't be split into Outliner collections without breaking the MMD
+morphs, weights and PMX export. Instead, V1.4 has eight viewport-only **Mask**
+modifiers on `伊德海莉_mesh`:
+
+- `Hide: Tails`
+- `Hide: Legs`
+- `Hide: Hair & hat`
+- `Hide: Left arm`
+- `Hide: Right arm`
+- `Hide: Accessories`
+- `Hide: Torso`
+- `Hide: Head`
+
+Where they sit and how they work:
+
+- They come right after `mmd_armature` and before the Goo modifiers.
+- In the Outliner, expand `伊德海莉_mesh ▸ Modifiers` and click a mask's 👁 to hide that part. Several masks can be on at once.
+- All of them start off, and their render toggle is off, so renders, the pose and the VPD are unchanged.
+
+Each mask uses a `focus_*` vertex group, with weight 1 on the vertices that its
+dominant bone puts in that region. The region split matches `eval_fit.py`, with
+the fingers counted in their arm.
+
+> ⚠️ **Before a PMX export,** delete the `focus_*` vertex groups and the
+> `Hide:` modifiers. Otherwise the extra groups go into the export.
 
 ## Comparison grids (private)
 

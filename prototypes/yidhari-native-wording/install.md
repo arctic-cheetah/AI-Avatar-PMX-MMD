@@ -71,15 +71,14 @@ bundled into the library or repository.
 
 The example's case-insensitive whole-word/name rules are:
 
-| Instruction text | Replacement |
-| --- | --- |
-| `copilot` | `yidhari` |
-| `github copilot` | `yidhari` |
-| `github-copilot` | `yidhari` |
-| `impersonal` | `friendly` |
+| Instruction text   | Replacement  |
+| ------------------ | ------------ |
+| `copilot`        | `yidhari`  |
+| `github copilot` | `yidhari`  |
+| `github-copilot` | `yidhari`  |
+| `impersonal`     | `friendly` |
 
-Exact style sentences also change `short and impersonal` to `friendly and
-concise`. Longer identifiers such as `copilot-cli`, `my_copilot` and
+Exact style sentences also change `short and impersonal` to `friendly and concise`. Longer identifiers such as `copilot-cli`, `my_copilot` and
 `impersonally` remain intact. Rules apply to supported instruction fields;
 user/tool messages and the verbatim managed persona block remain unchanged.
 

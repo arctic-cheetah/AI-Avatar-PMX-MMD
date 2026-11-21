@@ -8,21 +8,75 @@ VPD or VMD files yet; that is #49.
 
 ## Toolchain
 
-Checked on 21 November 2026:
+Stock Blender and Goo Engine are kept on the **same Blender version (4.4.3)**.
+They then share one settings folder (`~/.config/blender/4.4/`), so MMD Tools
+and the MCP add-on are installed once, and the same `.blend` opens safely in
+both. Set up on 21 November 2026:
 
 | Tool | Version | Source |
 | --- | --- | --- |
-| Blender | 4.5.16 LTS | Snap `blender`, channel `4.5lts/stable` (classic confinement) |
+| Blender | 4.4.3 | `blender-4.4.3-linux-x64.tar.xz` from [download.blender.org](https://download.blender.org/release/Blender4.4/), SHA-256 checked, unpacked to `~/Applications/blender-4.4.3-linux-x64/` |
+| Goo Engine | 4.4.3, branch `goo-engine-v4.4-release` (`d281a65ebe2`) | Built from [dillongoostudios/goo-engine](https://github.com/dillongoostudios/goo-engine) in a separate worktree (`~/goo-engine-44`) into `~/build_linux_goo44/` |
 | MMD Tools | 4.5.14 (needs Blender 4.2 or later) | Blender ▸ Edit ▸ Preferences ▸ Get Extensions ▸ search "mmd tools" ([extensions.blender.org](https://extensions.blender.org/add-ons/mmd-tools/)) |
-| Blender MCP (optional) | `mcp-for-blender`, add-on 2.0 | [ahujasid/blender-mcp](https://github.com/ahujasid/blender-mcp); the agent's helper, not part of the workflow |
+| Blender MCP (optional) | `mcp-for-blender`, add-on 2.0 | [ahujasid/blender-mcp](https://github.com/ahujasid/blender-mcp); the agent's helper, not part of the workflow. Telemetry off, local connections only |
 
-Use an LTS Blender that MMD Tools lists as supported. Blender 5.2 LTS exists, but
-MMD Tools support for 5.x was not confirmed when this was written.
+**Goo Engine 4.4 on AMD needs a one-line shader fix.** Unpatched, every
+render with Goo's engine segfaulted. The cause was a shader compile error:
+`eevee_legacy_maxz_downlevel`, `effect_minmaxz_frag.glsl:60: 'gl_FragColor'
+undeclared`. That line only compiles on AMD and Intel OpenGL (`GPU_ATI` /
+`GPU_INTEL`), which is why NVIDIA users don't see it. Its create-info declares
+the output as `fragColor`, and Goo commit `2e3ae2da759` renamed the write to
+the undeclared `gl_FragColor`. The local fix in `~/goo-engine-44` is:
 
-**Goo Engine** is the anime-focused Blender fork used for the shader reference
-(#219, #235). It is based on Blender 4.1, which is older than MMD Tools v4
-supports, and its builds are Windows-only. Pose in stock Blender. Whether MMD
-Tools works in Goo Engine is still to be tried.
+```diff
+-  gl_FragColor = vec4(val);
++  fragColor = vec4(val);
+```
+
+After rebuilding, a headless Goo render of `yidhari-pose.blend` completes
+(480×480, MMD Tools and the MCP add-on loaded, 459 bones). Two non-fatal
+`GL_INVALID_VALUE in glTexStorage3D(… < 1)` messages remain. Re-apply the fix
+whenever the worktree is updated, until it is fixed upstream.
+
+Blender 4.4 is not an LTS release. It is used because Goo Engine has no stable
+4.5 release yet. When Goo publishes one, move both to that version together.
+
+Blender keeps settings per major.minor version. A new 4.4 setup cannot import
+settings from 4.5, which is newer, so the add-ons were copied from
+`~/.config/blender/4.5/` and enabled again. `userpref.blend` was not copied.
+
+### Goo Engine 4.5 trial
+
+The first attempt built Goo Engine from `blender-v4.5-testing` (commit
+`178b4ba83a5`), alongside stock Blender 4.5.16 LTS (snap). MMD Tools imported
+the PMX fine (459 bones, 397 with MMD names), but Goo's renderer crashed:
+
+| Check | Result |
+| --- | --- |
+| Opening a `.blend` saved by stock 4.5.16 | **Crashes.** It warns "File written by newer Blender binary (405.92)", then crashes in EEVEE material compilation (`GPU_pass_shader_get`) |
+| Rendering with Goo's engine (`BLENDER_EEVEE`) | **Crashes, and reproducibly.** In a headless render of a fresh import, `gooengine::Instance::init` makes a zero-size texture (`GL_INVALID_VALUE in glTexStorage2D`), then segfaults on a missing view in `EEVEE_temporal_sampling_create_view` |
+
+The cause is the branch, not the GPU. `blender-v4.5-testing` is Goo's
+unfinished port of its engine to Blender 4.5. Recent commits remove features
+one by one ("Remove Light Cache", "Remove AO", "LookDev Spheres (View
+Broken)"), and `gooengine_engine.cc` still prints debug lines ("GOT DATA",
+"inititgi stuff"). `blender-v4.5-release` is plain upstream Blender 4.5.10
+with no Goo engine. The 4.5 files are kept as `yidhari-pose-4.5.blend` for
+reference; do not open them in 4.4.
+
+### Running both
+
+- Pose and export in stock Blender. Use Goo Engine for the look (#219, #235).
+- Only one Blender can run the MCP server on port 9876. The second one logs
+  "already in use; auto-start skipped".
+- To find out why a crash happens, run Blender with `--debug-gpu` and read the
+  GL errors printed just before the crash. The backtrace in
+  `/tmp/<file>.crash.txt` can be resolved to function names with
+  `addr2line -f -C -e <blender binary> <address>`. To reproduce a crash
+  without the GUI, use
+  `blender -b --factory-startup --debug-gpu --addons bl_ext.blender_org.mmd_tools --python <script>`,
+  where the script imports the PMX, sets `scene.render.engine` and calls
+  `bpy.ops.render.render()`.
 
 ## Import the model
 

@@ -138,6 +138,12 @@ Each mask uses a `focus_*` vertex group, with weight 1 on the vertices that its
 dominant bone puts in that region. The region split matches `eval_fit.py`, with
 the fingers counted in their arm.
 
+`tools/pose-fit/add_hide_masks.py` adds the same masks to any file with this
+PMX. Run it live, or in the background with `-- --save`, which saves without a
+`.blend1` backup. It has also been applied to the committed
+`assets/Blender/Yidhari_V1.3_PMX.blend`. The bone collections (`尾`, `足`, `髪`
+and so on) already come with the PMX import, so V1.3 has them too.
+
 > ⚠️ **Before a PMX export,** delete the `focus_*` vertex groups and the
 > `Hide:` modifiers. Otherwise the extra groups go into the export.
 

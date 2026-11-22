@@ -63,7 +63,7 @@ function build(assets = bake()) {
 const FAKE_SHADER = () => ({
   uniforms: {},
   vertexShader: "#include <common>\nvoid main() {\n#include <begin_vertex>\n}",
-  fragmentShader: "#include <common>\nvoid main() {\n#include <map_fragment>\n#include <normal_fragment_maps>\n#include <opaque_fragment>\n}",
+  fragmentShader: "#include <common>\n#include <clipping_planes_pars_fragment>\nvoid main() {\n#include <map_fragment>\n#include <normal_fragment_maps>\n#include <opaque_fragment>\n}",
 });
 
 test("face materials use the lightmap; body materials the mask and normal maps", () => {
@@ -119,6 +119,8 @@ test("onBeforeCompile adds the Col attribute and replaces the lighting", () => {
   assert.match(shader.vertexShader, /attribute vec4 gooCol;/);
   assert.match(shader.vertexShader, /vGooCol = gooCol;/);
   assert.match(shader.fragmentShader, /vec3 gooShade\(/);
+  // It needs vMapUv and vViewPosition, which the pars chunks declare.
+  assert.ok(shader.fragmentShader.indexOf("vec3 gooShade(") > shader.fragmentShader.indexOf("#include <clipping_planes_pars_fragment>"));
   assert.match(shader.fragmentShader, /outgoingLight = gooShade\(/);
   // Blender's Normal Map input ignores the blue channel: it is fixed to 1.
   assert.match(shader.fragmentShader, /mapN = vec3\( texture2D\( normalMap, vNormalMapUv \)\.xy \* 2\.0 - 1\.0, 1\.0 \)/);

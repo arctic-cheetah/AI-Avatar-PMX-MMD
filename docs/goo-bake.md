@@ -72,3 +72,38 @@ So the per-corner `Col` can be stored once per vertex without losing
 anything, and the renderer can add it as a vertex attribute directly. If a
 later edit makes corners disagree, the bake stops with an error instead of
 picking one.
+
+## The Game shaders toggle (#251)
+
+The **Game shaders · ゲーム風** checkbox in *Independent channels* switches the
+live avatar to the baked Goo inputs. It is **off by default** and remembered
+(`localStorage` key `yidhari.gooShaders`). Nothing is fetched until it is
+switched on.
+
+Switching it on (`renderer/goo-material.js`):
+
+1. Fetches `manifest.json`, `material-map.json`, `params.json` and `col.bin`
+   from `/assets/private/goo/` once.
+2. Checks them against the loaded PMX with `validateGooAssets()`.
+3. Builds one replacement material per PMX material, by kind:
+   - `zzzb` (18 materials): a clone of the MMD material with the game diffuse
+     (`textures.diffuse`) as its map. The texture is loaded like MMDLoader's
+     own: `flipY = false`, sRGB. The rest of the Goo shader is ported in #252
+     to #254; for now this proves that the material map, UVs, skinning and
+     morphs line up.
+   - `transparent` (`目影`): no map, the baked colour, multiply blending, no
+     depth write, so it darkens what is behind it like the Blender
+     Transparent BSDF.
+   - hidden (the `髮+` shell): not drawn.
+4. Adds the baked `Col` to the geometry as the normalised RGBA8 attribute
+   `gooCol`, for the later shader pieces.
+
+Materials added after the PMX loads, such as the see-through brow copy, keep
+their own material. Switching off puts the original material objects back.
+
+**Fallback.** If a file is missing, the bake does not match the PMX, or a
+shader fails to compile while the game shaders are on, she goes back to
+today's material. The checkbox is unticked and the stored choice is reset to
+off. The status line under the checkbox says why, for example
+"Game shaders unavailable: manifest.json: HTTP 404". Re-bake, then switch it on
+again.

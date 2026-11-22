@@ -7,15 +7,17 @@ import { fileURLToPath } from "node:url";
 import { MMDParser } from "three/examples/jsm/libs/mmdparser.module.js";
 import { decodeCol, validateGooAssets } from "../../renderer/goo-assets.js";
 
-const PMX = { vertexCount: 3, materialNames: ["颜", "髮+"] };
+const PMX = { vertexCount: 3, materialNames: ["颜", "目影", "髮+"] };
 
 function assets() {
   return {
-    manifest: { version: 1, pmx: { vertexCount: 3, materials: ["颜", "髮+"] } },
+    manifest: { version: 1, pmx: { vertexCount: 3, materials: ["颜", "目影", "髮+"] } },
     materialMap: {
       materials: [
-        { pmx: "颜", game: "Yidhari Face", hidden: false, textures: { diffuse: "Yidhari_Face_D.png" } },
-        { pmx: "髮+", game: null, hidden: true, textures: {} },
+        { pmx: "颜", game: "Yidhari Face", hidden: false, shader: "zzzb", textures: { diffuse: "Yidhari_Face_D.png" } },
+        // Eye Shadow is a tinted Transparent BSDF: it darkens what is behind it.
+        { pmx: "目影", game: "Eye Shadow", hidden: false, shader: "transparent", color: [0.46, 0.58, 0.68, 1], textures: {} },
+        { pmx: "髮+", game: null, hidden: true, shader: null, textures: {} },
       ],
     },
     colBytes: new Uint8Array(12),
@@ -36,7 +38,7 @@ test("a different vertex count is reported", () => {
 
 test("materials in a different order are reported", () => {
   const baked = assets();
-  baked.manifest.pmx.materials = ["髮+", "颜"];
+  baked.manifest.pmx.materials = ["髮+", "目影", "颜"];
   assert.match(validateGooAssets(baked, PMX).errors.join("\n"), /material 0 is 髮\+ in the bake, 颜 in the PMX/);
 });
 
@@ -46,16 +48,28 @@ test("a colour buffer of the wrong length is reported", () => {
   assert.match(validateGooAssets(baked, PMX).errors.join("\n"), /col\.bin has 8 bytes, expected 12/);
 });
 
-test("a visible material without a diffuse texture is reported", () => {
+test("a Goo shader material without a diffuse texture is reported", () => {
   const baked = assets();
   baked.materialMap.materials[0].textures = {};
   assert.match(validateGooAssets(baked, PMX).errors.join("\n"), /颜 has no diffuse texture/);
 });
 
+test("a transparent tint material without a colour is reported", () => {
+  const baked = assets();
+  delete baked.materialMap.materials[1].color;
+  assert.match(validateGooAssets(baked, PMX).errors.join("\n"), /目影 is a transparent tint without a colour/);
+});
+
+test("a visible material with an unknown shader is reported", () => {
+  const baked = assets();
+  baked.materialMap.materials[1].shader = "principled";
+  assert.match(validateGooAssets(baked, PMX).errors.join("\n"), /目影 uses unsupported shader principled/);
+});
+
 test("a material map out of step with the manifest is reported", () => {
   const baked = assets();
-  baked.materialMap.materials[1].pmx = "髮";
-  assert.match(validateGooAssets(baked, PMX).errors.join("\n"), /material map entry 1 is 髮, expected 髮\+/);
+  baked.materialMap.materials[2].pmx = "髮";
+  assert.match(validateGooAssets(baked, PMX).errors.join("\n"), /material map entry 2 is 髮, expected 髮\+/);
 });
 
 test("an unknown manifest version is reported", () => {

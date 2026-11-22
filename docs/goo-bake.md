@@ -38,7 +38,7 @@ can be spotted.
 | File | Contents |
 | --- | --- |
 | `manifest.json` | Format version (1), source file and SHA-256, Blender version, PMX vertex count, PMX material names in PMX order, and the SHA-256 of every other file |
-| `material-map.json` | One entry per PMX material, in PMX order: the PMX name, the game material (or `null` and `hidden: true` for the `髮+` shell), and its texture files by role (`diffuse`, `a`, `m`, `normal`, `faceLightmap`, `matcap2`, `matcap3`) |
+| `material-map.json` | One entry per PMX material, in PMX order: the PMX name, the game material (or `null` and `hidden: true` for the `髮+` shell), its `shader`, and its texture files by role (`diffuse`, `a`, `m`, `normal`, `faceLightmap`, `matcap2`, `matcap3`). `shader` is `"zzzb"` for the Goo shader (18 materials), or `"transparent"` with an RGBA `color` for `目影`. Eye Shadow is only a Transparent BSDF that darkens what is behind it by that colour. Anything else is `"unsupported"`, and the renderer rejects the bake |
 | `params.json` | For each game material, every input of its `Zenless Zone Zero Braincells [Shader]` node: a constant (number or RGBA), or where it comes from (`texture`, `attribute`, or `computed` when it is the result of other nodes) |
 | `col.bin` | The `Col` colour attribute: 4 bytes (RGBA) per PMX vertex, in PMX vertex order |
 | `textures/*.png` | The game textures the materials use, written from the packed images |

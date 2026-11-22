@@ -233,3 +233,56 @@ test("the eye shine slider is remembered", () => {
   assert.equal(applied.eyeShine, 0.8);
   assert.equal(local.values["yidhari.gooEyeShine"], "0.8");
 });
+
+// --- #259 review follow-ups ---
+import { gooOutlineFactor, gooOutlineWidthUnits } from "../../renderer/goo-shader.js";
+
+test("outline width follows Blender: Col.r · 0.01 · mix(0.125, 0.375, clamp(d − 0.75)) metres", () => {
+  close(gooOutlineWidthUnits(1, 0.75 / 0.08), 0.01 * 0.125 / 0.08);
+  close(gooOutlineWidthUnits(1, 1.75 / 0.08), 0.01 * 0.375 / 0.08);
+  close(gooOutlineWidthUnits(0.5, 1.25 / 0.08), 0.5 * 0.01 * 0.25 / 0.08);
+  close(gooOutlineWidthUnits(0, 2 / 0.08), 0);
+});
+
+test("outline darkening: ID 2 is always darkened, the others fade with Col.g", () => {
+  // Mix_061 = Mix(id(2), 1 − smoothstep(0.25, 0.5, Col.g), 1.0): ID 2 → 1.
+  close(gooOutlineFactor(1, 0), 1);
+  close(gooOutlineFactor(1, 1), 1);
+  close(gooOutlineFactor(0, 0), 1);
+  close(gooOutlineFactor(0, 1), 0);
+  close(gooOutlineFactor(3, 0.375), 0.5);
+});
+
+test("with every part off the face's dynamic highlight is gated too", () => {
+  const goo = build();
+  const shader = {
+    uniforms: {},
+    vertexShader: "#include <common>\nvoid main() {\n#include <begin_vertex>\n#include <project_vertex>\n}",
+    fragmentShader: "#include <common>\n#include <clipping_planes_pars_fragment>\nvoid main() {\n#include <map_fragment>\n#include <normal_fragment_maps>\n#include <opaque_fragment>\n}",
+  };
+  goo.materials[0].onBeforeCompile(shader);
+  assert.match(shader.fragmentShader, /lmN\.b \* gooFacingDot \* gooLightFacingPow \* gooPartHighlights/);
+});
+
+test("stored light settings are validated and clamped", () => {
+  const parts = Object.fromEntries(Object.keys(GOO_PART_KEYS).map((p) => [p, control(true)]));
+  const light = { mode: control("fixed"), yaw: control(0), pitch: control(0) };
+  const local = storage({ [GOO_LIGHT_KEY]: JSON.stringify({ mode: "sideways", yaw: "abc", pitch: 500 }) });
+  let applied = null;
+  bindGooControls({ parts, light }, { setParts() {}, setLight: (l) => { applied = l; } }, { local });
+  assert.deepEqual(applied, { mode: "fixed", yaw: 0, pitch: 80 });
+});
+
+test("pitch never tips the light over the top", () => {
+  const tilt = lightEulerFor({ mode: "fixed", yaw: 0, pitch: 120 }, { baseEuler: BASE_EULER })[0];
+  assert.ok(tilt > 0, `tilt stays above the zenith: ${tilt}`);
+  const low = lightEulerFor({ mode: "fixed", yaw: 0, pitch: -120 }, { baseEuler: BASE_EULER })[0];
+  assert.ok(low < Math.PI, `and above the nadir: ${low}`);
+});
+
+test("rebuilding the outline hull replaces the old one", () => {
+  const mesh = skinnedMesh();
+  createOutlineHull(mesh, build(mesh));
+  createOutlineHull(mesh, build(mesh));
+  assert.equal(mesh.children.filter((c) => c.name === "goo-outline-hull").length, 1);
+});

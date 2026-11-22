@@ -53,7 +53,9 @@ import { composeBlink, eyeClosure } from "./facial-layers.js";
 import { GreetingGate, bindGreetingToggle } from "./greeting.js";
 import { bindRestingFaceToggle } from "./resting-face.js";
 import { addSeeThroughBrows, bindSeeThroughBrowsToggle } from "./see-through-brows.js";
-import { GOO_ASSETS_URL, bindGooShadersToggle, createGooMaterials, loadGooAssets } from "./goo-material.js";
+import {
+  GOO_ASSETS_URL, bindGooShadersToggle, createGooMaterials, loadGooAssets, loadGooTextures,
+} from "./goo-material.js";
 import { createFrameUpdater } from "./goo-frame.js";
 import { installCollapsiblePanel } from "./collapsible-panel.js";
 import { FrameLoop, PopOut, popupWindow } from "./pop-out.js";
@@ -1711,14 +1713,19 @@ let gooShaders = null;
  */
 function bindGameShaders(target, data) {
   const textureLoader = new THREE.TextureLoader();
-  const pmx = { vertexCount: data.metadata.vertexCount, materialNames: data.materials.map((m) => m.name) };
+  const pmx = {
+    vertexCount: data.metadata.vertexCount,
+    materialNames: data.materials.map((m) => m.name),
+    positionOf: (i) => data.vertices[i]?.position,
+  };
   gooShadersToggle.disabled = false;
   const binding = bindGooShadersToggle(gooShadersToggle, gooShadersStatus, {
     load: async () => {
       const assets = await loadGooAssets(GOO_ASSETS_URL);
-      const goo = createGooMaterials(target, assets, {
-        pmx, baseUrl: GOO_ASSETS_URL, loadTexture: (url) => textureLoader.load(url),
+      const textures = await loadGooTextures(assets, {
+        baseUrl: GOO_ASSETS_URL, loadTexture: (url) => textureLoader.loadAsync(url),
       });
+      const goo = createGooMaterials(target, assets, { pmx, textures });
       const frameValues = createFrameUpdater({ mesh: target, scene: assets.scene });
       gooShaders = { goo, frameValues };
       return goo;

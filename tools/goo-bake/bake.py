@@ -14,7 +14,9 @@ import sys
 import bpy
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from bake_lib import build_manifest, dump_json, pack_col, sha256_file  # noqa: E402
+from bake_lib import (  # noqa: E402
+    build_manifest, dump_json, hash_files, pack_col, pmx_position, sample_indices, sha256_file,
+)
 
 MESH = "伊德海莉_mesh"
 SHADER_GROUP = "Zenless Zone Zero Braincells [Shader]"
@@ -121,12 +123,17 @@ def write_image(image, folder: Path) -> str:
 
 
 def vertex_colours(mesh) -> list:
+    """Col per vertex as the stored sRGB bytes (color_srgb), so nothing is re-quantised."""
     col = mesh.attributes.get("Col")
     if col is None:
         raise SystemExit("the mesh has no Col attribute")
+    if col.domain == "POINT":
+        return [tuple(value.color_srgb) for value in col.data]
+    if col.domain != "CORNER":
+        raise SystemExit(f"Col is on the {col.domain} domain; expected CORNER or POINT")
     colours = [None] * len(mesh.vertices)
     for loop, value in zip(mesh.loops, col.data):
-        rgba = tuple(value.color)
+        rgba = tuple(value.color_srgb)
         known = colours[loop.vertex_index]
         if known is None:
             colours[loop.vertex_index] = rgba
@@ -184,6 +191,8 @@ def scene_values() -> dict:
 
 
 def main() -> None:
+    if "--" not in sys.argv or sys.argv.index("--") + 1 >= len(sys.argv):
+        raise SystemExit("usage: blender -b -y --disable-autoexec FILE.blend --python bake.py -- OUTPUT_DIR")
     out = Path(sys.argv[sys.argv.index("--") + 1]).resolve()
     (out / "textures").mkdir(parents=True, exist_ok=True)
     obj = bpy.data.objects[MESH]
@@ -208,6 +217,7 @@ def main() -> None:
             tint = transparent_tint(material)
             if node is not None:
                 entry["shader"] = "zzzb"
+                entry["params"] = material.name
                 if material.name not in params:
                     params[material.name] = {s.name: resolve(s) for s in node.inputs if s.type != "SHADER"}
             elif tint is not None:
@@ -216,20 +226,32 @@ def main() -> None:
                 entry["shader"] = "unsupported"
         entries.append(entry)
 
-    for image in images.values():
-        write_image(image, out / "textures")
-    (out / "col.bin").write_bytes(pack_col(vertex_colours(mesh), len(mesh.vertices)))
-    (out / "material-map.json").write_text(dump_json({"materials": entries}), encoding="utf-8")
-    (out / "params.json").write_text(dump_json(params), encoding="utf-8")
-    (out / "scene.json").write_text(dump_json(scene_values()), encoding="utf-8")
+    written = []
 
-    files = {p.relative_to(out).as_posix(): sha256_file(p)
-             for p in sorted(out.rglob("*")) if p.is_file() and p.name != "manifest.json"}
+    def write(name: str, data) -> None:
+        path = out / name
+        if isinstance(data, bytes):
+            path.write_bytes(data)
+        else:
+            path.write_text(data, encoding="utf-8", newline="\n")
+        written.append(path)
+
+    for image in images.values():
+        written.append(out / "textures" / write_image(image, out / "textures"))
+    write("col.bin", pack_col(vertex_colours(mesh), len(mesh.vertices)))
+    write("material-map.json", dump_json({"materials": entries}))
+    write("params.json", dump_json(params))
+    write("scene.json", dump_json(scene_values()))
+
+    # Only what this run wrote: stale files from an earlier bake are not part of it.
+    files = hash_files(written, out)
+    samples = [{"index": i, "position": pmx_position(mesh.vertices[i].co)}
+               for i in sample_indices(len(mesh.vertices))]
     source = Path(bpy.data.filepath)
     manifest = build_manifest(source=source.name, source_sha256=sha256_file(source),
                               blender=bpy.app.version_string, vertex_count=len(mesh.vertices),
-                              materials=pmx_names, files=files)
-    (out / "manifest.json").write_text(dump_json(manifest), encoding="utf-8")
+                              materials=pmx_names, files=files, samples=samples)
+    (out / "manifest.json").write_text(dump_json(manifest), encoding="utf-8", newline="\n")
     print(f"GOO_BAKE wrote {len(files) + 1} files to {out}: {len(mesh.vertices)} vertices, "
           f"{len(entries)} materials, {len(images)} textures")
 

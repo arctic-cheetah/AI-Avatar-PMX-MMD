@@ -4,14 +4,17 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import {
-  GOO_SHADERS_KEY, bindGooShadersToggle, createGooMaterials, loadGooAssets,
+  GOO_SHADERS_KEY, bindGooShadersToggle, createGooMaterials, loadGooAssets, loadGooTextures,
 } from "../../renderer/goo-material.js";
 
-const MANIFEST = { version: 1, pmx: { vertexCount: 3, materials: ["颜", "目影", "髮+"] } };
+const MANIFEST = {
+  version: 1, colSpace: "sRGB",
+  pmx: { vertexCount: 3, materials: ["颜", "目影", "髮+"], samples: [{ index: 0, position: [0, 0, 0] }] },
+};
 const MATERIAL_MAP = {
   materials: [
     {
-      pmx: "颜", game: "Yidhari Face", hidden: false, shader: "zzzb",
+      pmx: "颜", game: "Yidhari Face", params: "Yidhari Face", hidden: false, shader: "zzzb",
       textures: { diffuse: "Yidhari_Face_D.png", faceLightmap: "Female_Face_Lightmap.png" },
       colorSpaces: { diffuse: "sRGB", faceLightmap: "Non-Color" },
     },
@@ -71,11 +74,12 @@ function fakeMesh() {
   return { geometry, material: materials, originals: [...materials] };
 }
 
-const PMX = { vertexCount: 3, materialNames: ["颜", "目影", "髮+"] };
-const textures = () => {
-  const loaded = [];
-  return { loaded, loadTexture: (url) => { loaded.push(url); return Object.assign(new THREE.Texture(), { url }); } };
-};
+const PMX = { vertexCount: 3, materialNames: ["颜", "目影", "髮+"], positionOf: () => [0, 0, 0] };
+/** Textures already loaded, as loadGooTextures() returns them. */
+const textures = () => ({
+  textures: new Map(["Yidhari_Face_D.png", "Female_Face_Lightmap.png"]
+    .map((f) => [f, Object.assign(new THREE.Texture(), { url: `/goo/textures/${f}` })])),
+});
 
 test("loadGooAssets fetches the bake from its folder", async () => {
   const { fetch, calls } = fakeFetch();
@@ -126,7 +130,33 @@ test("enabling swaps in the game diffuse, the eye-shadow tint and the hidden she
   assert.equal(shell.visible, false);
   // Materials added after load (the see-through brows) are left as they are.
   assert.equal(brows, mesh.originals[3]);
-  assert.deepEqual(tex.loaded, ["/goo/textures/Yidhari_Face_D.png", "/goo/textures/Female_Face_Lightmap.png"]);
+  assert.equal(shadow.premultipliedAlpha, true, "three's multiply blend needs premultiplied alpha");
+});
+
+test("loadGooTextures loads each texture once and waits for it", async () => {
+  const assets = await loadGooAssets("/goo", fakeFetch());
+  const urls = [];
+  const map = await loadGooTextures(assets, {
+    baseUrl: "/goo", loadTexture: async (url) => { urls.push(url); return new THREE.Texture(); },
+  });
+  assert.deepEqual(urls, ["/goo/textures/Yidhari_Face_D.png", "/goo/textures/Female_Face_Lightmap.png"]);
+  assert.ok(map.get("Yidhari_Face_D.png").isTexture);
+});
+
+test("a texture that fails to load rejects, so the fallback sees it", async () => {
+  const assets = await loadGooAssets("/goo", fakeFetch());
+  await assert.rejects(
+    loadGooTextures(assets, { baseUrl: "/goo", loadTexture: async () => { throw new Error("404"); } }),
+    /textures\/Yidhari_Face_D\.png: failed to load/,
+  );
+});
+
+test("the eye-shadow tint is unlit: just its colour, multiplied in", async () => {
+  const mesh = fakeMesh();
+  const goo = createGooMaterials(mesh, await loadGooAssets("/goo", fakeFetch()), { pmx: PMX, baseUrl: "/goo", ...textures() });
+  const shader = { uniforms: {}, vertexShader: "", fragmentShader: "void main() {\n#include <opaque_fragment>\n}" };
+  goo.materials[1].onBeforeCompile(shader);
+  assert.match(shader.fragmentShader, /outgoingLight = diffuse;/);
 });
 
 test("enabling adds the baked Col as a normalised vertex attribute", async () => {
@@ -194,6 +224,28 @@ test("a failed load keeps today's material, unticks the box and says why", async
   assert.equal(toggle.checked, false);
   assert.equal(local.values[GOO_SHADERS_KEY], "0");
   assert.match(status.textContent, /Game shaders unavailable: manifest\.json: HTTP 404/);
+});
+
+test("a load failure after switching off says nothing and stays off", async () => {
+  const { toggle, status } = controls();
+  let reject;
+  bindGooShadersToggle(toggle, status, { load: () => new Promise((_, r) => { reject = r; }), local: memoryStorage() });
+  const on = toggle.click(); // On: the load starts.
+  const off = toggle.click(); // Off again before it finishes.
+  reject(new Error("manifest.json: HTTP 404"));
+  await Promise.all([on, off]);
+  assert.doesNotMatch(status.textContent, /unavailable/);
+  assert.equal(toggle.checked, false);
+});
+
+test("after a shader failure, switching on again loads afresh (a re-bake is picked up)", async () => {
+  const { toggle, status } = controls();
+  let loads = 0;
+  const binding = bindGooShadersToggle(toggle, status, { load: async () => { loads++; return { setEnabled() {} }; }, local: memoryStorage() });
+  await toggle.click();
+  binding.shaderFailed("boom");
+  await toggle.click();
+  assert.equal(loads, 2);
 });
 
 test("a stored 'on' choice is applied at start", async () => {

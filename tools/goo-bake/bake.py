@@ -135,6 +135,54 @@ def vertex_colours(mesh) -> list:
     return colours
 
 
+RAMP_SAMPLES = 33
+LIGHT = "Main Light"
+HEAD_CONTROLLER = "[Yidhari] Head Controller"
+ARMATURE = "伊德海莉_arm"
+
+
+def _vec(v) -> list:
+    return [round(float(c), 6) for c in v]
+
+
+def head_vectors_at_rest() -> dict:
+    """Head Forward/Up minus Head Origin on the controller mesh, as [ZZZB] Vectors does, in the rest pose."""
+    arm = bpy.data.objects[ARMATURE]
+    saved = arm.data.pose_position
+    arm.data.pose_position = "REST"
+    try:
+        bpy.context.view_layer.update()
+        controller = bpy.data.objects[HEAD_CONTROLLER]
+        points = {}
+        for group in controller.vertex_groups:
+            verts = [controller.matrix_world @ v.co for v in controller.data.vertices
+                     if any(g.group == group.index and g.weight > 0 for g in v.groups)]
+            if verts:
+                points[group.name] = sum(verts, verts[0] * 0) / len(verts)
+    finally:
+        arm.data.pose_position = saved
+        bpy.context.view_layer.update()
+    origin = points["Head Origin"]
+    return {"forward": _vec(points["Head Forward"] - origin), "up": _vec(points["Head Up"] - origin)}
+
+
+def scene_values() -> dict:
+    light = bpy.data.objects[LIGHT]
+    group = bpy.data.node_groups[SHADER_GROUP]
+    ramps = {}
+    for node in group.nodes:
+        if node.type == "VALTORGB":
+            ramps[node.name] = {
+                "frame": node.parent.label if node.parent else "",
+                "samples": [round(node.color_ramp.evaluate(i / (RAMP_SAMPLES - 1))[0], 6) for i in range(RAMP_SAMPLES)],
+            }
+    return {
+        "light": {"object": LIGHT, "eulerXYZ": _vec(light.matrix_world.to_euler("XYZ"))},
+        "head": {"controller": HEAD_CONTROLLER, "bone": "頭", **head_vectors_at_rest()},
+        "ramps": ramps,
+    }
+
+
 def main() -> None:
     out = Path(sys.argv[sys.argv.index("--") + 1]).resolve()
     (out / "textures").mkdir(parents=True, exist_ok=True)
@@ -155,6 +203,7 @@ def main() -> None:
             for role, image in sorted(textures_of(material).items()):
                 images[image.name] = image
                 entry["textures"][role] = Path(image.name).name
+                entry.setdefault("colorSpaces", {})[role] = image.colorspace_settings.name
             node = shader_node(material)
             tint = transparent_tint(material)
             if node is not None:
@@ -172,6 +221,7 @@ def main() -> None:
     (out / "col.bin").write_bytes(pack_col(vertex_colours(mesh), len(mesh.vertices)))
     (out / "material-map.json").write_text(dump_json({"materials": entries}), encoding="utf-8")
     (out / "params.json").write_text(dump_json(params), encoding="utf-8")
+    (out / "scene.json").write_text(dump_json(scene_values()), encoding="utf-8")
 
     files = {p.relative_to(out).as_posix(): sha256_file(p)
              for p in sorted(out.rglob("*")) if p.is_file() and p.name != "manifest.json"}

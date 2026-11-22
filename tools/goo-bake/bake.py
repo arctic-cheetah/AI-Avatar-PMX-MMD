@@ -18,6 +18,7 @@ from bake_lib import build_manifest, dump_json, pack_col, sha256_file  # noqa: E
 
 MESH = "伊德海莉_mesh"
 SHADER_GROUP = "Zenless Zone Zero Braincells [Shader]"
+MATCAP_GROUP = "[ZZZB] MatCaps"
 HIDDEN_PREFIX = "PMX Hidden"
 # Shader input that an image feeds -> texture role in material-map.json.
 TEXTURE_ROLES = {
@@ -210,6 +211,10 @@ def main() -> None:
                 entry["shader"] = "zzzb"
                 if material.name not in params:
                     params[material.name] = {s.name: resolve(s) for s in node.inputs if s.type != "SHADER"}
+                    matcaps = next((n for n in material.node_tree.nodes if n.type == "GROUP" and n.node_tree
+                                    and n.node_tree.name == MATCAP_GROUP), None)
+                    if matcaps is not None:
+                        params[material.name]["_matcaps"] = {s.name: resolve(s) for s in matcaps.inputs}
             elif tint is not None:
                 entry["shader"], entry["color"] = "transparent", tint
             else:

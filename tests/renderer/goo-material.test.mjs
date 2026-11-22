@@ -33,7 +33,8 @@ const PARAMS = {
 const SCENE = {
   light: { eulerXYZ: [Math.PI / 2, 0, 0] },
   head: { forward: [0, -0.5, 0], up: [0, 0, 0.5] },
-  ramps: { "Color Ramp.006": { samples: [1, 0.33, 1] }, "Color Ramp": { samples: [0, 1, 1] } },
+  ramps: Object.fromEntries(["Color Ramp.006", "Color Ramp", "Color Ramp.001", "Color Ramp.003", "Color Ramp.004"]
+    .map((name) => [name, { samples: [0, 1, 1] }])),
 };
 const COL = new Uint8Array([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]);
 

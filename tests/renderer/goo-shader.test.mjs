@@ -7,8 +7,21 @@ import { createGooMaterials } from "../../renderer/goo-material.js";
 
 const C = (r, g, b) => [r, g, b, 1];
 const ids = ["", "2", "3", "4", "5"];
-function params({ face }) {
+const MATCAPS = {
+  "MatCap Map Color": C(1, 1, 1), "MatCap Color Tint": C(1, 1, 1), "MatCap Multiplier/Addition": 0,
+  "MatCap Map Color2": { texture: "Matcap_116.png" }, "MatCap Color Tint2": C(1, 1, 1), "MatCap Multiplier/Addition2": 1,
+  "MatCap Map Color3": { texture: "Matcap_115.png" }, "MatCap Color Tint3": C(1, 0.5, 1), "MatCap Multiplier/Addition3": 1,
+  "MatCap Map Color4": C(1, 1, 1), "MatCap Color Tint4": C(1, 1, 1), "MatCap Multiplier/Addition4": 0,
+  "MatCap Map Color5": C(0.5, 0.5, 0.5), "MatCap Color Tint5": C(1, 1, 1), "MatCap Multiplier/Addition5": 0,
+};
+function params({ face, hair = false }) {
   return {
+    "Enable MatCap Effect": face || hair ? 0 : 1, "Enable Rim Lighting": face ? 0 : 1,
+    "Enable Hair Highlight Mask": face || hair ? 1 : 0,
+    "Hair Highlight Intensity": 0.75, "Hair Highlight Spread Power": 2.5, "Hair Highlight Color Multiplier": C(1, 1, 1),
+    "Rim Light Color Multiplier": C(1, 1, 1), "Rim Light Additional Color": C(0, 0, 0),
+    "MatCap Multiplier Factor": 1, "MatCap Addition Factor": 1,
+    ...(face || hair ? {} : { _matcaps: MATCAPS }),
     "Enable Face Shading": face ? 1 : 0, "Enable Cast Shadows": 1, "Shadow Position": 0, "Shadow Softness": 0.25,
     "Shadow Fade Strength": 0, "SSS Effect Strength": 1,
     "Color Attribute Alpha": face ? { attribute: "Col" } : 0,
@@ -21,11 +34,14 @@ function params({ face }) {
 const SCENE = {
   light: { eulerXYZ: [Math.PI / 2, 0, 0] },
   head: { forward: [0, -0.5, 0], up: [0, 0, 0.5] },
-  ramps: { "Color Ramp.006": { samples: [1, 0.33, 1] }, "Color Ramp": { samples: [0, 1, 1] } },
+  ramps: {
+    "Color Ramp.006": { samples: [1, 0.33, 1] }, "Color Ramp": { samples: [0, 1, 1] },
+    "Color Ramp.001": { samples: [0, 0, 1] }, "Color Ramp.003": { samples: [0, 1, 1] }, "Color Ramp.004": { samples: [0.15, 1, 1] },
+  },
 };
 
 function bake() {
-  const names = ["颜", "髮"];
+  const names = ["颜", "髮", "体"];
   return {
     manifest: { version: 1, pmx: { vertexCount: 3, materials: names } },
     materialMap: {
@@ -40,24 +56,32 @@ function bake() {
           textures: { diffuse: "Map2_D.png", m: "Map2_M.png", normal: "Map2_N.png" },
           colorSpaces: { diffuse: "sRGB", m: "sRGB", normal: "Non-Color" },
         },
+        {
+          pmx: "体", game: "Yidhari MAT 1", hidden: false, shader: "zzzb",
+          textures: { diffuse: "Map1_D.png", m: "Map1_M.png", normal: "Map1_N.png", matcap2: "Matcap_116.png", matcap3: "Matcap_115.png" },
+          colorSpaces: { diffuse: "sRGB", m: "Non-Color", normal: "Non-Color", matcap2: "sRGB", matcap3: "sRGB" },
+        },
       ],
     },
-    params: { "Yidhari Face": params({ face: true }), "Yidhari Hair": params({ face: false }) },
+    params: {
+      "Yidhari Face": params({ face: true }), "Yidhari Hair": params({ face: false, hair: true }),
+      "Yidhari MAT 1": params({ face: false }),
+    },
     colBytes: new Uint8Array(12),
     scene: SCENE,
   };
 }
 
 function build(assets = bake()) {
-  const materials = ["颜", "髮"].map((name) => Object.assign(new THREE.MeshToonMaterial({ name }), { map: new THREE.Texture() }));
+  const materials = ["颜", "髮", "体"].map((name) => Object.assign(new THREE.MeshToonMaterial({ name }), { map: new THREE.Texture() }));
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(9), 3));
   const mesh = { geometry, material: materials };
   const loadTexture = (url) => Object.assign(new THREE.Texture(), { url });
   const goo = createGooMaterials(mesh, assets, {
-    pmx: { vertexCount: 3, materialNames: ["颜", "髮"] }, baseUrl: "/goo", loadTexture,
+    pmx: { vertexCount: 3, materialNames: ["颜", "髮", "体"] }, baseUrl: "/goo", loadTexture,
   });
-  return { goo, face: goo.materials[0], hair: goo.materials[1] };
+  return { goo, face: goo.materials[0], hair: goo.materials[1], body: goo.materials[2] };
 }
 
 const FAKE_SHADER = () => ({
@@ -146,4 +170,44 @@ test("the shading ramps are resampled to fixed-size LUT uniforms", () => {
   assert.equal(u.gooSssRamp.value.length, 33);
   assert.deepEqual([u.gooSssRamp.value[0], u.gooSssRamp.value[16], u.gooSssRamp.value[32]].map((v) => Number(v.toFixed(3))), [1, 0.33, 1]);
   assert.deepEqual([u.gooFadeRamp.value[0], u.gooFadeRamp.value[16], u.gooFadeRamp.value[32]], [0, 1, 1]);
+});
+
+test("body materials with Enable MatCap Effect get the five matcap slots", () => {
+  const { body, hair, face } = build();
+  assert.equal(body.defines.GOO_MATCAP, "");
+  const u = body.userData.gooUniforms;
+  assert.equal(u.gooMatcapA.value.url, "/goo/textures/Matcap_116.png");
+  assert.equal(u.gooMatcapB.value.url, "/goo/textures/Matcap_115.png");
+  // Slot (material ID) 2 samples matcap A, slot 3 matcap B, the rest are constants.
+  assert.deepEqual([...u.gooMatcapSampler.value], [0, 1, 2, 0, 0]);
+  // 1 = add the matcap (Multiplier/Addition snapped), 0 = multiply by it.
+  assert.deepEqual([...u.gooMatcapAdd.value], [0, 1, 1, 0, 0]);
+  assert.deepEqual(u.gooMatcapColors.value[2].toArray(), [1, 0.5, 1]);
+  assert.deepEqual(u.gooMatcapColors.value[4].toArray(), [0.5, 0.5, 0.5]);
+  assert.equal(hair.defines.GOO_MATCAP, undefined);
+  assert.equal(face.defines.GOO_MATCAP, undefined);
+});
+
+test("rim light and hair highlights follow the material's switches", () => {
+  const { body, hair, face } = build();
+  assert.equal(body.defines.GOO_RIM, "");
+  assert.equal(hair.defines.GOO_RIM, "");
+  assert.equal(face.defines.GOO_RIM, undefined);
+  const h = hair.userData.gooUniforms;
+  assert.equal(h.gooHairHighlightMask.value, 1);
+  assert.equal(h.gooHairHighlightIntensity.value, 0.75);
+  assert.equal(h.gooHairHighlightSpread.value, 2.5);
+  assert.equal(body.userData.gooUniforms.gooHairHighlightMask.value, 0);
+  assert.equal(body.userData.gooUniforms.gooRimRamp.value.length, 33);
+  assert.equal(body.userData.gooUniforms.gooBodyHighlightRamp.value.length, 33);
+});
+
+test("the extras run after the core shading in the fragment shader", () => {
+  const { body } = build();
+  const shader = FAKE_SHADER();
+  body.onBeforeCompile(shader);
+  const f = shader.fragmentShader;
+  assert.match(f, /vec3 gooMatcap\(/);
+  assert.match(f, /vec3 gooHighlights\(/);
+  assert.match(f, /vec3 gooRim\(/);
 });

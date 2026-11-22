@@ -1731,10 +1731,13 @@ function bindGameShaders(target, data) {
       return goo;
     },
   });
-  renderer.debug.onShaderError = (gl, _program, vertexShader, fragmentShader) => {
+  const previous = renderer.debug.onShaderError;
+  renderer.debug.onShaderError = (gl, program, vertexShader, fragmentShader) => {
     const log = gl.getShaderInfoLog(fragmentShader) || gl.getShaderInfoLog(vertexShader) || "unknown error";
     console.error("Shader compile error:", log);
-    binding.shaderFailed(log.trim().split("\n")[0]);
+    // Only a Goo program turns the game shaders off; others keep their own handling.
+    if ((gl.getShaderSource(fragmentShader) ?? "").includes("gooShade(")) binding.shaderFailed(log.trim().split("\n")[0]);
+    else previous?.(gl, program, vertexShader, fragmentShader);
   };
 }
 

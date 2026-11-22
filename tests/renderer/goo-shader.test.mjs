@@ -118,7 +118,7 @@ test("onBeforeCompile adds the Col attribute and replaces the lighting", () => {
   const shader = FAKE_SHADER();
   hair.onBeforeCompile(shader);
   assert.match(shader.vertexShader, /attribute vec4 gooCol;/);
-  assert.match(shader.vertexShader, /vGooCol = gooCol;/);
+  assert.match(shader.vertexShader, /vGooCol = vec4\( gooSrgbToLinear/);
   assert.match(shader.fragmentShader, /vec3 gooShade\(/);
   // It needs vMapUv and vViewPosition, which the pars chunks declare.
   assert.ok(shader.fragmentShader.indexOf("vec3 gooShade(") > shader.fragmentShader.indexOf("#include <clipping_planes_pars_fragment>"));

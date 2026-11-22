@@ -13,18 +13,38 @@ const MANIFEST = {
 };
 const MATERIAL_MAP = {
   materials: [
-    { pmx: "颜", game: "Yidhari Face", params: "Yidhari Face", hidden: false, shader: "zzzb", textures: { diffuse: "Yidhari_Face_D.png" } },
+    {
+      pmx: "颜", game: "Yidhari Face", params: "Yidhari Face", hidden: false, shader: "zzzb",
+      textures: { diffuse: "Yidhari_Face_D.png", faceLightmap: "Female_Face_Lightmap.png" },
+      colorSpaces: { diffuse: "sRGB", faceLightmap: "Non-Color" },
+    },
     { pmx: "目影", game: "Eye Shadow", hidden: false, shader: "transparent", color: [0.5, 0.25, 1, 1], textures: {} },
     { pmx: "髮+", game: null, hidden: true, shader: null, textures: {} },
   ],
 };
-const PARAMS = { "Yidhari Face": { "Shadow Softness": 0.25 } };
+const COLOR = [0.9, 0.8, 0.8, 1];
+const PARAMS = {
+  "Yidhari Face": {
+    "Enable Face Shading": 1, "Enable Cast Shadows": 1, "Shadow Position": 0, "Shadow Softness": 0.25,
+    "Shadow Fade Strength": 0, "SSS Effect Strength": 1, "Color Attribute Alpha": { attribute: "Col" },
+    "Shadow Color Multiplier": COLOR, "Sun Light Color": [1.2, 1.15, 1.08, 1], "Shadow Transition Color": COLOR,
+    ...Object.fromEntries(["", "2", "3", "4", "5"].flatMap((n) => [
+      [`Shadow Color${n}`, COLOR], [`Shallow Color${n}`, COLOR], [`Local Indirect Color${n}`, [1, 0.3, 0.2, 1]],
+    ])),
+  },
+};
+const SCENE = {
+  light: { eulerXYZ: [Math.PI / 2, 0, 0] },
+  head: { forward: [0, -0.5, 0], up: [0, 0, 0.5] },
+  ramps: { "Color Ramp.006": { samples: [1, 0.33, 1] }, "Color Ramp": { samples: [0, 1, 1] } },
+};
 const COL = new Uint8Array([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]);
 
 /** A fetch that serves the bake from memory; `missing` names files that 404. */
 function fakeFetch({ missing = [], manifest = MANIFEST } = {}) {
   const files = {
     "manifest.json": manifest, "material-map.json": MATERIAL_MAP, "params.json": PARAMS, "col.bin": COL,
+    "scene.json": SCENE,
   };
   const calls = [];
   const fetch = async (url) => {
@@ -57,7 +77,8 @@ function fakeMesh() {
 const PMX = { vertexCount: 3, materialNames: ["颜", "目影", "髮+"], positionOf: () => [0, 0, 0] };
 /** Textures already loaded, as loadGooTextures() returns them. */
 const textures = () => ({
-  textures: new Map([["Yidhari_Face_D.png", Object.assign(new THREE.Texture(), { url: "/goo/textures/Yidhari_Face_D.png" })]]),
+  textures: new Map(["Yidhari_Face_D.png", "Female_Face_Lightmap.png"]
+    .map((f) => [f, Object.assign(new THREE.Texture(), { url: `/goo/textures/${f}` })])),
 });
 
 test("loadGooAssets fetches the bake from its folder", async () => {
@@ -67,9 +88,11 @@ test("loadGooAssets fetches the bake from its folder", async () => {
   assert.deepEqual(assets.materialMap, MATERIAL_MAP);
   assert.deepEqual(assets.params, PARAMS);
   assert.deepEqual([...assets.colBytes], [...COL]);
+  assert.deepEqual(assets.scene, SCENE);
   assert.deepEqual(calls.sort(), [
     "/assets/private/goo/col.bin", "/assets/private/goo/manifest.json",
     "/assets/private/goo/material-map.json", "/assets/private/goo/params.json",
+    "/assets/private/goo/scene.json",
   ]);
 });
 
@@ -116,7 +139,7 @@ test("loadGooTextures loads each texture once and waits for it", async () => {
   const map = await loadGooTextures(assets, {
     baseUrl: "/goo", loadTexture: async (url) => { urls.push(url); return new THREE.Texture(); },
   });
-  assert.deepEqual(urls, ["/goo/textures/Yidhari_Face_D.png"]);
+  assert.deepEqual(urls, ["/goo/textures/Yidhari_Face_D.png", "/goo/textures/Female_Face_Lightmap.png"]);
   assert.ok(map.get("Yidhari_Face_D.png").isTexture);
 });
 

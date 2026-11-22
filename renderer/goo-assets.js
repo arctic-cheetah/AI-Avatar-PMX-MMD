@@ -27,11 +27,11 @@ export function decodeCol(buffer, vertexCount) {
 
 /**
  * Check a bake against the loaded PMX.
- * @param {{ manifest: any, materialMap: any, colBytes: Uint8Array, params?: any }} baked
+ * @param {{ manifest: any, materialMap: any, colBytes: Uint8Array, params?: any, scene: any }} baked
  * @param {{ vertexCount: number, materialNames: string[], positionOf?: (index: number) => number[] }} pmx
  * @returns {{ ok: boolean, errors: string[] }}
  */
-export function validateGooAssets({ manifest, materialMap, colBytes, params }, { vertexCount, materialNames, positionOf }) {
+export function validateGooAssets({ manifest, materialMap, colBytes, params, scene }, { vertexCount, materialNames, positionOf }) {
   const errors = [];
   if (manifest?.version !== GOO_MANIFEST_VERSION) {
     errors.push(`manifest version ${manifest?.version} is not supported`);
@@ -89,5 +89,22 @@ export function validateGooAssets({ manifest, materialMap, colBytes, params }, {
   });
   const expected = vertexCount * 4;
   if (colBytes?.length !== expected) errors.push(`col.bin has ${colBytes?.length} bytes, expected ${expected}`);
+  errors.push(...sceneErrors(scene));
   return { ok: errors.length === 0, errors };
+}
+
+/** Ramps the ported shader samples (Fake SSS and Shadow Fade Gradient). */
+export const REQUIRED_RAMPS = ["Color Ramp.006", "Color Ramp"];
+
+const isVec = (v, n) => Array.isArray(v) && v.length === n && v.every(Number.isFinite);
+
+function sceneErrors(scene) {
+  if (!scene) return ["scene.json is missing"];
+  const errors = [];
+  if (!isVec(scene.light?.eulerXYZ, 3)) errors.push("scene.json has no light rotation");
+  if (!isVec(scene.head?.forward, 3) || !isVec(scene.head?.up, 3)) errors.push("scene.json has no head forward/up vectors");
+  for (const name of REQUIRED_RAMPS) {
+    if (!(scene.ramps?.[name]?.samples?.length >= 2)) errors.push(`scene.json has no ramp ${name}`);
+  }
+  return errors;
 }

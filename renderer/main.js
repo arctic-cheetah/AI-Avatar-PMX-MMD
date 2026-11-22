@@ -56,6 +56,7 @@ import { addSeeThroughBrows, bindSeeThroughBrowsToggle } from "./see-through-bro
 import {
   GOO_ASSETS_URL, bindGooShadersToggle, createGooMaterials, loadGooAssets, loadGooTextures,
 } from "./goo-material.js";
+import { createFrameUpdater } from "./goo-frame.js";
 import { installCollapsiblePanel } from "./collapsible-panel.js";
 import { FrameLoop, PopOut, popupWindow } from "./pop-out.js";
 import { IDLE_STATE_LABELS, IdleController, bindIdleSettings, idleBlocked } from "./idle-behaviour.js";
@@ -1699,6 +1700,9 @@ function buildMorphUsage() {
   return usage;
 }
 
+/** Game shaders (#251–#252) once loaded: the materials and their per-frame inputs. */
+let gooShaders = null;
+
 /**
  * Bind the Game shaders checkbox (#251). The baked Goo inputs load on first use;
  * a missing or mismatched bake, or a shader that fails to compile, falls back
@@ -1721,13 +1725,19 @@ function bindGameShaders(target, data) {
       const textures = await loadGooTextures(assets, {
         baseUrl: GOO_ASSETS_URL, loadTexture: (url) => textureLoader.loadAsync(url),
       });
-      return createGooMaterials(target, assets, { pmx, textures });
+      const goo = createGooMaterials(target, assets, { pmx, textures });
+      const frameValues = createFrameUpdater({ mesh: target, scene: assets.scene });
+      gooShaders = { goo, frameValues };
+      return goo;
     },
   });
-  renderer.debug.onShaderError = (gl, _program, vertexShader, fragmentShader) => {
+  const previous = renderer.debug.onShaderError;
+  renderer.debug.onShaderError = (gl, program, vertexShader, fragmentShader) => {
     const log = gl.getShaderInfoLog(fragmentShader) || gl.getShaderInfoLog(vertexShader) || "unknown error";
     console.error("Shader compile error:", log);
-    binding.shaderFailed(log.trim().split("\n")[0]);
+    // Only a Goo program turns the game shaders off; others keep their own handling.
+    if ((gl.getShaderSource(fragmentShader) ?? "").includes("gooShade(")) binding.shaderFailed(log.trim().split("\n")[0]);
+    else previous?.(gl, program, vertexShader, fragmentShader);
   };
 }
 
@@ -2260,6 +2270,7 @@ function animate() {
   updateExpressionButtons();
   updateLoopButton();
   auditionPanel?.refresh();
+  if (gooShaders?.goo.enabled) gooShaders.goo.setFrame(gooShaders.frameValues(camera));
   outline.render(scene, camera);
 }
 

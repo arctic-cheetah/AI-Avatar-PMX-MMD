@@ -25,6 +25,11 @@ function assets() {
       ],
     },
     colBytes: new Uint8Array(12),
+    scene: {
+      light: { eulerXYZ: [Math.PI / 2, 0, 0] },
+      head: { forward: [0, -0.5, 0], up: [0, 0, 0.5] },
+      ramps: { "Color Ramp.006": { samples: [1, 0.33, 1] }, "Color Ramp": { samples: [0, 1, 1] } },
+    },
     params: { "Yidhari Face": {} },
   };
 }
@@ -75,6 +80,23 @@ test("a material map out of step with the manifest is reported", () => {
   const baked = assets();
   baked.materialMap.materials[2].pmx = "髮";
   assert.match(validateGooAssets(baked, PMX).errors.join("\n"), /material map entry 2 is 髮, expected 髮\+/);
+});
+
+test("a missing or incomplete scene is reported", () => {
+  const baked = assets();
+  delete baked.scene.head;
+  assert.match(validateGooAssets(baked, PMX).errors.join("\n"), /scene\.json has no head forward\/up vectors/);
+  baked.scene = undefined;
+  assert.match(validateGooAssets(baked, PMX).errors.join("\n"), /scene\.json is missing/);
+});
+
+test("a scene without the light or a shading ramp is reported", () => {
+  const baked = assets();
+  delete baked.scene.light;
+  delete baked.scene.ramps["Color Ramp.006"];
+  const errors = validateGooAssets(baked, PMX).errors.join("\n");
+  assert.match(errors, /scene\.json has no light rotation/);
+  assert.match(errors, /scene\.json has no ramp Color Ramp\.006/);
 });
 
 test("a Goo material whose params are missing is reported", () => {
@@ -134,6 +156,7 @@ test("the private bake lines up with the private PMX", { skip: !haveReal && "pri
     manifest: read("manifest.json"),
     materialMap: read("material-map.json"),
     colBytes: new Uint8Array(readFileSync(`${GOO_DIR}/col.bin`)),
+    scene: read("scene.json"),
     params: read("params.json"),
   };
   const result = validateGooAssets(baked, {

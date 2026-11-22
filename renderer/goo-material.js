@@ -3,22 +3,23 @@
  * built from the baked Goo inputs, behind a remembered toggle that is off by
  * default. Any failure keeps today's material and says why.
  *
- * This is the skeleton: Goo-shader materials only get the game diffuse here;
- * the lighting, face shadow, rim, matcaps and outlines follow in #252–#254.
+ * Goo-shader materials get the game diffuse and the ZZZB core (#252,
+ * docs/goo-shader.md); rim, matcaps, highlights and outlines follow in #253–#254.
  */
 import * as THREE from "three";
 import { decodeCol, validateGooAssets } from "./goo-assets.js";
+import { gooFrameUniforms, gooMaterialUniforms, patchGooShader } from "./goo-shader.js";
 
 export const GOO_SHADERS_KEY = "yidhari.gooShaders";
 export const GOO_ASSETS_URL = "/assets/private/goo";
 
-const FILES = ["manifest.json", "material-map.json", "params.json", "col.bin"];
+const FILES = ["manifest.json", "material-map.json", "params.json", "col.bin", "scene.json"];
 
 /**
  * Fetch a bake from its folder.
  * @param {string} baseUrl Folder that holds manifest.json and the rest.
  * @param {{ fetch?: typeof fetch }} [options]
- * @returns {Promise<{ manifest: any, materialMap: any, params: any, colBytes: Uint8Array }>}
+ * @returns {Promise<{ manifest: any, materialMap: any, params: any, colBytes: Uint8Array, scene: any }>}
  */
 export async function loadGooAssets(baseUrl, { fetch = globalThis.fetch } = {}) {
   const get = async (name) => {
@@ -26,8 +27,8 @@ export async function loadGooAssets(baseUrl, { fetch = globalThis.fetch } = {}) 
     if (!response.ok) throw new Error(`${name}: HTTP ${response.status}`);
     return name.endsWith(".json") ? response.json() : new Uint8Array(await response.arrayBuffer());
   };
-  const [manifest, materialMap, params, colBytes] = await Promise.all(FILES.map(get));
-  return { manifest, materialMap, params, colBytes };
+  const [manifest, materialMap, params, colBytes, scene] = await Promise.all(FILES.map(get));
+  return { manifest, materialMap, params, colBytes, scene };
 }
 
 /**
@@ -71,7 +72,9 @@ function hideOutline(material) {
  * @param {Awaited<ReturnType<typeof loadGooAssets>>} assets
  * @param {{ pmx: { vertexCount: number, materialNames: string[], positionOf?: (i: number) => number[] },
  *   textures: Map<string, THREE.Texture> }} options Textures from loadGooTextures(), already loaded.
- * @returns {{ materials: any[], readonly enabled: boolean, setEnabled(on: boolean): void }}
+ * @returns {{ materials: any[], readonly enabled: boolean, setEnabled(on: boolean): void,
+ *   setFrame(values: { lightView: number[], shadowRange: number, mirrorU: boolean, facingForward: number,
+ *     facingDot: number, lightFacingPow: number, edgeLight: number }): void }}
  * @throws {Error} When the bake does not line up with the PMX.
  */
 export function createGooMaterials(mesh, assets, { pmx, textures }) {
@@ -79,14 +82,16 @@ export function createGooMaterials(mesh, assets, { pmx, textures }) {
   if (!check.ok) throw new Error(check.errors.join("; "));
   mesh.geometry.setAttribute("gooCol", new THREE.BufferAttribute(decodeCol(assets.colBytes, pmx.vertexCount), 4, true));
 
-  const texture = (file) => {
+  const texture = (file, colorSpace = "sRGB") => {
     const t = textures.get(file);
     if (!t) throw new Error(`textures/${file} was not loaded`);
     t.flipY = false;
-    t.colorSpace = THREE.SRGBColorSpace;
+    // Blender decodes sRGB-tagged images before the shader maths; Non-Color ones are read raw.
+    t.colorSpace = colorSpace === "sRGB" ? THREE.SRGBColorSpace : THREE.NoColorSpace;
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     return t;
   };
+  const frame = gooFrameUniforms();
   const sources = mesh.material.slice(0, pmx.materialNames.length);
   const materials = assets.materialMap.materials.map((entry, i) => {
     const material = cloneSharingTextures(sources[i]);
@@ -110,7 +115,7 @@ export function createGooMaterials(mesh, assets, { pmx, textures }) {
       material.customProgramCacheKey = () => "goo-tint";
       hideOutline(material);
     } else {
-      material.map = texture(entry.textures.diffuse);
+      setUpZzzb(material, entry, assets, texture, frame);
     }
     material.needsUpdate = true;
     return material;
@@ -130,7 +135,44 @@ export function createGooMaterials(mesh, assets, { pmx, textures }) {
         originals = null;
       }
     },
+    setFrame(values) {
+      frame.gooLightView.value.fromArray(values.lightView);
+      frame.gooFaceShadowRange.value = values.shadowRange;
+      frame.gooFaceMirrorU.value = values.mirrorU ? 1 : 0;
+      frame.gooFacingForward.value = values.facingForward;
+      frame.gooFacingDot.value = values.facingDot;
+      frame.gooLightFacingPow.value = values.lightFacingPow;
+      frame.gooEdgeLight.value = values.edgeLight;
+    },
   };
+}
+
+/** Turn a material clone into the ZZZB Goo shader for one PMX material. */
+function setUpZzzb(material, entry, assets, texture, frame) {
+  const params = assets.params[entry.params ?? entry.game];
+  if (!params) throw new Error(`no shader params for ${entry.params ?? entry.game}`);
+  const spaces = entry.colorSpaces ?? {};
+  const face = Number(params["Enable Face Shading"]) >= 1;
+  const uniforms = { ...gooMaterialUniforms(params, assets.scene), ...frame };
+  material.color.setRGB(1, 1, 1);
+  material.map = texture(entry.textures.diffuse, spaces.diffuse);
+  material.defines = { ...material.defines, GOO_ZZZB: "" };
+  if (face) {
+    material.defines.GOO_FACE = "";
+    uniforms.gooLightmap.value = texture(entry.textures.faceLightmap, spaces.faceLightmap ?? "Non-Color");
+    material.normalMap = null;
+  } else if (entry.textures.normal) {
+    material.normalMap = texture(entry.textures.normal, spaces.normal ?? "Non-Color");
+    // PMX UVs run down the image (flipY = false); Blender's run up, so green flips.
+    material.normalScale = new THREE.Vector2(1, -1);
+  }
+  if (entry.textures.m) {
+    material.defines.GOO_MASK = "";
+    uniforms.gooMask.value = texture(entry.textures.m, spaces.m);
+  }
+  material.userData.gooUniforms = uniforms;
+  material.onBeforeCompile = (shader) => patchGooShader(shader, uniforms);
+  material.customProgramCacheKey = () => `goo-zzzb${face ? "-face" : ""}${entry.textures.m ? "-mask" : ""}`;
 }
 
 /**
@@ -180,7 +222,7 @@ export function bindGooShadersToggle(toggle, status, { load, local }) {
     }
     if (!on) return; // Switched off while loading.
     controller.setEnabled(true);
-    say("Game shaders on: game textures only for now (#252–#254 add the lighting).");
+    say("Game shaders on: cel shading and face shadow (rim, matcaps and outlines come in #253–#254).");
   };
 
   let stored = false;

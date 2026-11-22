@@ -1,0 +1,118 @@
+/**
+ * Per-frame Goo shader inputs (#252, docs/goo-shader.md). The Blender nodes
+ * `faceLogic`, `[Light Facing Forward]` and `Face Facing Forward` only depend on
+ * the light, the head and the camera, so they run here once per frame, in
+ * Blender's world space (Z up, the face looking along −Y), and reach the GLSL
+ * as uniforms.
+ */
+import * as THREE from "three";
+
+/** three.js (x, y, z) is Blender (x, −z, y). */
+export const threeToBlender = ([x, y, z]) => [x, -z, y];
+/** Blender (x, y, z) is three.js (x, z, −y). */
+export const blenderToThree = ([x, y, z]) => [x, z, -y];
+
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const normalize = (v) => {
+  const length = Math.hypot(...v);
+  return length > 0 ? v.map((c) => c / length) : [0, 0, 0];
+};
+const flat = (v) => [v[0], v[1], 0];
+const clamp01 = (x) => Math.min(1, Math.max(0, x));
+
+/** Rotate a vector by a Blender XYZ Euler (X first, then Y, then Z), like Vector Rotate in EULER_XYZ mode. */
+export function rotateEulerXYZ([rx, ry, rz], v) {
+  const m = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(rx, ry, rz, "ZYX"));
+  return new THREE.Vector3(...v).applyMatrix4(m).toArray();
+}
+
+/** The `light dir` before flattening: +Z rotated by the Main Light's Euler. */
+export const lightDirection = (euler) => normalize(rotateEulerXYZ(euler, [0, 0, 1]));
+
+/** `faceLogic`'s exponent: pow(2 − (0.5 + 0.75), 3). */
+const RANGE_POWER = (2 - (0.5 + 0.75)) ** 3;
+
+/**
+ * The face and light terms for one frame, all in Blender world space.
+ * @param {{ light: number[], lightEuler: number[], headForward: number[], headUp: number[],
+ *   cameraForward: number[], cameraBack: number[] }} input
+ * @returns {{ shadowRange: number, mirrorU: boolean, facingDot: number, facingForward: number,
+ *   lightFacingPow: number, edgeLight: number }}
+ */
+export function faceTerms({ light, lightEuler, headForward, headUp, cameraForward, cameraBack }) {
+  const lightXY = normalize(flat(normalize(light)));
+  const forwardXY = flat(normalize(headForward));
+  const rightXY = flat(normalize(cross(headForward, headUp)));
+  // Lightmap Direction Logic: (dot·0.5 + 0.5) <= 0.5 keeps the UV, otherwise u is mirrored.
+  const mirrorU = dot(lightXY, rightXY) * 0.5 + 0.5 > 0.5;
+  // Face Shadow Range.
+  const shadowRange = Math.min((dot(lightXY, forwardXY) + 1) / 2, 0.999) ** RANGE_POWER;
+  // Face Facing Forward: the unnormalised head forward against the camera's view direction.
+  const facingDot = dot(headForward, cameraForward);
+  const facingForward = clamp01((facingDot * 1.15) ** 25);
+  // [Light Facing Forward]: the camera's back vector turned by the light rotation; its Z.
+  const z = rotateEulerXYZ(lightEuler, cameraBack)[2];
+  const towards = clamp01(0.5 - z);
+  return { shadowRange, mirrorU, facingDot, facingForward, lightFacingPow: clamp01(towards ** 10), edgeLight: 1 - towards };
+}
+
+/**
+ * Head Controller vectors for the current pose: the rest vectors (Blender
+ * space) turned by how far the head bone has rotated from its bind pose.
+ * @param {{ bindQuaternion: THREE.Quaternion, currentQuaternion: THREE.Quaternion,
+ *   restForward: number[], restUp: number[] }} input Quaternions in three.js mesh space.
+ * @returns {{ forward: number[], up: number[] }} Blender space.
+ */
+export function headVectors({ bindQuaternion, currentQuaternion, restForward, restUp }) {
+  const delta = currentQuaternion.clone().multiply(bindQuaternion.clone().invert());
+  const turn = (v) => threeToBlender(new THREE.Vector3(...blenderToThree(v)).applyQuaternion(delta).toArray());
+  return { forward: turn(restForward), up: turn(restUp) };
+}
+
+/** Read a baked ramp LUT (evenly spaced samples over 0–1) with linear steps. */
+export function sampleRamp(samples, x) {
+  const last = samples.length - 1;
+  const t = Math.min(1, Math.max(0, x)) * last;
+  const i = Math.min(last - 1, Math.floor(t));
+  return samples[i] + (samples[i + 1] - samples[i]) * (t - i);
+}
+
+/**
+ * Build the per-frame update for a loaded PMX mesh: returns a function that
+ * takes the camera and gives the values for `setFrame()` of the Goo materials.
+ * @param {{ mesh: THREE.SkinnedMesh, scene: { light: { eulerXYZ: number[] },
+ *   head: { bone: string, forward: number[], up: number[] } } }} input
+ * @returns {(camera: THREE.Camera) => object}
+ * @throws {Error} When the mesh has no head bone.
+ */
+export function createFrameUpdater({ mesh, scene }) {
+  const bones = mesh.skeleton?.bones ?? [];
+  const index = bones.findIndex((bone) => bone.name === scene.head.bone);
+  if (index < 0) throw new Error(`the PMX has no ${scene.head.bone} bone`);
+  const bone = bones[index];
+  // World-space bind orientation: the mesh's bind matrix times the bone's inverse bind, inverted.
+  const bindQuaternion = new THREE.Quaternion();
+  const scratch = new THREE.Vector3();
+  const scale = new THREE.Vector3();
+  new THREE.Matrix4().copy(mesh.bindMatrix).multiply(new THREE.Matrix4().copy(mesh.skeleton.boneInverses[index]).invert())
+    .decompose(scratch, bindQuaternion, scale);
+  const lightEuler = scene.light.eulerXYZ;
+  const light = lightDirection(lightEuler);
+  const lightThree = new THREE.Vector3(...blenderToThree(light));
+  const currentQuaternion = new THREE.Quaternion();
+  const forward = new THREE.Vector3();
+  return (camera) => {
+    // Gaze, sway and gestures set local rotations; refresh the world matrix before reading it.
+    bone.updateWorldMatrix(true, false);
+    bone.matrixWorld.decompose(scratch, currentQuaternion, scale);
+    const head = headVectors({ bindQuaternion, currentQuaternion, restForward: scene.head.forward, restUp: scene.head.up });
+    const cameraForward = threeToBlender(camera.getWorldDirection(forward).toArray());
+    const terms = faceTerms({
+      light, lightEuler, headForward: head.forward, headUp: head.up,
+      cameraForward, cameraBack: cameraForward.map((c) => -c),
+    });
+    const lightView = lightThree.clone().transformDirection(camera.matrixWorldInverse).toArray();
+    return { lightView, ...terms };
+  };
+}

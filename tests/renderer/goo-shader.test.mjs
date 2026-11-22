@@ -148,3 +148,17 @@ test("the shading ramps are resampled to fixed-size LUT uniforms", () => {
   assert.deepEqual([u.gooSssRamp.value[0], u.gooSssRamp.value[16], u.gooSssRamp.value[32]].map((v) => Number(v.toFixed(3))), [1, 0.33, 1]);
   assert.deepEqual([u.gooFadeRamp.value[0], u.gooFadeRamp.value[16], u.gooFadeRamp.value[32]], [0, 1, 1]);
 });
+
+test("the baked sRGB Col is decoded to linear in the vertex shader", () => {
+  const { hair } = build();
+  const shader = FAKE_SHADER();
+  hair.onBeforeCompile(shader);
+  assert.match(shader.vertexShader, /vGooCol = vec4\( gooSrgbToLinear\( gooCol\.rgb \), gooCol\.a \);/);
+});
+
+test("a shader chunk that is missing (a three.js upgrade) throws instead of failing silently", () => {
+  const { hair } = build();
+  const shader = FAKE_SHADER();
+  shader.fragmentShader = shader.fragmentShader.replace("#include <opaque_fragment>", "");
+  assert.throws(() => hair.onBeforeCompile(shader), /shader chunk #include <opaque_fragment> not found/);
+});

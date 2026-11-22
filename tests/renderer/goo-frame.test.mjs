@@ -94,3 +94,31 @@ test("sampleRamp reads a baked LUT with linear steps between samples", () => {
   close(sampleRamp(lut, 2), 1);
   close(sampleRamp(lut, -1), 1);
 });
+
+test("the frame updater follows a turned head, from a non-identity bind pose", async () => {
+  const { createFrameUpdater } = await import("../../renderer/goo-frame.js");
+  // A root and a head bone bound while tilted, so the bind quaternion is not identity.
+  const root = new THREE.Bone();
+  const head = new THREE.Bone();
+  head.name = "頭";
+  root.add(head);
+  head.quaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.3);
+  const mesh = new THREE.SkinnedMesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial());
+  mesh.add(root);
+  mesh.updateMatrixWorld(true);
+  mesh.bind(new THREE.Skeleton([root, head]));
+  const camera = new THREE.PerspectiveCamera();
+  camera.position.set(0, 0, 10);
+  camera.lookAt(0, 0, 0);
+  camera.updateMatrixWorld(true);
+  // Light from her right (Blender −X), so mirrorU depends on which way she faces.
+  const scene = { light: { eulerXYZ: [Math.PI / 2, 0, -Math.PI / 2] }, head: { bone: "頭", forward: [0, -0.5, 0], up: [0, 0, 0.5] } };
+  const update = createFrameUpdater({ mesh, scene });
+  const atRest = update(camera);
+  assert.equal(atRest.mirrorU, true);
+  close(atRest.shadowRange, 0.5 ** 0.421875, 1e-6);
+  // Turn the head 90° to her left without updating world matrices by hand.
+  head.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2));
+  const turned = update(camera);
+  assert.ok(turned.shadowRange < 0.05, `the light is now behind her face: ${turned.shadowRange}`);
+});

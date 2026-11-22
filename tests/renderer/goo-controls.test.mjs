@@ -189,3 +189,47 @@ test("the face shader blends the nose mark in by the nose line strength", () => 
   goo.materials[0].onBeforeCompile(shader);
   assert.match(shader.fragmentShader, /gooNoseLine/);
 });
+
+function shineBuild() {
+  const mesh = skinnedMesh();
+  const assets = bake();
+  assets.manifest.pmx.materials = ["目光", "目影", "髮+"];
+  assets.materialMap.materials[0] = { ...assets.materialMap.materials[0], pmx: "目光" };
+  const goo = createGooMaterials(mesh, assets, {
+    pmx: { vertexCount: 3, materialNames: ["目光", "目影", "髮+"] }, baseUrl: "/goo", loadTexture: () => new THREE.Texture(),
+  });
+  return goo;
+}
+
+test("the eye light overlay (目光) gets a soft, shrinkable eye shine", () => {
+  const goo = shineBuild();
+  const shine = goo.materials[0];
+  assert.equal(shine.defines.GOO_EYE_SHINE, "");
+  assert.equal(shine.transparent, true);
+  assert.equal(shine.depthWrite, false);
+  assert.equal(shine.alphaTest, 0);
+  assert.equal(shine.userData.gooUniforms.gooEyeShine.value, 0.5, "smaller than the game by default");
+  goo.setParts({ eyeShine: 0.2 });
+  assert.equal(shine.userData.gooUniforms.gooEyeShine.value, 0.2);
+  assert.equal(build().materials[0].defines.GOO_EYE_SHINE, undefined, "only the eye light overlay");
+  const shader = {
+    uniforms: {},
+    vertexShader: "#include <common>\nvoid main() {\n#include <begin_vertex>\n#include <project_vertex>\n}",
+    fragmentShader: "#include <common>\n#include <clipping_planes_pars_fragment>\nvoid main() {\n#include <map_fragment>\n#include <normal_fragment_maps>\n#include <opaque_fragment>\n}",
+  };
+  shine.onBeforeCompile(shader);
+  assert.match(shader.fragmentShader, /gooEyeShine/);
+});
+
+test("the eye shine slider is remembered", () => {
+  const parts = Object.fromEntries(Object.keys(GOO_PART_KEYS).map((p) => [p, control(true)]));
+  const eyeShine = control(0.5);
+  const local = storage({ "yidhari.gooEyeShine": "0.3" });
+  const applied = {};
+  bindGooControls({ parts, light: {}, eyeShine }, { setParts: (p) => Object.assign(applied, p), setLight() {} }, { local });
+  assert.equal(applied.eyeShine, 0.3);
+  assert.equal(eyeShine.value, "0.3");
+  eyeShine.set(0.8);
+  assert.equal(applied.eyeShine, 0.8);
+  assert.equal(local.values["yidhari.gooEyeShine"], "0.8");
+});

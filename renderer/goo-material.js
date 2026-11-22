@@ -30,6 +30,28 @@ export async function loadGooAssets(baseUrl, { fetch = globalThis.fetch } = {}) 
   return { manifest, materialMap, params, colBytes };
 }
 
+/**
+ * Load every texture the Goo materials use, once each, and wait for them, so a
+ * missing or broken image goes through the fallback instead of drawing blank.
+ * @param {Awaited<ReturnType<typeof loadGooAssets>>} assets
+ * @param {{ baseUrl: string, loadTexture: (url: string) => Promise<THREE.Texture> }} options
+ * @returns {Promise<Map<string, THREE.Texture>>} By file name.
+ */
+export async function loadGooTextures(assets, { baseUrl, loadTexture }) {
+  const files = new Set();
+  for (const entry of assets.materialMap?.materials ?? []) {
+    if (entry && !entry.hidden && entry.shader === "zzzb") Object.values(entry.textures ?? {}).forEach((f) => files.add(f));
+  }
+  const loaded = await Promise.all([...files].map(async (file) => {
+    try {
+      return [file, await loadTexture(`${baseUrl}/textures/${file}`)];
+    } catch {
+      throw new Error(`textures/${file}: failed to load`);
+    }
+  }));
+  return new Map(loaded);
+}
+
 /** Share the source's textures: a clone made before an image loads would never upload it. */
 function cloneSharingTextures(source) {
   const material = source.clone();
@@ -47,18 +69,19 @@ function hideOutline(material) {
  * Build the game-shader materials for a loaded PMX mesh.
  * @param {{ material: any[], geometry: any }} mesh Mesh from MMDLoader (material array in PMX order).
  * @param {Awaited<ReturnType<typeof loadGooAssets>>} assets
- * @param {{ pmx: { vertexCount: number, materialNames: string[] }, baseUrl: string,
- *   loadTexture: (url: string) => THREE.Texture }} options
+ * @param {{ pmx: { vertexCount: number, materialNames: string[], positionOf?: (i: number) => number[] },
+ *   textures: Map<string, THREE.Texture> }} options Textures from loadGooTextures(), already loaded.
  * @returns {{ materials: any[], readonly enabled: boolean, setEnabled(on: boolean): void }}
  * @throws {Error} When the bake does not line up with the PMX.
  */
-export function createGooMaterials(mesh, assets, { pmx, baseUrl, loadTexture }) {
+export function createGooMaterials(mesh, assets, { pmx, textures }) {
   const check = validateGooAssets(assets, pmx);
   if (!check.ok) throw new Error(check.errors.join("; "));
   mesh.geometry.setAttribute("gooCol", new THREE.BufferAttribute(decodeCol(assets.colBytes, pmx.vertexCount), 4, true));
 
   const texture = (file) => {
-    const t = loadTexture(`${baseUrl}/textures/${file}`);
+    const t = textures.get(file);
+    if (!t) throw new Error(`textures/${file} was not loaded`);
     t.flipY = false;
     t.colorSpace = THREE.SRGBColorSpace;
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
@@ -75,7 +98,16 @@ export function createGooMaterials(mesh, assets, { pmx, baseUrl, loadTexture }) 
     } else if (entry.shader === "transparent") {
       material.map = null;
       material.color.setRGB(entry.color[0], entry.color[1], entry.color[2]);
-      Object.assign(material, { transparent: true, depthWrite: false, blending: THREE.MultiplyBlending });
+      // Like Blender's Transparent BSDF: unlit, multiplies what is behind by the colour.
+      Object.assign(material, {
+        transparent: true, depthWrite: false, blending: THREE.MultiplyBlending, premultipliedAlpha: true,
+      });
+      material.onBeforeCompile = (shader) => {
+        shader.fragmentShader = shader.fragmentShader.replace(
+          "#include <opaque_fragment>", "outgoingLight = diffuse;\n  diffuseColor.a = 1.0;\n#include <opaque_fragment>",
+        );
+      };
+      material.customProgramCacheKey = () => "goo-tint";
       hideOutline(material);
     } else {
       material.map = texture(entry.textures.diffuse);
@@ -122,6 +154,9 @@ export function bindGooShadersToggle(toggle, status, { load, local }) {
 
   const fail = (message) => {
     controller?.setEnabled(false);
+    // Forget this load, so switching on again picks up a re-bake.
+    controller = null;
+    loading = null;
     on = false;
     if (toggle) toggle.checked = false;
     store(false);
@@ -139,6 +174,7 @@ export function bindGooShadersToggle(toggle, status, { load, local }) {
       controller = await loading;
     } catch (error) {
       loading = null;
+      if (!on) return; // Switched off while loading: nothing to report.
       fail(`Game shaders unavailable: ${error?.message ?? error}`);
       return;
     }

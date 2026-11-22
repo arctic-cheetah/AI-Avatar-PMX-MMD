@@ -53,7 +53,9 @@ import { composeBlink, eyeClosure } from "./facial-layers.js";
 import { GreetingGate, bindGreetingToggle } from "./greeting.js";
 import { bindRestingFaceToggle } from "./resting-face.js";
 import { addSeeThroughBrows, bindSeeThroughBrowsToggle } from "./see-through-brows.js";
-import { GOO_ASSETS_URL, bindGooShadersToggle, createGooMaterials, loadGooAssets } from "./goo-material.js";
+import {
+  GOO_ASSETS_URL, bindGooShadersToggle, createGooMaterials, loadGooAssets, loadGooTextures,
+} from "./goo-material.js";
 import { installCollapsiblePanel } from "./collapsible-panel.js";
 import { FrameLoop, PopOut, popupWindow } from "./pop-out.js";
 import { IDLE_STATE_LABELS, IdleController, bindIdleSettings, idleBlocked } from "./idle-behaviour.js";
@@ -1707,12 +1709,20 @@ function buildMorphUsage() {
  */
 function bindGameShaders(target, data) {
   const textureLoader = new THREE.TextureLoader();
-  const pmx = { vertexCount: data.metadata.vertexCount, materialNames: data.materials.map((m) => m.name) };
+  const pmx = {
+    vertexCount: data.metadata.vertexCount,
+    materialNames: data.materials.map((m) => m.name),
+    positionOf: (i) => data.vertices[i]?.position,
+  };
   gooShadersToggle.disabled = false;
   const binding = bindGooShadersToggle(gooShadersToggle, gooShadersStatus, {
-    load: async () => createGooMaterials(target, await loadGooAssets(GOO_ASSETS_URL), {
-      pmx, baseUrl: GOO_ASSETS_URL, loadTexture: (url) => textureLoader.load(url),
-    }),
+    load: async () => {
+      const assets = await loadGooAssets(GOO_ASSETS_URL);
+      const textures = await loadGooTextures(assets, {
+        baseUrl: GOO_ASSETS_URL, loadTexture: (url) => textureLoader.loadAsync(url),
+      });
+      return createGooMaterials(target, assets, { pmx, textures });
+    },
   });
   renderer.debug.onShaderError = (gl, _program, vertexShader, fragmentShader) => {
     const log = gl.getShaderInfoLog(fragmentShader) || gl.getShaderInfoLog(vertexShader) || "unknown error";

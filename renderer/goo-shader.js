@@ -205,7 +205,7 @@ vec3 gooShade( vec4 diffuse, vec3 n ) {
   vec3 base = mix( D, D * m089 * 0.25, clamp( 1.0 - m089, 0.0, 1.0 ) );
   // Dynamic Face Highlight from the lightmap's blue channel.
   vec4 lmN = texture2D( gooLightmap, vMapUv );
-  float highlight = clamp( lmN.b * gooFacingDot * gooLightFacingPow, 0.0, 1.0 );
+  float highlight = clamp( lmN.b * gooFacingDot * gooLightFacingPow * gooPartHighlights, 0.0, 1.0 );
   base += 0.6771 * base * highlight;
   // Shadows [FACE]: faceLogic mirrors u for one light side; the red channel is the SDF.
   vec2 uvL = gooFaceMirrorU > 0.5 ? vec2( - vMapUv.x, vMapUv.y ) : vMapUv;
@@ -443,6 +443,27 @@ export function gooFrameUniforms() {
     gooNoseLine: { value: 1 },
     gooEyeShine: { value: 0.5 },
   };
+}
+
+/**
+ * JS mirror of the GLSL gooOutlineWidth (PMX units), so tests can check the numbers.
+ * @param {number} colR Linear Col.r.
+ * @param {number} distanceUnits Camera distance in PMX units.
+ */
+export function gooOutlineWidthUnits(colR, distanceUnits) {
+  const metres = distanceUnits * 0.08;
+  const t = Math.min(1, Math.max(0, metres - 0.75));
+  return (colR * 0.01 * (0.125 + (0.375 - 0.125) * t)) / 0.08;
+}
+
+/**
+ * JS mirror of the outline darkening factor f in gooOutlineColour: 1 on ID 2
+ * (0-based index 1), else 1 − smoothstep(0.25, 0.5, Col.g).
+ */
+export function gooOutlineFactor(index, colG) {
+  if (index === 1) return 1;
+  const t = Math.min(1, Math.max(0, (colG - 0.25) / 0.25));
+  return 1 - t * t * (3 - 2 * t);
 }
 
 /** Outline colours per material ID; ID 1 is screened with 0.75 grey first, as in Blender. */

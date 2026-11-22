@@ -213,9 +213,13 @@ export function createOutlineHull(mesh, goo) {
     outline.customProgramCacheKey = () => `${source.customProgramCacheKey()}-outline`;
     return outline;
   });
+  // A reload after a failure builds a new hull: drop any earlier one first.
+  for (const old of mesh.children.filter((child) => child.name === "goo-outline-hull")) mesh.remove(old);
   const hull = new THREE.SkinnedMesh(mesh.geometry, materials);
   hull.name = "goo-outline-hull";
   hull.bind(mesh.skeleton, mesh.bindMatrix);
+  // Shared by reference: the hull follows every morph change. If the mesh's
+  // morph array is ever replaced (updateMorphTargets, a model swap), re-link it.
   hull.morphTargetInfluences = mesh.morphTargetInfluences;
   hull.morphTargetDictionary = mesh.morphTargetDictionary;
   hull.frustumCulled = mesh.frustumCulled;
@@ -266,8 +270,17 @@ export function bindGooControls(controls, target, { local } = {}) {
   }
   target.setParts(parts);
 
+  const num = (v, lo, hi, fallback) => (Number.isFinite(Number(v)) && v !== null && v !== "" ? Math.min(hi, Math.max(lo, Number(v))) : fallback);
   let light = { mode: "fixed", yaw: 0, pitch: 0 };
-  try { light = { ...light, ...JSON.parse(read(GOO_LIGHT_KEY) ?? "{}") }; } catch { /* Keep the default. */ }
+  try {
+    const stored = JSON.parse(read(GOO_LIGHT_KEY) ?? "{}") ?? {};
+    // A hand-edited or old value must not reach the shader as NaN.
+    light = {
+      mode: stored.mode === "camera" ? "camera" : "fixed",
+      yaw: num(stored.yaw, -180, 180, 0),
+      pitch: num(stored.pitch, -60, 80, 0),
+    };
+  } catch { /* Keep the default. */ }
   const { mode, yaw, pitch } = controls.light ?? {};
   if (mode) mode.value = light.mode;
   if (yaw) yaw.value = String(light.yaw);

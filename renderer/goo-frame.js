@@ -48,7 +48,9 @@ const DEG = Math.PI / 180;
  */
 export function lightEulerFor({ mode, yaw, pitch }, { baseEuler, cameraBack }) {
   if (mode === "camera" && cameraBack) return eulerForDirection(cameraBack);
-  return [baseEuler[0] - pitch * DEG, baseEuler[1], baseEuler[2] + yaw * DEG];
+  // Keep the tilt between the zenith and the nadir so a big pitch can't flip the light.
+  const tilt = Math.min(Math.PI - 0.01, Math.max(0.01, baseEuler[0] - pitch * DEG));
+  return [tilt, baseEuler[1], baseEuler[2] + yaw * DEG];
 }
 
 /** `faceLogic`'s exponent: pow(2 − (0.5 + 0.75), 3). */

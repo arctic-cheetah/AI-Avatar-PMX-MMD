@@ -9,7 +9,7 @@ How the renderer's **Game shaders** mode reproduces Dillongoo's
 | Part | Ticket | What |
 | --- | --- | --- |
 | Core | #252 | Cel light steps, shadow and shallow tint by material ID, sun colour, indirect colour, fake SSS, edge highlight, face lightmap shadow, nose line, dynamic face highlight, normal maps |
-| Extras | #253 | Matcaps, hair and body highlights, rim light, face drawn over the fringe |
+| Extras | #253 | Matcaps, hair and body highlights, rim light (approximated), and the `Set Depth` check |
 | Finish | #254 | Outlines and outline colours, light controls, final comparison |
 
 ## How the port was made
@@ -97,6 +97,72 @@ lightmap only stores one side. The nose line (diffuse alpha, faded by
 `Face Facing Forward`) and the dynamic highlight (lightmap blue) follow the
 `[Process Diffuse]` frame.
 
+## Matcaps, highlights and rim (#253)
+
+These run in ZZZB order: the matcap changes the diffuse before shading, and the
+highlights and rim are added after it.
+
+### Matcaps (`Enable MatCap Effect` = 1: body, hat, tails)
+
+`[ZZZB] MatCaps` gives each material ID a matcap colour and a mode. The
+`_matcaps` entry in `params.json` (the inputs of that node, baked per
+material) sets them:
+
+| ID | Matcap | Mode |
+| --- | --- | --- |
+| 1, 4, 5 | constant white | multiply (no change) |
+| 2 | `Eff_Matcap_116.png` | add |
+| 3 | `Eff_Matcap_115.png` | add |
+
+The matcap is sampled at the view-space normal (normal map included),
+`uv = n.xy · 0.5 + 0.5` (`matCap Mapping`: World→Camera, then ×0.5 + 0.5). Then:
+
+```text
+multiply: D′ = D · M                         add: D′ = D + D · M
+D = mix(D, D′, _M.b)
+```
+
+### Hair highlight (`Enable Hair Highlight Mask` = 1)
+
+Only where `Col.b · 10 > 0.05` (the hair mask in the vertex colours):
+
+```text
+spread = (N·L · 0.5 + 0.5)^Spread Power          (2.5)
+band   = smoothstep(clamp(1 − spread − 0.3) + 0.5, clamp(1 − spread + 0.5), _M.b)
+colour = mix(colour, screen(colour, colour · band · spread · 1.314), Intensity)   (0.75)
+```
+
+### Body highlight (where matcaps are on)
+
+`h = (smoothstep(0, 1, _M.b) · N·H)^10`, with `H` the half vector between the
+light and the view. `h · 3.14 + ramp(h)` times the colour is added, and a
+second ramp darkens it where `_M.b` is low. On the hair, the hair mask skips
+it.
+
+### Rim light (`Enable Rim Lighting` = 1)
+
+**Approximation.** Goo's `rimLighting` uses its screen-space `Curvature`
+node (`Scene Rim`), which needs the depth buffer. The renderer uses a fresnel
+term instead: `rim = (1 − N·V)^4`, through the same ramp as Blender
+(0 below 0.25, 1 above 0.3), times `clamp(N·L)^5` and the normal map's red
+channel mask (`smoothstep(0.25, 0.3, R)`):
+
+```text
+colour += screen(colour · Rim Light Color Multiplier, Rim Light Additional Color) · rim
+```
+
+With the default front light, the rim is faint, as in Blender: it shows on the
+edges that face the light.
+
+### Face over the fringe (`Set Depth`)
+
+No code is needed. In the face and eyes materials, `Set Depth` pulls the
+face's depth 0.075 towards the camera, then shows the colour already on
+screen wherever something is in front (`Intensity` 1, and the `Eyes` colour
+attribute does not exist). Hair in front of the face therefore stays hair,
+and the result looks the same as ordinary depth testing. The existing
+see-through brows (#99) keep the brows readable under the fringe.
+
 ## Per-frame inputs
 
 `renderer/goo-frame.js` works in Blender's world space: three.js
@@ -122,3 +188,5 @@ controls for it.
   a little lower.
 - The B-spline SSS ramps are baked as 33-sample tables and read with linear
   interpolation.
+- **Rim light:** a fresnel approximation of Goo's screen-space `Scene Rim`
+  (see above).

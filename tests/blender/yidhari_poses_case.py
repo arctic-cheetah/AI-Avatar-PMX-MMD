@@ -149,7 +149,9 @@ class PosesTest(unittest.TestCase):
         bpy.ops.object.select_all(action="DESELECT")
         self.arm.select_set(True)
         bpy.context.view_layer.objects.active = self.arm
-        bpy.ops.mmd_tools.import_vpd(filepath=str(path), scale=0.08, bone_mapper="PMX")
+        # The operator reads `directory` + `files`, not `filepath`.
+        bpy.ops.mmd_tools.import_vpd(directory=str(path.parent), files=[{"name": path.name}],
+                                     scale=0.08, bone_mapper="PMX")
         self.assertMatricesClose(ours, matrices(self.arm))
         self.assertNotEqual(ours["腕.R"], Matrix.Identity(4))
 

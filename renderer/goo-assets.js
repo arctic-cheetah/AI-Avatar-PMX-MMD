@@ -93,8 +93,8 @@ export function validateGooAssets({ manifest, materialMap, colBytes, params, sce
   return { ok: errors.length === 0, errors };
 }
 
-/** Ramps the ported shader samples (Fake SSS and Shadow Fade Gradient). */
-export const REQUIRED_RAMPS = ["Color Ramp.006", "Color Ramp"];
+/** Ramps the ported shader samples: Fake SSS, Shadow Fade Gradient, Rim Lighting and the two body highlights. */
+export const REQUIRED_RAMPS = ["Color Ramp.006", "Color Ramp", "Color Ramp.001", "Color Ramp.003", "Color Ramp.004"];
 
 const isVec = (v, n) => Array.isArray(v) && v.length === n && v.every(Number.isFinite);
 

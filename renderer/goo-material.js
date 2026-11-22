@@ -8,7 +8,7 @@
  */
 import * as THREE from "three";
 import { decodeCol, validateGooAssets } from "./goo-assets.js";
-import { gooFrameUniforms, gooMaterialUniforms, patchGooShader } from "./goo-shader.js";
+import { createRampTexture, gooFrameUniforms, gooMaterialUniforms, patchGooShader, setUpMatcaps } from "./goo-shader.js";
 
 export const GOO_SHADERS_KEY = "yidhari.gooShaders";
 export const GOO_ASSETS_URL = "/assets/private/goo";
@@ -92,6 +92,8 @@ export function createGooMaterials(mesh, assets, { pmx, textures }) {
     return t;
   };
   const frame = gooFrameUniforms();
+  // One ramp texture for every material (#258 review: uniform budget).
+  frame.gooRamps = { value: createRampTexture(assets.scene) };
   const sources = mesh.material.slice(0, pmx.materialNames.length);
   const materials = assets.materialMap.materials.map((entry, i) => {
     const material = cloneSharingTextures(sources[i]);
@@ -170,9 +172,15 @@ function setUpZzzb(material, entry, assets, texture, frame) {
     material.defines.GOO_MASK = "";
     uniforms.gooMask.value = texture(entry.textures.m, spaces.m);
   }
+  if (!face && Number(params["Enable MatCap Effect"]) >= 1 && params._matcaps) {
+    material.defines.GOO_MATCAP = "";
+    const roleOf = Object.fromEntries(Object.entries(entry.textures).map(([role, file]) => [file, role]));
+    setUpMatcaps(uniforms, params._matcaps, (file) => texture(file, spaces[roleOf[file]] ?? "sRGB"), entry.params ?? entry.game);
+  }
+  if (!face && Number(params["Enable Rim Lighting"]) >= 1) material.defines.GOO_RIM = "";
   material.userData.gooUniforms = uniforms;
   material.onBeforeCompile = (shader) => patchGooShader(shader, uniforms);
-  material.customProgramCacheKey = () => `goo-zzzb${face ? "-face" : ""}${entry.textures.m ? "-mask" : ""}`;
+  material.customProgramCacheKey = () => `goo-zzzb-${Object.keys(material.defines).filter((k) => k.startsWith("GOO_")).sort().join("-")}`;
 }
 
 /**
@@ -222,7 +230,7 @@ export function bindGooShadersToggle(toggle, status, { load, local }) {
     }
     if (!on) return; // Switched off while loading.
     controller.setEnabled(true);
-    say("Game shaders on: cel shading and face shadow (rim, matcaps and outlines come in #253–#254).");
+    say("Game shaders on: cel shading, face shadow, matcaps, highlights and rim (outlines come in #254).");
   };
 
   let stored = false;

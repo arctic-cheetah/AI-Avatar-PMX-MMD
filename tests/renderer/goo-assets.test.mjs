@@ -28,7 +28,8 @@ function assets() {
     scene: {
       light: { eulerXYZ: [Math.PI / 2, 0, 0] },
       head: { forward: [0, -0.5, 0], up: [0, 0, 0.5] },
-      ramps: { "Color Ramp.006": { samples: [1, 0.33, 1] }, "Color Ramp": { samples: [0, 1, 1] } },
+      ramps: Object.fromEntries(["Color Ramp.006", "Color Ramp", "Color Ramp.001", "Color Ramp.003", "Color Ramp.004"]
+        .map((name) => [name, { samples: [0, 1, 1] }])),
     },
     params: { "Yidhari Face": {} },
   };
@@ -88,6 +89,12 @@ test("a missing or incomplete scene is reported", () => {
   assert.match(validateGooAssets(baked, PMX).errors.join("\n"), /scene\.json has no head forward\/up vectors/);
   baked.scene = undefined;
   assert.match(validateGooAssets(baked, PMX).errors.join("\n"), /scene\.json is missing/);
+});
+
+test("a scene without the rim or highlight ramps is reported", () => {
+  const baked = assets();
+  delete baked.scene.ramps["Color Ramp.004"];
+  assert.match(validateGooAssets(baked, PMX).errors.join("\n"), /scene\.json has no ramp Color Ramp\.004/);
 });
 
 test("a scene without the light or a shading ramp is reported", () => {

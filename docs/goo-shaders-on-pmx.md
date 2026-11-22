@@ -35,7 +35,7 @@ reference closely (face, bust and full body).
 
    Appending the Head Controller also pulls in the reference Rigify rig, because of the controller's Child Of constraint. The rig, its widgets and its UI script were deleted after the append.
 3. Put the controls in a `Goo Controls` collection:
-   - The Head Controller is bone-parented to the PMX `頭` bone, with an identity rotation, at the bone head.
+   - The Head Controller sits at the head of the PMX `頭` bone, with an identity rotation. It was first bone-parented to `頭`, and now follows it through a Child Of constraint (see the gotcha below).
    - `Sun` is parented to `Main Light`.
    - A perspective `Camera` (85 mm) is the outline camera.
 4. Swapped the PMX material slots to the game materials (table below). The original MMD materials are kept with fake users. The mesh stores two custom properties:
@@ -96,7 +96,7 @@ differently in the rest pose, which is why the transfer works in UV space.
 | Attribute | Read by | Source in the reference | On the PMX (V1.3) |
 | --- | --- | --- | --- |
 | `lightDirection` (point, vector) | `Zenless Zone Zero Braincells [Shader]`, `faceLogic`, `dotCreation`, `screenspaceShadows` | `[ZZZB] Vectors V0.8` modifier: rotation of the `Main Light` object | Same modifier and object, appended |
-| `headForward`, `headUp` | `Zenless…`, `faceLogic` | `[ZZZB] Vectors V0.8`: `Head Forward` / `Head Up` minus `Head Origin` vertex-group points on the Head Controller mesh | Same controller mesh, bone-parented to `頭`. A head turn plus the `まばたき` blink morph rendered cleanly. |
+| `headForward`, `headUp` | `Zenless…`, `faceLogic` | `[ZZZB] Vectors V0.8`: `Head Forward` / `Head Up` minus `Head Origin` vertex-group points on the Head Controller mesh | Same controller mesh, following `頭`. A head turn plus the `まばたき` blink morph rendered cleanly. |
 | `outline` | `Zenless…` | `[ZZZB] Outlines V0.8` modifier (inverted hull, camera-scaled) | Same modifier, using our `Camera` |
 | `Col` colour attribute (corner, byte) | All `Yidhari*` materials (`Color Attribute Color/Alpha` inputs), and the outline modifier's vertex-colour width | Game mesh vertex colours | **Missing on the PMX.** It was transferred from the game meshes per loop: for each loop, the nearest UV0 in the same game material was taken, with spatial distance breaking ties. 101,448 loops matched within 1 texel, and 4,014 used the nearest UV (mostly `体`/`肌` edits and `饰2`). The 5,676 `髮+` faces were set to white. |
 | `Eyes` colour attribute | `Set Depth` group (blends the face/eyes over the hair) | **Missing in the reference too.** The node reads nothing, and the reference renders the same way. | Not added |
@@ -138,6 +138,7 @@ inverted-hull outline.
 - **Use a perspective camera.** With an orthographic camera, `Set Depth` misplaces the face: it draws over the fringe as a flat mask, with a dark band across it, even in the reference.
 - **The `look` tool cannot frame these meshes.** The evaluated mesh of objects with the outline modifier reports 0 vertices through the Python API, so auto-framing gets a 0 × 0 × 0 box. Final renders are fine. The grids use their own camera script instead.
 - **The reference is posed with a wink.** For the grids, its rig was switched to Rest Position (in memory only, never saved). The wink is a shape key, so it remains.
+- **The bone-parented Head Controller breaks VPD morph export.** mmd_tools' `firstMesh()` picks the controller instead of the PMX mesh, so `export_vpd` writes no morphs. Both V1.3 and V1.4 now use a Child Of constraint instead (`tools/pose-fit/fix_head_controller.py`); see [pmx-sit-pose.md](pmx-sit-pose.md#gotchas).
 - The PMX default row was rendered in stock Blender 4.4.3 (EEVEE Next) from the untouched pose file. That file has no lights, so the row is dim. That is its real default state, not a regression.
 
 ## MMD Tools data after the swap

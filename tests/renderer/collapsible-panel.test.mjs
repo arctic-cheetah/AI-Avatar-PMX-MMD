@@ -36,12 +36,12 @@ function fakePanel(document, { saved = {}, renamed = false } = {}) {
   return panel;
 }
 
-test("Chat is permanently open; the seven secondary sections start collapsed", () => {
+test("Chat is permanently open; the eight secondary sections start collapsed", () => {
   const states = readPanelSections({ local: storage() });
   assert.deepEqual(states.map(({ id }) => id), [
-    "chat", "speech", "presets", "channels", "actions", "action-play", "audition", "candidates",
+    "chat", "speech", "presets", "graphics", "channels", "actions", "action-play", "audition", "candidates",
   ]);
-  assert.deepEqual(states.map(({ open }) => open), [true, false, false, false, false, false, false, false]);
+  assert.deepEqual(states.map(({ open }) => open), [true, false, false, false, false, false, false, false, false]);
   assert.ok(states.every(({ collapsible }, index) => collapsible === (index !== 0)));
 });
 
@@ -51,7 +51,7 @@ test("a saved mix of secondary section states is restored, but Chat always stays
   });
   const open = Object.fromEntries(readPanelSections({ local }).map(({ id, open: isOpen }) => [id, isOpen]));
   assert.deepEqual(open, {
-    chat: true, speech: false, presets: true, channels: false, actions: false, "action-play": false,
+    chat: true, speech: false, presets: true, graphics: false, channels: false, actions: false, "action-play": false,
     audition: false, candidates: true,
   });
 });
@@ -84,19 +84,19 @@ test("Chat keeps its original visible subtree while secondary controls move inta
   const originalChatChildren = [...chat.children];
   const local = storage({ [COLLAPSIBLE_PANEL_KEY]: JSON.stringify({ presets: true }) });
   const installed = installCollapsiblePanel(panel, { local });
-  assert.equal(installed.length, 7);
+  assert.equal(installed.length, 8);
   assert.equal(chat.children.length, originalChatChildren.length);
   assert.ok(originalChatChildren.every((child) => [...chat.children].includes(child)), "Chat is not hidden or restructured");
   const details = panel.querySelectorAll("details");
-  assert.equal(details.length, 7);
+  assert.equal(details.length, 8);
   assert.ok(details.every((item) => item.open === (item.dataset.panelSection === "presets")));
   assert.ok(details.every((item) => item.children[0].localName === "summary"));
-  assert.equal(panel.querySelectorAll("button").length, 8, "existing controls are moved, not cloned");
+  assert.equal(panel.querySelectorAll("button").length, 9, "existing controls are moved, not cloned");
   const speech = detailsOf(panel, "speech");
   speech.open = true;
   speech.emit("toggle");
   assert.deepEqual(JSON.parse(local.values.get(COLLAPSIBLE_PANEL_KEY)), {
-    chat: true, speech: true, presets: true, channels: false, actions: false, "action-play": false,
+    chat: true, speech: true, presets: true, graphics: false, channels: false, actions: false, "action-play": false,
     audition: false, candidates: false,
   });
   const moved = document.createElement("div");
@@ -145,4 +145,18 @@ test("the Actions checklist has its own collapsible section, next to Animation a
   assert.match(body, /id="actions"/, "the checklist lives in the Actions section");
   const channels = html.slice(html.indexOf('<section aria-labelledby="channels-heading">'));
   assert.doesNotMatch(channels.slice(0, channels.indexOf("</section>")), /id="actions"/, "no longer inside Independent channels");
+});
+
+test("the game shader controls have their own Graphics section, just above Independent channels", async () => {
+  const html = await readFile(new URL("../../renderer/index.html", import.meta.url), "utf8");
+  const graphicsAt = html.indexOf('<section aria-labelledby="graphics-heading">');
+  const channelsAt = html.indexOf('<section aria-labelledby="channels-heading">');
+  assert.ok(graphicsAt > 0 && graphicsAt < channelsAt, "Graphics comes before Independent channels");
+  const graphics = html.slice(graphicsAt, html.indexOf("</section>", graphicsAt));
+  for (const id of ["goo-shaders-toggle", "goo-shaders-status", "goo-light-mode", "goo-light-yaw", "goo-light-pitch", "goo-nose-line", "goo-eye-shine"]) {
+    assert.match(graphics, new RegExp(`id="${id}"`), `${id} is in Graphics`);
+  }
+  assert.match(graphics, /data-goo-part="cel"/);
+  const channels = html.slice(channelsAt, html.indexOf("</section>", channelsAt));
+  assert.doesNotMatch(channels, /goo-/, "no game shader controls left in Independent channels");
 });

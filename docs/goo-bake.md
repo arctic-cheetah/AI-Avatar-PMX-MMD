@@ -38,8 +38,9 @@ can be spotted.
 | File | Contents |
 | --- | --- |
 | `manifest.json` | Format version (1), source file and SHA-256, Blender version, PMX vertex count, PMX material names in PMX order, and the SHA-256 of every other file |
-| `material-map.json` | One entry per PMX material, in PMX order: the PMX name, the game material (or `null` and `hidden: true` for the `髮+` shell), its `shader`, and its texture files by role (`diffuse`, `a`, `m`, `normal`, `faceLightmap`, `matcap2`, `matcap3`). `shader` is `"zzzb"` for the Goo shader (18 materials), or `"transparent"` with an RGBA `color` for `目影`. Eye Shadow is only a Transparent BSDF that darkens what is behind it by that colour. Anything else is `"unsupported"`, and the renderer rejects the bake |
+| `material-map.json` | One entry per PMX material, in PMX order: the PMX name, the game material (or `null` and `hidden: true` for the `髮+` shell), its `shader`, its texture files by role (`diffuse`, `a`, `m`, `normal`, `faceLightmap`, `matcap2`, `matcap3`), and each texture's Blender colour space (`colorSpaces`, `sRGB` or `Non-Color`). `shader` is `"zzzb"` for the Goo shader (18 materials), or `"transparent"` with an RGBA `color` for `目影`. Eye Shadow is only a Transparent BSDF that darkens what is behind it by that colour. Anything else is `"unsupported"`, and the renderer rejects the bake |
 | `params.json` | For each game material, every input of its `Zenless Zone Zero Braincells [Shader]` node: a constant (number or RGBA), or where it comes from (`texture`, `attribute`, or `computed` when it is the result of other nodes) |
+| `scene.json` | Scene values the shader needs (#252): the Main Light's XYZ Euler rotation, the Head Controller's forward and up vectors at rest (Blender world space, measured with the armature in its rest position), and every colour ramp of the ZZZB node sampled 33 times (`ramps`, keyed by node name) |
 | `col.bin` | The `Col` colour attribute: 4 bytes (RGBA) per PMX vertex, in PMX vertex order |
 | `textures/*.png` | The game textures the materials use, written from the packed images |
 
@@ -73,15 +74,14 @@ switched on.
 
 Switching it on (`renderer/goo-material.js`):
 
-1. Fetches `manifest.json`, `material-map.json`, `params.json` and `col.bin`
+1. Fetches `manifest.json`, `material-map.json`, `params.json`, `scene.json` and `col.bin`
    from `/assets/private/goo/` once.
 2. Checks them against the loaded PMX with `validateGooAssets()`.
 3. Builds one replacement material per PMX material, by kind:
    - `zzzb` (18 materials): a clone of the MMD material with the game diffuse
-     (`textures.diffuse`) as its map. The texture is loaded like MMDLoader's
-     own: `flipY = false`, sRGB. The rest of the Goo shader is ported in #252
-     to #254; for now this proves that the material map, UVs, skinning and
-     morphs line up.
+     (`textures.diffuse`) as its map, loaded like MMDLoader's own
+     (`flipY = false`), and the Goo shader patched in with `onBeforeCompile`.
+     See [The Goo shader in three.js](goo-shader.md).
    - `transparent` (`目影`): no map, the baked colour, multiply blending, no
      depth write, so it darkens what is behind it like the Blender
      Transparent BSDF.

@@ -53,7 +53,9 @@ import { composeBlink, eyeClosure } from "./facial-layers.js";
 import { GreetingGate, bindGreetingToggle } from "./greeting.js";
 import { bindRestingFaceToggle } from "./resting-face.js";
 import { addSeeThroughBrows, bindSeeThroughBrowsToggle } from "./see-through-brows.js";
-import { GOO_ASSETS_URL, bindGooShadersToggle, createGooMaterials, loadGooAssets } from "./goo-material.js";
+import {
+  GOO_ASSETS_URL, bindGooControls, bindGooShadersToggle, createGooMaterials, createOutlineHull, loadGooAssets,
+} from "./goo-material.js";
 import { createFrameUpdater } from "./goo-frame.js";
 import { installCollapsiblePanel } from "./collapsible-panel.js";
 import { FrameLoop, PopOut, popupWindow } from "./pop-out.js";
@@ -122,6 +124,13 @@ const restingFaceToggle = document.querySelector("#resting-face-toggle");
 const seeThroughBrowsToggle = document.querySelector("#see-through-brows-toggle");
 const gooShadersToggle = document.querySelector("#goo-shaders-toggle");
 const gooShadersStatus = document.querySelector("#goo-shaders-status");
+const gooPartToggles = Object.fromEntries(["cel", "faceShadow", "matcaps", "highlights", "rim", "edgeSss", "outlines"]
+  .map((part) => [part, document.querySelector(`[data-goo-part="${part}"]`)]));
+const gooLightControls = {
+  mode: document.querySelector("#goo-light-mode"),
+  yaw: document.querySelector("#goo-light-yaw"),
+  pitch: document.querySelector("#goo-light-pitch"),
+};
 const physicsToggle = document.querySelector("#physics-toggle");
 const chestPhysicsToggle = document.querySelector("#chest-physics-toggle");
 const hipPhysicsToggle = document.querySelector("#hip-physics-toggle");
@@ -1698,8 +1707,11 @@ function buildMorphUsage() {
   return usage;
 }
 
-/** Game shaders (#251–#252) once loaded: the materials and their per-frame inputs. */
+/** Game shaders (#251–#254) once loaded: the materials and their per-frame inputs. */
 let gooShaders = null;
+/** Part switches and light controls (#254), kept so they apply when the shaders load. */
+const gooParts = {};
+let gooLight = { mode: "fixed", yaw: 0, pitch: 0 };
 
 /**
  * Bind the Game shaders checkbox (#251). The baked Goo inputs load on first use;
@@ -1720,9 +1732,18 @@ function bindGameShaders(target, data) {
         pmx, baseUrl: GOO_ASSETS_URL, loadTexture: (url) => textureLoader.load(url),
       });
       const frameValues = createFrameUpdater({ mesh: target, scene: assets.scene });
+      createOutlineHull(target, goo);
+      goo.setParts(gooParts);
       gooShaders = { goo, frameValues };
       return goo;
     },
+  });
+  bindGooControls({ parts: gooPartToggles, light: gooLightControls }, {
+    setParts(parts) {
+      Object.assign(gooParts, parts);
+      gooShaders?.goo.setParts(parts);
+    },
+    setLight(light) { gooLight = light; },
   });
   renderer.debug.onShaderError = (gl, _program, vertexShader, fragmentShader) => {
     const log = gl.getShaderInfoLog(fragmentShader) || gl.getShaderInfoLog(vertexShader) || "unknown error";
@@ -2260,7 +2281,7 @@ function animate() {
   updateExpressionButtons();
   updateLoopButton();
   auditionPanel?.refresh();
-  if (gooShaders?.goo.enabled) gooShaders.goo.setFrame(gooShaders.frameValues(camera));
+  if (gooShaders?.goo.enabled) gooShaders.goo.setFrame(gooShaders.frameValues(camera, gooLight));
   outline.render(scene, camera);
 }
 

@@ -120,6 +120,27 @@
       <label class="check" title="Draw the brows faintly over the bangs so brow expressions show."><input id="see-through-brows-toggle" type="checkbox" checked disabled>See-through brows · 透け眉</label>
       <label class="check" title="Use the game's textures and Goo shader look, baked from Yidhari_V1.3_PMX.blend into assets/private/goo (see docs/goo-bake.md). Off by default."><input id="goo-shaders-toggle" type="checkbox" disabled>Game shaders · ゲーム風</label>
       <p id="goo-shaders-status" class="note" role="status"></p>
+      <div class="goo-controls sub-check" title="Live switches for each part of the game shader (#254). They change instantly and are remembered.">
+        <label class="check sub-check"><input type="checkbox" data-goo-part="cel" checked>Cel lighting</label>
+        <label class="check sub-check"><input type="checkbox" data-goo-part="faceShadow" checked>Face shadow</label>
+        <label class="check sub-check"><input type="checkbox" data-goo-part="matcaps" checked>Matcaps</label>
+        <label class="check sub-check"><input type="checkbox" data-goo-part="highlights" checked>Highlights</label>
+        <label class="check sub-check"><input type="checkbox" data-goo-part="rim" checked>Rim light</label>
+        <label class="check sub-check"><input type="checkbox" data-goo-part="edgeSss" checked>Edge + SSS</label>
+        <label class="check sub-check"><input type="checkbox" data-goo-part="outlines" checked>Outlines</label>
+        <div class="slider-row sub-check">
+          <label for="goo-light-mode">Light</label>
+          <select id="goo-light-mode"><option value="fixed">Fixed (Blender)</option><option value="camera">Follow camera</option></select>
+        </div>
+        <div class="slider-row sub-check" title="Turns the fixed light round her, in degrees.">
+          <label for="goo-light-yaw">Light yaw</label>
+          <input id="goo-light-yaw" type="range" min="-180" max="180" step="5" value="0">
+        </div>
+        <div class="slider-row sub-check" title="Raises the fixed light, in degrees.">
+          <label for="goo-light-pitch">Light pitch</label>
+          <input id="goo-light-pitch" type="range" min="-60" max="80" step="5" value="0">
+        </div>
+      </div>
       <label class="check" title="After a quiet while she idles, then turns sleepy; any activity wakes her."><input id="idle-toggle" type="checkbox" checked>Idle behaviours · 待機動作</label>
       <label class="check sub-check" title="While she idles, a slow wave travels along her tails."><input id="tentacle-toggle" type="checkbox" checked>Tentacle wave · 触手</label>
       <div class="slider-row sub-check" title="How far the wave curls her tails: 0 is still, 6 is a big bold sweep.">

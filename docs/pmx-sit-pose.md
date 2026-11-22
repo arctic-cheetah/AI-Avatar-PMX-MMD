@@ -160,7 +160,12 @@ perspective camera.
 
 ## Gotchas
 
-- **The Head Controller made mmd_tools drop the VPD morphs.** In V1.3, `[Yidhari] Head Controller` is bone-parented to the armature. mmd_tools' `Model.firstMesh()` then returns it instead of `伊德海莉_mesh`, so `export_vpd` wrote **0 morphs**. In V1.4 the controller has no parent and follows `頭` through a Child Of constraint, with the inverse set at the current pose. Apply the same fix to V1.3 before exporting VPDs from it.
+- **The Head Controller made mmd_tools drop the VPD morphs.** In V1.3, `[Yidhari] Head Controller` is bone-parented to the armature. mmd_tools' `Model.firstMesh()` then returns it instead of `伊德海莉_mesh`, so `export_vpd` wrote **0 morphs**. V1.4 and the committed V1.3 now give the controller no parent. Instead it
+  follows `頭` through a Child Of constraint, with the inverse set at the current
+  pose.
+  - `tools/pose-fit/fix_head_controller.py` makes this change.
+  - On V1.3, the controller's world matrix stayed the same to 1e-7, both at rest and with the head turned 35°, so the Goo face shading is unchanged.
+  - A test export with `ウィンク` set to 1 now writes `Morph0{ウィンク 1.0}`.
 - **VPD is Shift-JIS.** 14 bone names can't be encoded and are written as `?`, so MMD and mmd_tools skip them on import:
   - the teeth `齿上`/`齿下`;
   - the ribbon knots `左/右结1–3_1/2`.

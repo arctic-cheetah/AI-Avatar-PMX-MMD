@@ -135,9 +135,16 @@ colour = mix(colour, screen(colour, colour · band · spread · 1.314), Intensit
 ### Body highlight (where matcaps are on)
 
 `h = (smoothstep(0, 1, _M.b) · N·H)^10`, with `H` the half vector between the
-light and the view. `h · 3.14 + ramp(h)` times the colour is added, and a
-second ramp darkens it where `_M.b` is low. On the hair, the hair mask skips
-it.
+light and the view. `h · 3.14 + ramp(h)` times the colour is added. On the
+hair, the hair mask skips it.
+
+The graph also has a second, darkening ramp (`Color Ramp.004`), but it only
+takes effect where `Enable Hair Highlight Mask` is on *and* the pixel is not
+hair: `Mix_104 = mix(Mix_100, 1, Mix_111)` with `Mix_111 = mix(1, hairMask,
+Enable Hair Highlight Mask)`. On the body materials that switch is off, so
+`Mix_111` is 1 and the ramp is unused, in Blender as here. `N·H` is raised to
+the 10th power of its absolute value, as Blender's Power node does with an
+even exponent.
 
 ### Rim light (`Enable Rim Lighting` = 1)
 
@@ -200,7 +207,10 @@ shaders off when the failing program is a Goo one.
 - **Colour management:** Blender renders with the `Standard` view and the
   `Medium High Contrast` look. The renderer outputs plain sRGB, so contrast is
   a little lower.
-- The B-spline SSS ramps are baked as 33-sample tables and read with linear
-  interpolation.
+- All five ramps the port uses (Fake SSS, Shadow Fade Gradient, the two body
+  highlight ramps and the rim ramp) are baked as 33 samples and packed into
+  **one shared 33 × 5 texture** (8-bit, linear filtering). That keeps each
+  material well under WebGL2's minimum of 224 fragment uniform vectors, which
+  five `float[33]` arrays per material could exceed on some drivers.
 - **Rim light:** a fresnel approximation of Goo's screen-space `Scene Rim`
   (see above).

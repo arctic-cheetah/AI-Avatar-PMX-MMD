@@ -53,6 +53,9 @@ import { composeBlink, eyeClosure } from "./facial-layers.js";
 import { GreetingGate, bindGreetingToggle } from "./greeting.js";
 import { bindRestingFaceToggle } from "./resting-face.js";
 import { addSeeThroughBrows, bindSeeThroughBrowsToggle } from "./see-through-brows.js";
+import {
+  GOO_ASSETS_URL, bindGooShadersToggle, createGooMaterials, loadGooAssets, loadGooTextures,
+} from "./goo-material.js";
 import { installCollapsiblePanel } from "./collapsible-panel.js";
 import { FrameLoop, PopOut, popupWindow } from "./pop-out.js";
 import { IDLE_STATE_LABELS, IdleController, bindIdleSettings, idleBlocked } from "./idle-behaviour.js";
@@ -118,6 +121,8 @@ const cursorGazeToggle = document.querySelector("#cursor-gaze-toggle");
 const cameraGazeToggle = document.querySelector("#camera-gaze-toggle");
 const restingFaceToggle = document.querySelector("#resting-face-toggle");
 const seeThroughBrowsToggle = document.querySelector("#see-through-brows-toggle");
+const gooShadersToggle = document.querySelector("#goo-shaders-toggle");
+const gooShadersStatus = document.querySelector("#goo-shaders-status");
 const physicsToggle = document.querySelector("#physics-toggle");
 const chestPhysicsToggle = document.querySelector("#chest-physics-toggle");
 const hipPhysicsToggle = document.querySelector("#hip-physics-toggle");
@@ -1695,6 +1700,38 @@ function buildMorphUsage() {
 }
 
 /**
+ * Bind the Game shaders checkbox (#251). The baked Goo inputs load on first use;
+ * a missing or mismatched bake, or a shader that fails to compile, falls back
+ * to the MMD material and says why.
+ * @param {THREE.SkinnedMesh} target Loaded PMX mesh.
+ * @param {{ metadata: { vertexCount: number }, materials: { name: string }[] }} data Parsed PMX.
+ * @returns {void}
+ */
+function bindGameShaders(target, data) {
+  const textureLoader = new THREE.TextureLoader();
+  const pmx = {
+    vertexCount: data.metadata.vertexCount,
+    materialNames: data.materials.map((m) => m.name),
+    positionOf: (i) => data.vertices[i]?.position,
+  };
+  gooShadersToggle.disabled = false;
+  const binding = bindGooShadersToggle(gooShadersToggle, gooShadersStatus, {
+    load: async () => {
+      const assets = await loadGooAssets(GOO_ASSETS_URL);
+      const textures = await loadGooTextures(assets, {
+        baseUrl: GOO_ASSETS_URL, loadTexture: (url) => textureLoader.loadAsync(url),
+      });
+      return createGooMaterials(target, assets, { pmx, textures });
+    },
+  });
+  renderer.debug.onShaderError = (gl, _program, vertexShader, fragmentShader) => {
+    const log = gl.getShaderInfoLog(fragmentShader) || gl.getShaderInfoLog(vertexShader) || "unknown error";
+    console.error("Shader compile error:", log);
+    binding.shaderFailed(log.trim().split("\n")[0]);
+  };
+}
+
+/**
  * Add the loaded PMX to the scene and initialize its pose and face controls.
  * @param {THREE.SkinnedMesh} loaded Mesh supplied by MMDLoader.
  * @param {{ morphs: { name: string, englishName: string, panel: number }[] }} data Parsed PMX.
@@ -1722,6 +1759,7 @@ function onModelLoaded(loaded, data) {
   restingFaceToggle.disabled = !expressions.isAvailable("calm");
   seeThroughBrowsToggle.disabled = false;
   bindSeeThroughBrowsToggle(addSeeThroughBrows(mesh), seeThroughBrowsToggle);
+  bindGameShaders(mesh, data);
   expressions.startLoop(3, Number(intensityInput.value));
   audition = new MorphAudition(mesh, buildMorphInventory(data, mesh));
   speech = new SpeechPlayer(mesh, SPEECH_SHAPES, voiceVolume);

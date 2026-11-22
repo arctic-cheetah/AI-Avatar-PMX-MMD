@@ -98,6 +98,17 @@ class FormatTest(unittest.TestCase):
         self.assertNotIn("\n", text.replace("\r\n", ""))
         self.assertIn("左人指１".encode("cp932"), data)
 
+    def test_writes_plain_decimals_that_three_js_can_read(self) -> None:
+        # three.js MMDParser.parseVpd only accepts `-?digits.digits`, so no
+        # exponents (1.5e-05) and no bare integers.
+        pose = VpdPose("m.osm", (VpdBone("右腕", (1.5e-05, -2.0, 0.0), (1e-7, 0.0, -0.5, 0.866025)),), ())
+        number = r"-?[0-9]+\.[0-9]+"
+        text = format_vpd(pose).decode("cp932")
+        self.assertRegex(text, rf"\n\s*{number}\s*,\s*{number}\s*,\s*{number}\s*;")
+        self.assertRegex(text, rf"\n\s*{number}\s*,\s*{number}\s*,\s*{number}\s*,\s*{number}\s*;")
+        self.assertNotRegex(text, r"[0-9]e-?[0-9]")
+        self.assertIn("0.000015,-2.000000,0.000000;", text)
+
     def test_refuses_a_name_shift_jis_cannot_hold(self) -> None:
         pose = VpdPose("m.osm", (), (VpdMorph("wink😉", 1.0),))
         with self.assertRaisesRegex(VpdError, "cannot be written in Shift-JIS: wink😉"):

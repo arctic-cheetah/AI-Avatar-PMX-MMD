@@ -197,6 +197,7 @@ Under **Game shaders** in *Independent channels*:
 | **Face shadow** | Off: the face is fully lit |
 | **Matcaps**, **Highlights**, **Rim light**, **Edge + SSS** | Each part on or off |
 | **Outlines** | Shows or hides the outline hull |
+| **Eye shine** (0–1, default 0.5) | The blue highlight blobs of the `目光` eye-light overlay. 1 is the game's size and strength. Lower values raise the alpha threshold so the soft blobs shrink (`edge = (1 − s) · 0.9`), and fade them below 0.5; 0 hides them. The overlay is drawn transparent, without depth writes or an outline |
 | **Nose line** (0–1, default 1) | Draws the nose mark from the face diffuse alpha. At 0 it matches Blender, where `[[Process Diffuse]]` hides the mark while she faces the camera, so the nose reads only as a faint pink smudge from the front |
 
 The switches are uniform values shared by every Goo material, so flipping one
@@ -257,6 +258,7 @@ The light is fixed in the world by default, like the Blender scene; see
   a little lower.
 - The B-spline SSS ramps are baked as 33-sample tables and read with linear
   interpolation.
+- **Eye shine:** half size by default (0.5), which Blender is not; set it to 1 for the game's blobs.
 - **Nose line:** on by default (strength 1), which Blender is not; set it to 0 for the exact Blender face.
 - **Rim light:** a fresnel approximation of Goo's screen-space `Scene Rim`
   (see above). In side views it can catch thin light edges on hair cards that

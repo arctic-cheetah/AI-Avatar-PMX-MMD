@@ -8,10 +8,31 @@
  */
 import * as THREE from "three";
 import { decodeCol, validateGooAssets } from "./goo-assets.js";
-import { createRampTexture, gooFrameUniforms, gooMaterialUniforms, patchGooShader, setUpMatcaps } from "./goo-shader.js";
+import {
+  createRampTexture, gooFrameUniforms, gooMaterialUniforms, gooOutlineColors, patchGooShader, setUpMatcaps,
+} from "./goo-shader.js";
 
 export const GOO_SHADERS_KEY = "yidhari.gooShaders";
 export const GOO_ASSETS_URL = "/assets/private/goo";
+/** localStorage keys of the live part switches (#254); each defaults to on. */
+export const GOO_PART_KEYS = Object.freeze({
+  cel: "yidhari.gooParts.cel",
+  faceShadow: "yidhari.gooParts.faceShadow",
+  matcaps: "yidhari.gooParts.matcaps",
+  highlights: "yidhari.gooParts.highlights",
+  rim: "yidhari.gooParts.rim",
+  edgeSss: "yidhari.gooParts.edgeSss",
+  outlines: "yidhari.gooParts.outlines",
+});
+export const GOO_LIGHT_KEY = "yidhari.gooLight";
+export const GOO_NOSE_LINE_KEY = "yidhari.gooNoseLine";
+export const GOO_EYE_SHINE_KEY = "yidhari.gooEyeShine";
+/** The PMX eye light overlay: blue highlight blobs drawn over the irises. */
+const EYE_LIGHT_MATERIAL = "目光";
+const PART_UNIFORMS = {
+  cel: "gooPartCel", faceShadow: "gooPartFaceShadow", matcaps: "gooPartMatcaps",
+  highlights: "gooPartHighlights", rim: "gooPartRim", edgeSss: "gooPartEdgeSss",
+};
 
 const FILES = ["manifest.json", "material-map.json", "params.json", "col.bin", "scene.json"];
 
@@ -124,8 +145,11 @@ export function createGooMaterials(mesh, assets, { pmx, textures }) {
   });
 
   let originals = null;
-  return {
+  let outlines = true;
+  const goo = {
     materials,
+    frame,
+    hull: null,
     get enabled() { return originals !== null; },
     setEnabled(on) {
       if (on && originals === null) {
@@ -136,6 +160,17 @@ export function createGooMaterials(mesh, assets, { pmx, textures }) {
         mesh.material = originals;
         originals = null;
       }
+      syncHull();
+    },
+    /** Live part switches: shared uniforms (no recompile) and the outline hull. */
+    setParts(parts) {
+      for (const [part, on] of Object.entries(parts)) {
+        if (part === "outlines") outlines = Boolean(on);
+        else if (part === "noseLine") frame.gooNoseLine.value = Number(on);
+        else if (part === "eyeShine") frame.gooEyeShine.value = Number(on);
+        else if (PART_UNIFORMS[part]) frame[PART_UNIFORMS[part]].value = on ? 1 : 0;
+      }
+      syncHull();
     },
     setFrame(values) {
       frame.gooLightView.value.fromArray(values.lightView);
@@ -147,6 +182,116 @@ export function createGooMaterials(mesh, assets, { pmx, textures }) {
       frame.gooEdgeLight.value = values.edgeLight;
     },
   };
+  function syncHull() {
+    if (goo.hull) goo.hull.visible = goo.enabled && outlines;
+  }
+  goo.syncHull = syncHull;
+  return goo;
+}
+
+/**
+ * The Goo outline (#254): a back-face copy of the mesh that shares its geometry,
+ * skeleton and live morph weights, pushed out by Col.r in the vertex shader.
+ * @param {THREE.SkinnedMesh} mesh Loaded PMX mesh.
+ * @param {ReturnType<typeof createGooMaterials>} goo
+ * @returns {THREE.SkinnedMesh}
+ */
+export function createOutlineHull(mesh, goo) {
+  const hidden = new THREE.MeshBasicMaterial({ visible: false });
+  hidden.userData.outlineParameters = { visible: false };
+  const count = Array.isArray(mesh.material) ? mesh.material.length : goo.materials.length;
+  const materials = Array.from({ length: count }, (_, i) => {
+    const source = goo.materials[i];
+    if (!source || source.userData.goo !== "zzzb" || source.defines?.GOO_EYE_SHINE !== undefined) return hidden;
+    const outline = cloneSharingTextures(source);
+    Object.assign(outline, { name: `${source.name} outline`, side: THREE.BackSide, map: source.map, normalMap: null });
+    outline.defines = { ...source.defines, GOO_OUTLINE: "" };
+    delete outline.defines.GOO_RIM;
+    const uniforms = { ...source.userData.gooUniforms, gooOutlineColors: { value: gooOutlineColors(source.userData.gooParams) } };
+    outline.userData = { ...outline.userData, goo: "outline", gooUniforms: uniforms, outlineParameters: { visible: false } };
+    outline.onBeforeCompile = (shader) => patchGooShader(shader, uniforms);
+    outline.customProgramCacheKey = () => `${source.customProgramCacheKey()}-outline`;
+    return outline;
+  });
+  // A reload after a failure builds a new hull: drop any earlier one first.
+  for (const old of mesh.children.filter((child) => child.name === "goo-outline-hull")) mesh.remove(old);
+  const hull = new THREE.SkinnedMesh(mesh.geometry, materials);
+  hull.name = "goo-outline-hull";
+  hull.bind(mesh.skeleton, mesh.bindMatrix);
+  // Shared by reference: the hull follows every morph change. If the mesh's
+  // morph array is ever replaced (updateMorphTargets, a model swap), re-link it.
+  hull.morphTargetInfluences = mesh.morphTargetInfluences;
+  hull.morphTargetDictionary = mesh.morphTargetDictionary;
+  hull.frustumCulled = mesh.frustumCulled;
+  mesh.add(hull);
+  goo.hull = hull;
+  goo.syncHull();
+  return hull;
+}
+
+/**
+ * Bind the part checkboxes and the light controls (#254). Choices are
+ * remembered; parts default to on and the light to the Blender scene.
+ * @param {{ parts: Record<string, { checked: boolean, addEventListener(t: string, f: () => void): void } | null>,
+ *   light: { mode: any, yaw: any, pitch: any } }} controls
+ * @param {{ setParts(p: Record<string, boolean>): void, setLight(l: { mode: string, yaw: number, pitch: number }): void }} target
+ * @param {{ local?: Storage }} [options]
+ */
+export function bindGooControls(controls, target, { local } = {}) {
+  try {
+    local ??= globalThis.localStorage;
+  } catch { /* Storage access itself can throw. */ }
+  const read = (key) => { try { return local?.getItem(key) ?? null; } catch { return null; } };
+  const write = (key, value) => { try { local?.setItem(key, value); } catch { /* Session-only. */ } };
+
+  const parts = {};
+  for (const [part, key] of Object.entries(GOO_PART_KEYS)) {
+    const box = controls.parts?.[part];
+    parts[part] = read(key) !== "0";
+    if (box) {
+      box.checked = parts[part];
+      box.addEventListener("change", () => {
+        write(key, box.checked ? "1" : "0");
+        target.setParts({ [part]: box.checked });
+      });
+    }
+  }
+  // Strength sliders: remembered numbers.
+  for (const [part, key, fallback] of [["noseLine", GOO_NOSE_LINE_KEY, 1], ["eyeShine", GOO_EYE_SHINE_KEY, 0.5]]) {
+    const slider = controls[part];
+    const stored = read(key);
+    parts[part] = stored !== null && Number.isFinite(Number(stored)) ? Number(stored) : fallback;
+    if (!slider) continue;
+    slider.value = String(parts[part]);
+    slider.addEventListener("input", () => {
+      write(key, String(slider.value));
+      target.setParts({ [part]: Number(slider.value) });
+    });
+  }
+  target.setParts(parts);
+
+  const num = (v, lo, hi, fallback) => (Number.isFinite(Number(v)) && v !== null && v !== "" ? Math.min(hi, Math.max(lo, Number(v))) : fallback);
+  let light = { mode: "fixed", yaw: 0, pitch: 0 };
+  try {
+    const stored = JSON.parse(read(GOO_LIGHT_KEY) ?? "{}") ?? {};
+    // A hand-edited or old value must not reach the shader as NaN.
+    light = {
+      mode: stored.mode === "camera" ? "camera" : "fixed",
+      yaw: num(stored.yaw, -180, 180, 0),
+      pitch: num(stored.pitch, -60, 80, 0),
+    };
+  } catch { /* Keep the default. */ }
+  const { mode, yaw, pitch } = controls.light ?? {};
+  if (mode) mode.value = light.mode;
+  if (yaw) yaw.value = String(light.yaw);
+  if (pitch) pitch.value = String(light.pitch);
+  const update = () => {
+    light = { mode: mode?.value === "camera" ? "camera" : "fixed", yaw: Number(yaw?.value ?? 0), pitch: Number(pitch?.value ?? 0) };
+    write(GOO_LIGHT_KEY, JSON.stringify(light));
+    target.setLight(light);
+  };
+  for (const control of [mode, yaw, pitch]) control?.addEventListener(control === mode ? "change" : "input", update);
+  target.setLight(light);
 }
 
 /** Turn a material clone into the ZZZB Goo shader for one PMX material. */
@@ -178,7 +323,15 @@ function setUpZzzb(material, entry, assets, texture, frame) {
     setUpMatcaps(uniforms, params._matcaps, (file) => texture(file, spaces[roleOf[file]] ?? "sRGB"), entry.params ?? entry.game);
   }
   if (!face && Number(params["Enable Rim Lighting"]) >= 1) material.defines.GOO_RIM = "";
+  if (entry.pmx === EYE_LIGHT_MATERIAL) {
+    // Soft, shrinkable highlights instead of the opaque Goo output (#254).
+    material.defines.GOO_EYE_SHINE = "";
+    Object.assign(material, { transparent: true, depthWrite: false, alphaTest: 0, opacity: 1 });
+  }
   material.userData.gooUniforms = uniforms;
+  material.userData.gooParams = params;
+  // The Goo outline hull (#254) replaces three's MMD outline for these materials.
+  material.userData.outlineParameters = { ...material.userData.outlineParameters, visible: false };
   material.onBeforeCompile = (shader) => patchGooShader(shader, uniforms);
   material.customProgramCacheKey = () => `goo-zzzb-${Object.keys(material.defines).filter((k) => k.startsWith("GOO_")).sort().join("-")}`;
 }
@@ -230,7 +383,7 @@ export function bindGooShadersToggle(toggle, status, { load, local }) {
     }
     if (!on) return; // Switched off while loading.
     controller.setEnabled(true);
-    say("Game shaders on: cel shading, face shadow, matcaps, highlights and rim (outlines come in #254).");
+    say("Game shaders on. Switch parts and the light below.");
   };
 
   let stored = false;

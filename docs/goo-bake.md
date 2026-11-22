@@ -76,7 +76,7 @@ picking one.
 
 ## The Game shaders toggle (#251)
 
-The **Game shaders · ゲーム風** checkbox in *Independent channels* switches the
+The **Game shaders · ゲーム風** checkbox in the *Graphics · グラフィック* panel section switches the
 live avatar to the baked Goo inputs. It is **off by default** and remembered
 (`localStorage` key `yidhari.gooShaders`). Nothing is fetched until it is
 switched on.

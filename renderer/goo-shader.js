@@ -16,7 +16,24 @@ varying vec4 vGooCol;
 vec3 gooSrgbToLinear( vec3 c ) {
   return mix( c / 12.92, pow( ( c + 0.055 ) / 1.055, vec3( 2.4 ) ), step( vec3( 0.04045 ), c ) );
 }
+#ifdef GOO_OUTLINE
+// [ZZZB] Outlines V0.8: Col.r · 0.01 · mix(0.125, 0.375, clamp(distance − 0.75)) metres,
+// converted to PMX units (the import scale is 0.08 m per unit).
+float gooOutlineWidth( float colR, float distanceUnits ) {
+  float metres = distanceUnits * 0.08;
+  return colR * 0.01 * mix( 0.125, 0.375, clamp( metres - 0.75, 0.0, 1.0 ) ) / 0.08;
+}
+#endif
 `;
+
+const OUTLINE_PUSH = /* glsl */ `
+#ifdef GOO_OUTLINE
+  {
+    vec3 worldPos = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;
+    transformed += normalize( objectNormal ) * gooOutlineWidth( vGooCol.r, distance( worldPos, cameraPosition ) );
+  }
+#endif
+#include <project_vertex>`;
 
 const FRAGMENT_PARS = /* glsl */ `
 #define GOO_RAMP_SIZE ${RAMP_SIZE}
@@ -51,6 +68,17 @@ uniform float gooFacingForward;
 uniform float gooFacingDot;
 uniform float gooLightFacingPow;
 uniform float gooEdgeLight;
+// Live part switches (#254), 1 = on.
+uniform float gooPartCel;
+uniform float gooPartFaceShadow;
+uniform float gooPartMatcaps;
+uniform float gooPartHighlights;
+uniform float gooPartRim;
+uniform float gooPartEdgeSss;
+// Nose line strength (#254): 0 = Blender (hidden when facing the camera), 1 = always drawn.
+uniform float gooNoseLine;
+// Eye shine (#254): the 目光 overlay's blue highlights. 1 = game size, lower = smaller and fainter.
+uniform float gooEyeShine;
 
 // The smoothstep node group: t clamped, t²(3 − 2t). Blender's divide gives 0 for /0.
 float gooSmooth( float e0, float e1, float x ) {
@@ -146,6 +174,16 @@ vec3 gooRim( vec3 col, float NdotL, float NdotV, float normalRed ) {
 }
 #endif
 
+#ifdef GOO_OUTLINE
+uniform vec3 gooOutlineColors[5];
+// [Outline Colors] + [Adjust Colors To Match Some Stuff] + [Fix Outline Discoloration].
+vec3 gooOutlineColour( vec3 shaded, int id ) {
+  vec3 c = shaded * gooOutlineColors[ id ];
+  float f = id == 1 ? 1.0 : clamp( 1.0 - gooSmooth( 0.25, 0.5, vGooCol.g ), 0.0, 1.0 );
+  return mix( c, c * 0.25, f );
+}
+#endif
+
 vec3 gooShade( vec4 diffuse, vec3 n ) {
   vec3 D = diffuse.rgb;
   float pos = gooShadowPosition;
@@ -162,21 +200,23 @@ vec3 gooShade( vec4 diffuse, vec3 n ) {
   float m090 = mix( -0.11, 0.8888, gooFacingForward );
   float m106 = vGooCol.b < 0.005 ? 1.0 : diffuse.a;
   float m089 = mix( diffuse.a, 1.0, gooSmooth( m090, m090 + 0.1, m106 ) );
+  // Nose line: blend towards the raw mark in the diffuse alpha (1 everywhere else).
+  m089 = mix( m089, diffuse.a, gooNoseLine );
   vec3 base = mix( D, D * m089 * 0.25, clamp( 1.0 - m089, 0.0, 1.0 ) );
   // Dynamic Face Highlight from the lightmap's blue channel.
   vec4 lmN = texture2D( gooLightmap, vMapUv );
-  float highlight = clamp( lmN.b * gooFacingDot * gooLightFacingPow, 0.0, 1.0 );
+  float highlight = clamp( lmN.b * gooFacingDot * gooLightFacingPow * gooPartHighlights, 0.0, 1.0 );
   base += 0.6771 * base * highlight;
   // Shadows [FACE]: faceLogic mirrors u for one light side; the red channel is the SDF.
   vec2 uvL = gooFaceMirrorU > 0.5 ? vec2( - vMapUv.x, vMapUv.y ) : vMapUv;
   vec4 lmV = texture2D( gooLightmap, uvL );
   float edge1 = 1.0 - pow( gooFaceShadowRange, 3.14 ) + pos;
-  float lit = clamp( gooSmooth( edge1 - soft, edge1, lmV.r ), 0.0, 1.0 );
+  float lit = mix( 1.0, clamp( gooSmooth( edge1 - soft, edge1, lmV.r ), 0.0, 1.0 ), gooPartFaceShadow );
   vec3 light = mix( mix( gooShallowColors[ 2 ], gooShadowColors[ 2 ], lit ) * gooShadowMultiplier, gooSunColor, lit );
   // Body/Face Transition: outside the lightmap's alpha the transition colour shows.
   light = mix( light, gooTransitionColor * gooShadowMultiplier, 1.0 - lmV.a );
   // Fake SSS [FACE].
-  float sss = mix( 1.0, gooRamp( GOO_RAMP_SSS, lit ), gooSssStrength );
+  float sss = mix( 1.0, gooRamp( GOO_RAMP_SSS, lit ), gooSssStrength * gooPartEdgeSss );
   sss = mix( 1.0, mix( sss, 1.0, lit ), lmV.a );
 #else
   vec3 N = normalize( n );
@@ -185,7 +225,7 @@ vec3 gooShade( vec4 diffuse, vec3 n ) {
   float NdotL = dot( N, L );
   float NdotV = dot( N, V );
 #ifdef GOO_MATCAP
-  D = gooMatcap( D, N, id, mask.b * gooMatcapEnabled );
+  D = gooMatcap( D, N, id, mask.b * gooMatcapEnabled * gooPartMatcaps );
 #endif
   vec3 shadowColor = gooShadowColors[ id ];
   float colA = mix( gooColAlphaConstant, vGooCol.a, gooColAlphaFromAttribute );
@@ -193,12 +233,12 @@ vec3 gooShade( vec4 diffuse, vec3 n ) {
   float s5 = gooSmooth( pos - 0.5, pos - 0.5 + soft, NdotL );   // Shadow [No Cast Shadows]
   float s16 = gooSmooth( pos - 0.4, pos - 0.4 + soft, NdotL );
   // Edge Highlights: screen the diffuse with itself tinted by the shadow colour.
-  float edge = clamp( pow( clamp( 1.0 - NdotV, 0.0, 1.0 ), 10.0 ), 0.0, 1.0 ) * s4 * gooEdgeLight;
+  float edge = clamp( pow( clamp( 1.0 - NdotV, 0.0, 1.0 ), 10.0 ), 0.0, 1.0 ) * s4 * gooEdgeLight * gooPartEdgeSss;
   vec3 base = gooScreen( D, D * edge * shadowColor );
   // Cast Shadow Mask: no Goo cast shadows here, so only the shallow edge.
   float castMask = mix( 1.0, s4, gooCastShadows );
   // Fake SSS [BODY].
-  float sss = mix( 1.0, gooRamp( GOO_RAMP_SSS, castMask ), gooSssStrength );
+  float sss = mix( 1.0, gooRamp( GOO_RAMP_SSS, castMask ), gooSssStrength * gooPartEdgeSss );
   sss = mix( mix( sss, 1.0, s4 ), 1.0, colA );
   // Shadows [BODY].
   vec3 shadow = shadowColor * gooShadowMultiplier;
@@ -213,20 +253,40 @@ vec3 gooShade( vec4 diffuse, vec3 n ) {
   // Local Indirect Color, then the SSS blend; times the processed diffuse.
   vec3 indirectLight = mix( indirect * light, vec3( 1.0 ), 0.666 );
   vec3 col = base * mix( indirectLight, light, sss );
+  // Cel lighting off: the processed diffuse without any light.
+  col = mix( base, col, gooPartCel );
 #ifndef GOO_FACE
-  col = gooHighlights( col, mask, NdotL, dot( normalize( V + L ), N ) );
+  col = mix( col, gooHighlights( col, mask, NdotL, dot( normalize( V + L ), N ) ), gooPartHighlights );
 #ifdef GOO_RIM
 #ifdef USE_NORMALMAP
   float normalRed = texture2D( normalMap, vNormalMapUv ).r;
 #else
   float normalRed = 1.0;
 #endif
-  col = gooRim( col, NdotL, NdotV, normalRed );
+  col = mix( col, gooRim( col, NdotL, NdotV, normalRed ), gooPartRim );
 #endif
+#endif
+#ifdef GOO_OUTLINE
+  col = gooOutlineColour( col, id );
 #endif
   return col;
 }
 `;
+
+const OPAQUE = /* glsl */ `
+#ifdef GOO_EYE_SHINE
+  float gooShineAlpha = diffuseColor.a;
+#endif
+  outgoingLight = gooShade( diffuseColor, normal );
+  diffuseColor.a = 1.0;
+#ifdef GOO_EYE_SHINE
+  {
+    // Raise the alpha threshold to shrink the soft blobs, and fade them out below 0.5.
+    float edge = ( 1.0 - gooEyeShine ) * 0.9;
+    diffuseColor.a = smoothstep( edge, edge + 0.1, gooShineAlpha ) * clamp( gooEyeShine * 2.0, 0.0, 1.0 );
+  }
+#endif
+#include <opaque_fragment>`;
 
 const NORMAL_MAP_LINE = "vec3 mapN = texture2D( normalMap, vNormalMapUv ).xyz * 2.0 - 1.0;";
 if (!THREE.ShaderChunk.normal_fragment_maps.includes(NORMAL_MAP_LINE)) {
@@ -253,12 +313,13 @@ export function patchGooShader(shader, uniforms) {
   };
   let vertex = swap(shader.vertexShader, "#include <common>", `#include <common>\n${VERTEX_PARS}`);
   vertex = swap(vertex, "#include <begin_vertex>", "#include <begin_vertex>\n  vGooCol = vec4( gooSrgbToLinear( gooCol.rgb ), gooCol.a );");
+  vertex = swap(vertex, "#include <project_vertex>", OUTLINE_PUSH);
   shader.vertexShader = vertex;
   // After the last pars chunk, so vMapUv and vViewPosition are declared.
   let fragment = swap(shader.fragmentShader, "#include <clipping_planes_pars_fragment>", `#include <clipping_planes_pars_fragment>\n${FRAGMENT_PARS}`);
   fragment = swap(fragment, "#include <normal_fragment_maps>", NORMAL_MAPS);
   // Blender's Enable Alpha Usage is off: the shader output is opaque.
-  fragment = swap(fragment, "#include <opaque_fragment>", "outgoingLight = gooShade( diffuseColor, normal );\n  diffuseColor.a = 1.0;\n#include <opaque_fragment>");
+  fragment = swap(fragment, "#include <opaque_fragment>", OPAQUE);
   shader.fragmentShader = fragment;
 }
 
@@ -373,5 +434,44 @@ export function gooFrameUniforms() {
     gooFacingDot: { value: 0 },
     gooLightFacingPow: { value: 0 },
     gooEdgeLight: { value: 0 },
+    gooPartCel: { value: 1 },
+    gooPartFaceShadow: { value: 1 },
+    gooPartMatcaps: { value: 1 },
+    gooPartHighlights: { value: 1 },
+    gooPartRim: { value: 1 },
+    gooPartEdgeSss: { value: 1 },
+    gooNoseLine: { value: 1 },
+    gooEyeShine: { value: 0.5 },
   };
+}
+
+/**
+ * JS mirror of the GLSL gooOutlineWidth (PMX units), so tests can check the numbers.
+ * @param {number} colR Linear Col.r.
+ * @param {number} distanceUnits Camera distance in PMX units.
+ */
+export function gooOutlineWidthUnits(colR, distanceUnits) {
+  const metres = distanceUnits * 0.08;
+  const t = Math.min(1, Math.max(0, metres - 0.75));
+  return (colR * 0.01 * (0.125 + (0.375 - 0.125) * t)) / 0.08;
+}
+
+/**
+ * JS mirror of the outline darkening factor f in gooOutlineColour: 1 on ID 2
+ * (0-based index 1), else 1 − smoothstep(0.25, 0.5, Col.g).
+ */
+export function gooOutlineFactor(index, colG) {
+  if (index === 1) return 1;
+  const t = Math.min(1, Math.max(0, (colG - 0.25) / 0.25));
+  return 1 - t * t * (3 - 2 * t);
+}
+
+/** Outline colours per material ID; ID 1 is screened with 0.75 grey first, as in Blender. */
+export function gooOutlineColors(p) {
+  return NUMBERED.map((n, i) => {
+    const c = p[`Outline Color${n}`] ?? [0, 0, 0];
+    return i === 0
+      ? new THREE.Vector3(1 - (1 - c[0]) * 0.25, 1 - (1 - c[1]) * 0.25, 1 - (1 - c[2]) * 0.25)
+      : vec3(c);
+  });
 }

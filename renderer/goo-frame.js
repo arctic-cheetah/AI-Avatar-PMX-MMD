@@ -30,6 +30,29 @@ export function rotateEulerXYZ([rx, ry, rz], v) {
 /** The `light dir` before flattening: +Z rotated by the Main Light's Euler. */
 export const lightDirection = (euler) => normalize(rotateEulerXYZ(euler, [0, 0, 1]));
 
+/** An XYZ Euler (X, 0, Z) whose light direction is `direction` (Blender space). */
+export function eulerForDirection(direction) {
+  const [x, y, z] = normalize(direction);
+  const tilt = Math.acos(Math.min(1, Math.max(-1, z)));
+  const yaw = Math.hypot(x, y) < 1e-9 ? 0 : Math.atan2(x, -y);
+  return [tilt, 0, yaw];
+}
+
+const DEG = Math.PI / 180;
+
+/**
+ * The light's Euler for the chosen light controls (#254).
+ * @param {{ mode: "fixed" | "camera", yaw: number, pitch: number }} light Degrees.
+ * @param {{ baseEuler: number[], cameraBack?: number[] }} scene Blender space.
+ * @returns {number[]}
+ */
+export function lightEulerFor({ mode, yaw, pitch }, { baseEuler, cameraBack }) {
+  if (mode === "camera" && cameraBack) return eulerForDirection(cameraBack);
+  // Keep the tilt between the zenith and the nadir so a big pitch can't flip the light.
+  const tilt = Math.min(Math.PI - 0.01, Math.max(0.01, baseEuler[0] - pitch * DEG));
+  return [tilt, baseEuler[1], baseEuler[2] + yaw * DEG];
+}
+
 /** `faceLogic`'s exponent: pow(2 − (0.5 + 0.75), 3). */
 const RANGE_POWER = (2 - (0.5 + 0.75)) ** 3;
 
@@ -83,7 +106,7 @@ export function sampleRamp(samples, x) {
  * takes the camera and gives the values for `setFrame()` of the Goo materials.
  * @param {{ mesh: THREE.SkinnedMesh, scene: { light: { eulerXYZ: number[] },
  *   head: { bone: string, forward: number[], up: number[] } } }} input
- * @returns {(camera: THREE.Camera) => object}
+ * @returns {(camera: THREE.Camera, light?: { mode: "fixed" | "camera", yaw: number, pitch: number }) => object}
  * @throws {Error} When the mesh has no head bone.
  */
 export function createFrameUpdater({ mesh, scene }) {
@@ -97,22 +120,21 @@ export function createFrameUpdater({ mesh, scene }) {
   const scale = new THREE.Vector3();
   new THREE.Matrix4().copy(mesh.bindMatrix).multiply(new THREE.Matrix4().copy(mesh.skeleton.boneInverses[index]).invert())
     .decompose(scratch, bindQuaternion, scale);
-  const lightEuler = scene.light.eulerXYZ;
-  const light = lightDirection(lightEuler);
-  const lightThree = new THREE.Vector3(...blenderToThree(light));
+  const baseEuler = scene.light.eulerXYZ;
   const currentQuaternion = new THREE.Quaternion();
   const forward = new THREE.Vector3();
-  return (camera) => {
+  const lightThree = new THREE.Vector3();
+  return (camera, lightControls = { mode: "fixed", yaw: 0, pitch: 0 }) => {
     // Gaze, sway and gestures set local rotations; refresh the world matrix before reading it.
     bone.updateWorldMatrix(true, false);
     bone.matrixWorld.decompose(scratch, currentQuaternion, scale);
     const head = headVectors({ bindQuaternion, currentQuaternion, restForward: scene.head.forward, restUp: scene.head.up });
     const cameraForward = threeToBlender(camera.getWorldDirection(forward).toArray());
-    const terms = faceTerms({
-      light, lightEuler, headForward: head.forward, headUp: head.up,
-      cameraForward, cameraBack: cameraForward.map((c) => -c),
-    });
-    const lightView = lightThree.clone().transformDirection(camera.matrixWorldInverse).toArray();
+    const cameraBack = cameraForward.map((c) => -c);
+    const lightEuler = lightEulerFor(lightControls, { baseEuler, cameraBack });
+    const light = lightDirection(lightEuler);
+    const terms = faceTerms({ light, lightEuler, headForward: head.forward, headUp: head.up, cameraForward, cameraBack });
+    const lightView = lightThree.set(...blenderToThree(light)).transformDirection(camera.matrixWorldInverse).toArray();
     return { lightView, ...terms };
   };
 }

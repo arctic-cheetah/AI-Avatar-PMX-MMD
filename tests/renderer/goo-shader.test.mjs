@@ -87,7 +87,7 @@ function build(assets = bake()) {
 
 const FAKE_SHADER = () => ({
   uniforms: {},
-  vertexShader: "#include <common>\nvoid main() {\n#include <begin_vertex>\n}",
+  vertexShader: "#include <common>\nvoid main() {\n#include <begin_vertex>\n#include <project_vertex>\n}",
   fragmentShader: "#include <common>\n#include <clipping_planes_pars_fragment>\nvoid main() {\n#include <map_fragment>\n#include <normal_fragment_maps>\n#include <opaque_fragment>\n}",
 });
 

@@ -10,7 +10,7 @@ How the renderer's **Game shaders** mode reproduces Dillongoo's
 | --- | --- | --- |
 | Core | #252 | Cel light steps, shadow and shallow tint by material ID, sun colour, indirect colour, fake SSS, edge highlight, face lightmap shadow, nose line, dynamic face highlight, normal maps |
 | Extras | #253 | Matcaps, hair and body highlights, rim light (approximated), and the `Set Depth` check |
-| Finish | #254 | Outlines and outline colours, light controls, final comparison |
+| Finish | #254 | Outline hull and colours, light controls, live part switches, frame cost, final comparison |
 
 ## How the port was made
 
@@ -170,6 +170,81 @@ attribute does not exist). Hair in front of the face therefore stays hair,
 and the result looks the same as ordinary depth testing. The existing
 see-through brows (#99) keep the brows readable under the fringe.
 
+## Outlines (#254)
+
+Goo draws outlines with the `[ZZZB] Outlines V0.8` geometry nodes: a copy of
+the mesh with flipped faces, pushed out along the normals and tagged
+`outline = 1`. The ZZZB shader then gives those faces the outline colour. The
+renderer does the same with an **outline hull**: a second skinned mesh that
+shares the PMX geometry, skeleton and live morph weights, drawn with back
+faces only (`createOutlineHull`). It replaces three's `OutlineEffect` for
+Goo materials, so their MMD outlines are switched off.
+
+```text
+width  = Col.r · 0.01 · mix(0.125, 0.375, clamp(distance_to_camera − 0.75))   Blender metres
+offset = normal · width                                                       ÷ 0.08 for PMX units
+colour = shaded · OutlineColor[id] → mix(c, c · 0.25, f)
+```
+
+`Outline Color` (ID 1) is screened with 0.75 grey first, as in
+`[Adjust Colors To Match Some Stuff]`. `f` is 1 on ID 2 and
+`1 − smoothstep(0.25, 0.5, Col.g)` on every other ID
+(`[Fix Outline Discoloration]`: `Mix_061 = Mix(id(2), Math_102, 1.0)`). The
+hidden shell, the eye-shadow tint and materials added after load have no
+outline. Width and factor are mirrored in JavaScript
+(`gooOutlineWidthUnits`, `gooOutlineFactor`) so tests check the numbers.
+
+## Light controls and live switches (#254)
+
+In the *Graphics · グラフィック* panel section, under **Game shaders**:
+
+| Control | What it does |
+| --- | --- |
+| Light: **Fixed** | Blender's Main Light, turned by **yaw** (round her, degrees) and **pitch** (up, degrees). Yaw 0 / pitch 0 is the V1.3 scene. |
+| Light: **Follow camera** | The light points from the camera at her, so she is lit from the viewer's side when you orbit |
+| **Cel lighting** | Off: the game diffuse without any lighting. With every part off (and Nose line 0), the face is the flat diffuse too: the Highlights switch also gates the face's dynamic highlight |
+| **Face shadow** | Off: the face is fully lit |
+| **Matcaps**, **Highlights**, **Rim light**, **Edge + SSS** | Each part on or off |
+| **Outlines** | Shows or hides the outline hull |
+| **Eye shine** (0–1, default 0.5) | The blue highlight blobs of the `目光` eye-light overlay. 1 is the game's size and strength. Lower values raise the alpha threshold so the soft blobs shrink (`edge = (1 − s) · 0.9`), and fade them below 0.5; 0 hides them. The overlay is drawn transparent, without depth writes or an outline |
+| **Nose line** (0–1, default 1) | Draws the nose mark from the face diffuse alpha. At 0 it matches Blender, where `[[Process Diffuse]]` hides the mark while she faces the camera, so the nose reads only as a faint pink smudge from the front |
+
+The switches are uniform values shared by every Goo material, so flipping one
+is instant and never recompiles a shader. The light Euler feeds both the
+`N·L` direction and the per-frame `faceLogic` and `[Light Facing Forward]`
+terms, so the face shadow follows it. All choices are remembered in this
+browser (`yidhari.gooParts.*`, `yidhari.gooLight`). Stored light values are
+checked: an unknown mode becomes Fixed, and yaw and pitch are clamped to the
+sliders' ranges. The light's tilt is kept between the zenith and the nadir, so
+a large pitch can't flip it over the top.
+
+## Cost (#254)
+
+Measured on 22 November 2026 on the Strix Halo laptop (Radeon 8060S, Chrome
+via ANGLE/OpenGL ES 3.2), with a 2004 × 1400 canvas showing the bust. GPU time
+is from `EXT_disjoint_timer_query_webgl2` around each frame's render, about 300
+frames per row:
+
+| Setup | GPU ms per frame, mean | p95 | Frame time |
+| --- | --- | --- | --- |
+| MMD material (Game shaders off) | 0.94 | 1.17 | 16.8 ms (60 Hz vsync) |
+| Game shaders, all parts on | 1.16 | 1.49 | 16.7 ms |
+| Game shaders, outlines off | 0.96 | 1.25 | 16.7 ms |
+| Game shaders, cel, matcaps, highlights, rim and edge/SSS off | 1.15 | 1.32 | 16.7 ms |
+
+- The Goo shader itself costs almost nothing over the MMD one. Turning the
+  lighting parts off saves under 0.02 ms.
+- The outline hull, which draws the mesh a second time, is most of the extra
+  ~0.2 ms.
+- Frame time stays locked to 60 Hz either way.
+- **Texture memory:** the renderer loads 13 of the baked textures (the `_A`
+  maps are not used): five 2048², five 1024² and three 256². That is about
+  134 MB with mipmaps, on top of the MMD textures, which stay loaded for
+  switching back.
+
+So there is **no quality option**: the measured cost is too small to need
+one. The part switches are there to compare the look, not for speed.
+
 ## Per-frame inputs
 
 `renderer/goo-frame.js` works in Blender's world space: three.js
@@ -182,8 +257,8 @@ three.js +Z.
 | Head forward / up | The Head Controller's rest vectors from `scene.json` (`(0, −0.5, 0)` and `(0, 0, 0.5)`, not normalised, as in Blender), turned by how far the `頭` bone has rotated from its bind pose. Both rotations are taken in world space (the bone's world matrix is refreshed first), so moving or turning the model does not skew the face shadow |
 | Camera forward / back | The three.js camera, converted to Blender axes |
 
-The light stays fixed in the world, like the Blender scene; #254 adds
-controls for it.
+The light is fixed in the world by default, like the Blender scene; see
+[Light controls and live switches](#light-controls-and-live-switches-254).
 
 The facing terms are faithful, not inert by mistake: Blender's head-forward
 vector is also 0.5 long, so `Face Facing Forward` stays near 0 and the Dynamic
@@ -212,5 +287,8 @@ shaders off when the failing program is a Goo one.
   **one shared 33 × 5 texture** (8-bit, linear filtering). That keeps each
   material well under WebGL2's minimum of 224 fragment uniform vectors, which
   five `float[33]` arrays per material could exceed on some drivers.
+- **Eye shine:** half size by default (0.5), which Blender is not; set it to 1 for the game's blobs.
+- **Nose line:** on by default (strength 1), which Blender is not; set it to 0 for the exact Blender face.
 - **Rim light:** a fresnel approximation of Goo's screen-space `Scene Rim`
-  (see above).
+  (see above). In side views it can catch thin light edges on hair cards that
+  Blender does not show; compare with the Rim light switch.

@@ -205,6 +205,36 @@ wink.
 
 Poses and VPDs of the private model stay in the gitignored `assets/private/`.
 
+### Reading these VPDs in the renderer (#49)
+
+three.js r170's `MMDParser.parseVpd` (used by `MMDLoader.loadVPD`) is
+stricter than MMD:
+
+- It only accepts numbers written as `-?digits.digits`. The add-on writes six
+  decimals, as MMD does, so values never appear as `1.5e-05`.
+- It **rejects any `Morph` block** with "the file seems not vpd file." A pose
+  with morphs, such as `wink-v-sign.vpd`, must have its `MorphN{…}` blocks
+  removed before parsing, for example with
+  `text.replace(/Morph\d+\{[^}]*\}\r?\n?/g, "")`. Its morph weights then go
+  through the renderer's expression and morph pipeline. With the blocks
+  removed, `wink-v-sign.vpd` parses to its 18 bones.
+
+### First pose: wink + V-sign
+
+`assets/private/poses/wink-v-sign.vpd` holds `ウィンク右` = 1 and 18 right-arm
+bones: `右腕`, `右ひじ`, `右手首`, and the finger joints. The right hand is raised
+beside the face with the palm toward the viewer. Index and middle fingers are
+straight and spread; the ring and little fingers and the thumb are curled.
+Head and neck are untouched. It was posed from a script on
+`yidhari-pose.blend`: each bone was aimed in armature space and the result was
+saved with the add-on. Checks:
+
+- Importing, applying and saving it again gives the same 18 bones, with the
+  largest difference 4.2e-07, and the same morph.
+- three.js parses its bones once the morph block is removed (see above).
+- A labelled grid (neutral vs pose; front, three-quarter and side) is at
+  `assets/private/poses/grids/wink-v-sign.png`.
+
 ### Tests
 
 ```bash

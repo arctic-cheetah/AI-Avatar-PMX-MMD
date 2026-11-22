@@ -23,6 +23,7 @@ export const GOO_PART_KEYS = Object.freeze({
   outlines: "yidhari.gooParts.outlines",
 });
 export const GOO_LIGHT_KEY = "yidhari.gooLight";
+export const GOO_NOSE_LINE_KEY = "yidhari.gooNoseLine";
 const PART_UNIFORMS = {
   cel: "gooPartCel", faceShadow: "gooPartFaceShadow", matcaps: "gooPartMatcaps",
   highlights: "gooPartHighlights", rim: "gooPartRim", edgeSss: "gooPartEdgeSss",
@@ -126,6 +127,7 @@ export function createGooMaterials(mesh, assets, { pmx, baseUrl, loadTexture }) 
     setParts(parts) {
       for (const [part, on] of Object.entries(parts)) {
         if (part === "outlines") outlines = Boolean(on);
+        else if (part === "noseLine") frame.gooNoseLine.value = Number(on);
         else if (PART_UNIFORMS[part]) frame[PART_UNIFORMS[part]].value = on ? 1 : 0;
       }
       syncHull();
@@ -209,6 +211,16 @@ export function bindGooControls(controls, target, { local } = {}) {
         target.setParts({ [part]: box.checked });
       });
     }
+  }
+  const nose = controls.noseLine;
+  const storedNose = Number(read(GOO_NOSE_LINE_KEY));
+  parts.noseLine = read(GOO_NOSE_LINE_KEY) !== null && Number.isFinite(storedNose) ? storedNose : 1;
+  if (nose) {
+    nose.value = String(parts.noseLine);
+    nose.addEventListener("input", () => {
+      write(GOO_NOSE_LINE_KEY, String(nose.value));
+      target.setParts({ noseLine: Number(nose.value) });
+    });
   }
   target.setParts(parts);
 

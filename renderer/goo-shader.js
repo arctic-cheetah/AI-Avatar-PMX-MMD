@@ -71,6 +71,8 @@ uniform float gooPartMatcaps;
 uniform float gooPartHighlights;
 uniform float gooPartRim;
 uniform float gooPartEdgeSss;
+// Nose line strength (#254): 0 = Blender (hidden when facing the camera), 1 = always drawn.
+uniform float gooNoseLine;
 
 // The smoothstep node group: t clamped, t²(3 − 2t). Blender's divide gives 0 for /0.
 float gooSmooth( float e0, float e1, float x ) {
@@ -188,6 +190,8 @@ vec3 gooShade( vec4 diffuse, vec3 n ) {
   float m090 = mix( -0.11, 0.8888, gooFacingForward );
   float m106 = vGooCol.b < 0.005 ? 1.0 : diffuse.a;
   float m089 = mix( diffuse.a, 1.0, gooSmooth( m090, m090 + 0.1, m106 ) );
+  // Nose line: blend towards the raw mark in the diffuse alpha (1 everywhere else).
+  m089 = mix( m089, diffuse.a, gooNoseLine );
   vec3 base = mix( D, D * m089 * 0.25, clamp( 1.0 - m089, 0.0, 1.0 ) );
   // Dynamic Face Highlight from the lightmap's blue channel.
   vec4 lmN = texture2D( gooLightmap, vMapUv );
@@ -383,6 +387,7 @@ export function gooFrameUniforms() {
     gooPartHighlights: { value: 1 },
     gooPartRim: { value: 1 },
     gooPartEdgeSss: { value: 1 },
+    gooNoseLine: { value: 1 },
   };
 }
 

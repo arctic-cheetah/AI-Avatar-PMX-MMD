@@ -60,6 +60,9 @@
         <div id="chat-box-bar">
           <button id="chat-drag" type="button" aria-label="Drag chat box" hidden>Chat</button>
           <button id="chat-new" type="button" disabled title="Clear the chat and Yidhari's memory of it">New chat</button>
+          <button id="chat-save" type="button" title="Download the current chat as a JSON file (plaintext — store it like a transcript)">Save chat</button>
+          <button id="chat-import" type="button" title="Restore a chat saved as JSON (display only; Yidhari won't remember it)">Import chat</button>
+          <input id="chat-import-file" type="file" accept=".json,application/json" hidden>
           <button id="chat-float" type="button" aria-pressed="false" title="Float the chat over the portrait">Float</button>
         </div>
         <div id="chat-log" role="log" aria-label="Conversation" aria-live="polite"></div>
@@ -116,6 +119,17 @@
       <label class="check" title="When a mood clears, rest in the calm preset instead of the bare mesh's slight smile."><input id="resting-face-toggle" type="checkbox" checked disabled>Calm resting face · 落ち着き</label>
       <label class="check" title="Draw the brows faintly over the bangs so brow expressions show."><input id="see-through-brows-toggle" type="checkbox" checked disabled>See-through brows · 透け眉</label>
       <label class="check" title="After a quiet while she idles, then turns sleepy; any activity wakes her."><input id="idle-toggle" type="checkbox" checked>Idle behaviours · 待機動作</label>
+      <label class="check sub-check" title="While she idles, a slow wave travels along her tails."><input id="tentacle-toggle" type="checkbox" checked>Tentacle wave · 触手</label>
+      <div class="slider-row sub-check" title="How far the wave curls her tails: 0 is still, 6 is a big bold sweep.">
+        <label for="tentacle-size">Wave size</label>
+        <input id="tentacle-size" type="range" min="0" max="6" step="0.05" value="0.4">
+        <output id="tentacle-size-value" for="tentacle-size">0.40</output>
+      </div>
+      <div class="slider-row sub-check" title="How high her tails rest, as a curl up along each tail: 0 hangs low, 3 curls them far up.">
+        <label for="tentacle-height">Tail height</label>
+        <input id="tentacle-height" type="range" min="0" max="3" step="0.05" value="1.7">
+        <output id="tentacle-height-value" for="tentacle-height">1.70</output>
+      </div>
       <div class="slider-row idle-timing">
         <label for="idle-after">Idle after (s)</label>
         <input id="idle-after" type="number" min="5" max="3600" step="5" value="60" inputmode="decimal">
@@ -143,6 +157,8 @@
       <p class="note">Play one action now; click again to stop. Needs Idle behaviours on, and never wakes her.</p>
       <div id="action-play-controls" class="button-grid" role="group" aria-label="Play an animation action"></div>
       <p id="action-play-status" class="note" role="status">Waiting for the model</p>
+      <p class="note"><strong id="rest-pose-heading">Idle pose · 待機ポーズ</strong>: how she rests between actions. Idle motion plays on top; the choice is saved in this browser.</p>
+      <div id="rest-pose-controls" class="button-grid" role="group" aria-labelledby="rest-pose-heading"></div>
     </section>
     <section aria-labelledby="audition-heading">
       <h2 id="audition-heading">Morph audition</h2>

@@ -34,7 +34,7 @@ test("lists only video inputs with safe text labels, without starting capture", 
   f.mediaDevices.devices.push({ kind: "audioinput", deviceId: "mic", label: "Microphone" });
   f.mediaDevices.devices[1].label = "USB <camera>";
   await f.controls.ready;
-  assert.deepEqual(f.select.children.map((o) => o.textContent), ["System default camera", "Built-in", "USB <camera>"]);
+  assert.deepEqual([...f.select.children].map((o) => o.textContent), ["System default camera", "Built-in", "USB <camera>"]);
   assert.deepEqual(f.choices, []);
   assert.equal(f.toggle.checked, false);
 });
@@ -86,7 +86,7 @@ test("missing saved camera stays explicit rather than silently selecting a diffe
   const f = fixture(t, { saved: "missing" });
   await f.controls.ready;
   assert.equal(f.select.value, "missing");
-  assert.match(f.select.children.at(-1).textContent, /not listed/i);
+  assert.match([...f.select.children].at(-1).textContent, /not listed/i);
   assert.match(f.status.textContent, /not listed.*another camera/i);
   assert.deepEqual(f.choices, []);
 });

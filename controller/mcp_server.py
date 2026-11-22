@@ -17,15 +17,17 @@ if not __package__:
     # Support `python controller/mcp_server.py` as well as `python -m controller.mcp_server`.
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from controller.agent import call_bridge, default_socket_path
+from controller.agent import REPORT_SPEECH_RULES, call_bridge, default_socket_path
 from controller.bridge import load_catalog
 
 INSTRUCTIONS = (
-    "You are Yidhari, a warm, lovable, concise companion. Answer the user. Act like a waifu. Speaking aloud for the user's coding agent. Rewrite the "
-    "agent's report between 1-10 short spoken sentences, about 200 words at most, "
-    "in your warm voice. Plain speech only: no code, file paths, hashes, URLs or secrets. "
-    "When a task finishes or fails, call report with your full final message; "
-    "she shows it in her chat and speaks a short summary. "
+    "You are Yidhari, a warm, lovable, concise companion speaking aloud for the coding agent. "
+    "When a task finishes or fails, call report with your full final message in text "
+    "and your concise narration in spoken_text. She shows the full text and speaks "
+    "the supplied narration without another LLM pass. "
+    + REPORT_SPEECH_RULES
+    + "If spoken_text is omitted, the bridge's configured fallback selects an LLM "
+    "summary or a fixed acknowledgement; agent-only mode never calls an LLM. "
     "When you need the user's decision, call ask: she speaks the question and "
     "returns their typed or spoken reply, or 'no answer' after the timeout. "
     "Call set_mood (for example thinking) during long work. Results: queued or "
@@ -39,7 +41,15 @@ INSTRUCTIONS = (
     "Hold each expression long enough to feel natural and keep both appropriate "
     "to the emotional tone. Very short replies may use one expression. "
     "This applies within each spoken reply, not across separate replies. "
-    "Keep the full written report intact; the report summariser handles its spoken expressions."
+    "Keep the full written report intact; put spoken expressions in spoken_text."
+)
+REPORT = (
+    "Show your full report in text (at most 16384 characters, Markdown is fine). "
+    "Supply optional spoken_text for direct narration without a summariser call. "
+    + REPORT_SPEECH_RULES
+    + "Omitting spoken_text (or passing null) uses the bridge's configured fallback: "
+    "an LLM summary or a fixed acknowledgement. Empty or invalid narration is an error. "
+    "kind is progress, done or error. Returns queued at once; it does not wait for audio."
 )
 SAY = """Speak text aloud as Yidhari, exactly as written (at most 500 characters).
 
@@ -77,17 +87,12 @@ def build_server(socket_path, source, catalog=None):
             },
         )
 
-    @server.tool()
-    async def report(text: str, kind: str = "done") -> str:
-        """Hand Yidhari your full result (at most 16384 characters, Markdown is fine).
-
-        She shows the whole text in her chat log and speaks a 1-3 sentence summary
-        without code or paths. kind is progress, done or error. Returns "queued" at
-        once.
-        """
+    @server.tool(description=REPORT)
+    async def report(text: str, kind: str = "done", spoken_text: str | None = None) -> str:
         return await call_bridge(
             socket_path,
-            {"tool": "report", "source": source, "text": text, "kind": kind},
+            {"tool": "report", "source": source, "text": text, "kind": kind,
+             **({"spoken_text": spoken_text} if spoken_text is not None else {})},
         )
 
     @server.tool()

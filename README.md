@@ -7,7 +7,7 @@ This is a companion project, kept outside `my_code_pc` so it does not compete fo
 ## ✨ What she can do
 
 - 💬 **Chat:** type into the chat bar; replies stream from a local `llama-server`.
-- 🤖 **Agent voice:** start the bridge with `--agent` and a coding agent such as Claude Code, Claude Desktop or Codex can make her speak (`say`), summarise its results aloud (`report`), ask you questions you answer in the chat (`ask`) and change her face (`set_mood`) through a small MCP server — see [docs/agent-voice.md](docs/agent-voice.md).
+- 🤖 **Agent voice:** start with `--mode agent` for MCP voice/presentation without a chat or summarisation LLM, or add `--agent` to companion chat. Hosts such as Claude Code, Claude Desktop or Codex can speak (`say`), display full reports with host-authored `spoken_text` narration (`report`), ask questions (`ask`) and change expressions (`set_mood`). Legacy report summarisation remains optional — see [docs/agent-voice.md](docs/agent-voice.md).
 - 🕰️ **Time-of-day greeting:** whenever you open the page she greets you for your local time of day (morning, afternoon, evening or late night) with a matching mood, from a small fixed phrase list — no LLM, nothing leaves the machine. With speech on, the bridge says it aloud (once per connection, outside the chat history); a text-only bridge shows the bubble and mood only. Browsers may hold the audio until your first click on the page. Switch it off with the **Time-of-day greeting** tick box in the Chat panel.
 - ↻ **Replay last speech:** the Chat panel replays the latest spoken turn from the beginning, with each clip's mood and lip sync. Keeps one bounded turn in memory, without regenerating speech or changing the conversation — see [replay policy](docs/agent-voice.md#replay-last-speech).
 - ▶ **Replay any bubble:** every spoken chat bubble has its own replay button, even after a page refresh or bridge restart. Turns are kept on disk under a 500 MB cap (`--replay-cap-mb`), oldest first; deleted ones read *Too old to replay* — see [per-bubble replay](docs/agent-voice.md#replay-any-spoken-bubble).
@@ -20,9 +20,61 @@ This is a companion project, kept outside `my_code_pc` so it does not compete fo
 - 👄 **Lip sync:** Rhubarb Lip Sync times mouth shapes from the final audio, and the renderer plays them on the audio clock.
 - 👀 **Idle life and tuning:** automatic blinking, plus wink controls and a morph test bench for tuning expressions.
 - 🌊 **Slow sway:** her upper body drifts on gentle sine waves with a breathing motion, and settles back to still when toggled off — see [docs/body-sway.md](docs/body-sway.md).
+- 🧘 **Relaxed arms:** her arms rest with softly bent elbows and gently curled fingers, hands hanging in line with her legs, instead of hanging straight from the T-pose — see [docs/rest-pose.md](docs/rest-pose.md).
 - 😴 **Idle behaviours:** when no chat or bridge message comes for a minute she idles with small actions (glances, head tilts, shrugs, sighs, a stretch and yawn, a dozing nod), and after ten she stretches and turns sleepy with slower blinks, still doing one every two minutes. Each action can be ticked on or off in the panel. The next chat, voice input or agent message wakes her with a brief surprised → happy; the mouse does not. Timings and an off switch are in the panel — see [docs/idle-behaviours.md](docs/idle-behaviours.md).
 - 👁️ **Gaze tracking:** her eyes (and gently, her head) follow your mouse cursor and/or your face on webcam — see [docs/gaze-tracking.md](docs/gaze-tracking.md). The webcam only starts when you toggle it on, and frames never leave the browser.
 - 📌 **Pop-out window:** click **📌 Pop out** to float her portrait in an always-on-top picture-in-picture window while you work in other apps (Chrome/Edge 116+; Firefox and VS Code's browser get a popup window; on Ubuntu Wayland pin either with **Super+T**). **💬** adds the chat and settings panel beside her; speech, moods and agent voice keep working — see [docs/pop-out-window.md](docs/pop-out-window.md).
+
+## 🗂️ Directory structure
+
+```text
+AI-Avatar-PMX-MMD/
+├── controller/                 # 🐍 Python bridge, MCP/agent interface and speech pipeline
+│   ├── bridge.py               # 💬 Chat/agent orchestration and renderer WebSocket bridge
+│   └── mcp_server.py           # 🔌 Avatar tools exposed to coding agents
+├── renderer/                   # 🖥️ Browser avatar, expressions, animation and chat UI
+│   ├── index.html              # 🏠 Browser entry page
+│   └── serve.py                # 🌐 Local web server and optional speech-to-text endpoint
+├── docs/                       # 📚 Setup guides, architecture and feature documentation
+│   └── research/               # 🔬 Research chronology, decisions and validation records
+├── prototypes/                 # 🧪 Standalone experiments outside the avatar application
+│   ├── yidhari-native-wording/  # 🌸 Native EasyCLIProxyAPI persona/name/style plugin
+│   └── yidhari-copilot-name/    # 🧩 Earlier experimental VS Code extension and proxy
+├── tests/                      # ✅ Python checks and renderer JavaScript tests
+├── tools/                      # 🛠️ Latency reports, model probes and morph comparison grids
+├── models/                     # 🧠 Local speech/model files (gitignored)
+├── assets/private/             # 🔒 Private clips, comparison grids and other local artifacts
+├── yidhari-mmd/                # 👩 Private PMX model pack (gitignored)
+├── requirements*.txt           # 📦 Python dependencies for the optional runtime components
+└── package.json                # 📦 JavaScript editor dependencies
+```
+
+The avatar runtime lives in `controller/` and `renderer/`; prototypes have their
+own build, test and installation instructions. Start with the
+[native plugin installation guide](prototypes/yidhari-native-wording/install.md)
+for persona persistence through EasyCLIProxyAPI, or the
+[avatar setup guide](docs/setup.md) for the avatar itself.
+
+Local model packs, `assets/private/`, generated plugin binaries/VSIX packages
+and Python virtual environments are not distributed with the tracked source.
+Follow the relevant setup guide to supply or generate them on another machine.
+
+## 🔬 Prototypes beyond the avatar
+
+The [prototypes folder](prototypes/) holds standalone experiments for features
+outside the avatar application.
+
+The [Yidhari Copilot Name prototype](prototypes/yidhari-copilot-name/README.md)
+is an experimental VS Code extension that replaces recognised Copilot identity
+instructions with `yidhari` and changes “short and impersonal” to “friendly and
+concise.” It preserves user/tool messages and other instructions, offers
+reversible proxy routing and replacement diagnostics, and can be packaged locally
+as a VSIX. It runs independently of the avatar.
+
+For models routed through EasyCLIProxyAPI, the preferred approach is the
+[native wording plugin](docs/easycliproxyapi-yidhari.md), which applies the edits
+inside the existing core without an additional proxy or certificate setup.
+The extension's proxy modes remain experimental alternatives.
 
 ## 🧭 How it works
 
@@ -112,6 +164,16 @@ sequenceDiagram
    .venv/bin/python controller/bridge.py --mode demo
    ```
 4. **Open [http://127.0.0.1:8770/renderer/](http://127.0.0.1:8770/renderer/).** Use `127.0.0.1`, not `localhost`, and do not open the HTML file directly. Wait for **Connected · ready**, then click **Start default response**. She smiles, thinks, and returns to neutral.
+
+### 🔇 Test pages that keep her voice
+
+The bridge sends agent speech to the renderer page that connected **most recently**, so an extra page, such as a feature branch on another port, takes her voice from the live avatar. Start a test server with `--no-bridge` on a free port:
+
+```bash
+python3 renderer/serve.py --port 8772 --no-bridge
+```
+
+It prints `http://127.0.0.1:8772/renderer/?bridge=off`. You can open that URL in any browser. With `?bridge=off`, the page never opens the bridge WebSocket. The status reads **Bridge off (test page)** and the chat bar stays disabled. The model, presets, idle motion, physics and panels all work as usual. The live server on 8770 and its page are left alone. If the port you pick is already in use, `serve.py` exits with a hint to choose another `--port`. You can add `?bridge=off` to any renderer URL by hand too.
 
 ## 🤖 Talk to the local LLM
 
@@ -371,6 +433,7 @@ avatar-yidhari/
 | [body-sway.md](docs/body-sway.md)                               | Slow sine-wave body sway design (issue #4)              |
 | [physics.md](docs/physics.md)                                   | Hair, tail and accessory physics; body groups (#37)     |
 | [idle-behaviours.md](docs/idle-behaviours.md)                   | Idle, sleepy and wake-up states and settings (#71)      |
+| [thinking-pose.md](docs/thinking-pose.md)                       | Thinking-pose arm targets and bust clearance (#217)     |
 | [animation-transitions.md](docs/animation-transitions.md)         | Smooth, interruptible transitions and layer rules (#54) |
 | [pop-out-window.md](docs/pop-out-window.md)                       | Floating window, Firefox popup, platform limits (#52)   |
 | [shared-expression-catalog.md](docs/shared-expression-catalog.md) | Mood presets used by the LLM                            |

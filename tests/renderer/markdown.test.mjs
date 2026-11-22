@@ -138,7 +138,7 @@ test("every streamed prefix renders, and the finished text matches a one-shot re
   const target = createDocument().createElement("div");
   for (let end = 1; end <= STREAMED.length; end += 1) renderMarkdown(target, STREAMED.slice(0, end));
   assert.equal(target.innerHTML, html(STREAMED));
-  assert.equal(target.children.filter((child) => child.localName === "h1").length, 1);
+  assert.equal([...target.children].filter((child) => child.localName === "h1").length, 1);
 });
 
 test("unfinished fences, emphasis and links recover once the text completes", () => {

@@ -47,16 +47,55 @@ function poseArm(mesh, side, target, bendHint) {
   return { elbow, wrist };
 }
 
-function poseHand(mesh, side, forward, normal, curlAmount) {
-  const get = (suffix) => mesh.skeleton.getBoneByName(side + suffix);
+/**
+ * The hand's world frame: the wrist-to-middle-finger direction and the palm
+ * normal (pointing out of the palm on both sides).
+ * @returns {{ finger: THREE.Vector3, palm: THREE.Vector3 } | null} null when a bone is missing.
+ */
+export function handFrame(mesh, side) {
+  const get = (suffix) => mesh.skeleton?.getBoneByName(side + suffix);
   const wrist = get("手首"), middle = get("中指１"), index = get("人指１"), little = get("小指１");
-  if (!wrist || !middle || !index || !little) return;
+  if (!wrist || !middle || !index || !little) return null;
   wrist.updateWorldMatrix(true, true);
   const origin = wrist.getWorldPosition(new THREE.Vector3());
   const finger = middle.getWorldPosition(new THREE.Vector3()).sub(origin).normalize();
   const across = index.getWorldPosition(new THREE.Vector3()).sub(little.getWorldPosition(new THREE.Vector3())).normalize();
   const palm = new THREE.Vector3().crossVectors(across, finger).normalize();
   if (side === "左") palm.negate();
+  return { finger, palm };
+}
+
+/**
+ * Curl every finger joint of one hand toward a palm normal, by an angle per finger.
+ * Axes are captured before any joint bends, so each joint curls relative to the palm.
+ * @param {THREE.Object3D} mesh
+ * @param {"右"|"左"} side
+ * @param {THREE.Vector3} palmWorld Palm normal in world space.
+ * @param {(digit: string) => number} angleFor Radians per joint for 親指, 人指, 中指, 薬指 or 小指.
+ * @returns {void}
+ */
+export function curlFingers(mesh, side, palmWorld, angleFor) {
+  const pattern = new RegExp(`^${side}(親指|人指|中指|薬指|小指)[１２３]$`);
+  const curls = (mesh.skeleton?.bones ?? []).filter((bone) => pattern.test(bone.name)).map((bone) => {
+    bone.updateWorldMatrix(true, false);
+    const child = bone.children.find((entry) => entry.isBone);
+    const localDirection = (child?.position ?? bone.position).clone().normalize();
+    const palmLocal = palmWorld.clone().applyQuaternion(bone.getWorldQuaternion(new THREE.Quaternion()).invert());
+    return { bone, angle: angleFor(pattern.exec(bone.name)[1]), axis: new THREE.Vector3().crossVectors(localDirection, palmLocal).normalize() };
+  });
+  for (const { bone, axis, angle } of curls) {
+    if (angle) bone.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(axis, angle));
+  }
+}
+
+/** The thumb curls this much of the other fingers' angle. */
+export const THUMB_CURL = 0.45;
+
+function poseHand(mesh, side, forward, normal, curlAmount) {
+  const wrist = mesh.skeleton.getBoneByName(`${side}手首`);
+  const frame = handFrame(mesh, side);
+  if (!frame) return;
+  const { finger, palm } = frame;
   const basis = (y, z) => {
     const x = new THREE.Vector3().crossVectors(y, z).normalize();
     z = new THREE.Vector3().crossVectors(x, y).normalize();
@@ -67,24 +106,41 @@ function poseHand(mesh, side, forward, normal, curlAmount) {
   const world = wrist.getWorldQuaternion(new THREE.Quaternion());
   wrist.quaternion.copy(wrist.parent.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(rotation).multiply(world));
   wrist.updateWorldMatrix(false, true);
-  const palmWorld = normal.clone().normalize();
-  // Capture axes before bending parents so each joint curls relative to the palm.
-  const curls = mesh.skeleton.bones.filter((bone) =>
-    new RegExp(`^${side}(?:親指|人指|中指|薬指|小指)[１２３]$`).test(bone.name)).map((bone) => {
-    const child = bone.children.find((entry) => entry.isBone);
-    const localDirection = (child?.position ?? bone.position).clone().normalize();
-    const palmLocal = palmWorld.clone().applyQuaternion(bone.getWorldQuaternion(new THREE.Quaternion()).invert());
-    return { bone, axis: new THREE.Vector3().crossVectors(localDirection, palmLocal).normalize() };
-  });
-  for (const { bone, axis } of curls) {
-    const amount = bone.name.includes("親指") ? curlAmount * 0.45 : curlAmount;
-    bone.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(axis, amount));
-  }
+  curlFingers(mesh, side, normal.clone().normalize(), (digit) => (digit === "親指" ? curlAmount * THUMB_CURL : curlAmount));
   wrist.updateWorldMatrix(false, true);
 }
 
-/** Build a supported chin-rest pose, retaining exact rest rotations for release. */
-export function buildThinkingRig(mesh) {
+/**
+ * Arm targets for the chin-rest pose, in model units relative to a bone.
+ * - chin: right wrist target, from the head bone.
+ * - elbowBend: which way the right elbow bends.
+ * - support: left wrist target, from the posed right elbow.
+ * - supportBend: which way the left elbow bends.
+ * - fist: the right hand's finger direction, in world space.
+ * - fistPalm: the right palm normal, in world space.
+ * Picked with the user from comparison grids; see docs/thinking-pose.md (#217).
+ */
+export const THINKING_ARM = Object.freeze({
+  // The fist sits under the right side of the chin, so it props the chin up without covering the face.
+  chin: Object.freeze([-0.85, -0.75, 1.8]),
+  // 30° out from straight down with a little forward bias: tucked in, with the forearm bone clear of the bust.
+  elbowBend: Object.freeze([-0.5, -0.866, 0.8]),
+  // The left hand cups the right elbow from below, against the puffy sleeve.
+  support: Object.freeze([0.5, -0.6, 0.1]),
+  // The left elbow lifts up and out, so her shoulders look balanced; only the cuff presses in (#221).
+  supportBend: Object.freeze([1, -0.3, 0.3]),
+  // Fingers tilted 50° back, so the fist is short enough to fit under the chin.
+  fist: Object.freeze([0.15, 0.643, -0.766]),
+  fistPalm: Object.freeze([0, -0.766, -0.643]),
+});
+
+/**
+ * Build a chin-rest pose, retaining exact rest rotations for release.
+ * @param {THREE.Object3D} mesh
+ * @param {Partial<typeof THINKING_ARM>} [arm] Overrides for the arm targets, for previews.
+ */
+export function buildThinkingRig(mesh, arm = {}) {
+  const { chin, elbowBend, support, supportBend, fist, fistPalm } = { ...THINKING_ARM, ...arm };
   const head = mesh.skeleton?.getBoneByName("頭");
   if (!head) return [];
   const entries = mesh.skeleton.bones.filter((bone) => /^(?:右|左)(?:腕$|ひじ$|手首$|(?:親指|人指|中指|薬指|小指)[０１２３]$)/.test(bone.name))
@@ -92,12 +148,12 @@ export function buildThinkingRig(mesh) {
   try {
     mesh.updateMatrixWorld(true);
     // Leave space in front of the jaw and outfit for the curled fingers and gloves.
-    const chinWrist = head.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(-0.35, -1.5, 2.05));
-    const right = poseArm(mesh, "右", chinWrist, new THREE.Vector3(-0.35, -1, 0.85));
+    const chinWrist = head.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(...chin));
+    const right = poseArm(mesh, "右", chinWrist, new THREE.Vector3(...elbowBend));
     if (right) {
-      poseHand(mesh, "右", new THREE.Vector3(0.15, 1, -0.1), new THREE.Vector3(0, 0, -1), 0.8);
-      const support = right.elbow.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0.45, -0.3, 0.85));
-      const left = poseArm(mesh, "左", support, new THREE.Vector3(0.7, -1, 0.2));
+      poseHand(mesh, "右", new THREE.Vector3(...fist), new THREE.Vector3(...fistPalm), 0.8);
+      const supportWrist = right.elbow.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(...support));
+      const left = poseArm(mesh, "左", supportWrist, new THREE.Vector3(...supportBend));
       if (left) poseHand(mesh, "左", new THREE.Vector3(-1, 0.1, 0), new THREE.Vector3(0, 1, -0.2), 0.45);
     }
     for (const entry of entries) entry.posed.copy(entry.bone.quaternion);

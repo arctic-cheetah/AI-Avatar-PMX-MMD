@@ -1,7 +1,7 @@
 // #105: the chat log survives a page refresh (sessionStorage, display only).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ChatHistory, CHAT_LOG_KEY } from "../../renderer/chat-history.js";
+import { ChatHistory, CHAT_LOG_KEY, chatFile, parseChatFile } from "../../renderer/chat-history.js";
 import { connectBridge } from "../../renderer/bridge-client.js";
 import { installPage } from "./fake-dom.mjs";
 
@@ -109,7 +109,7 @@ function reload(page, session, calls) {
 }
 
 function lines(page) {
-  return page.log().children.map((line) => ({
+  return [...page.log().children].map((line) => ({
     className: line.className,
     who: line.children[0].textContent,
     text: line.children[1].textContent,
@@ -340,6 +340,76 @@ test("a spoken turn is saved on the right entry after another tab wrote", () => 
     { who: "agent", kind: "say", source: "A", text: "Spoken.", turn: "1".repeat(16) },
     { who: "you", text: "Meanwhile" },
   ]);
+});
+
+// --- #192: save and import the current chat as a JSON file ---
+
+test("exporting produces a versioned JSON file without internal entry ids", () => {
+  const session = storage();
+  const history = new ChatHistory({ storage: session, legacy: null });
+  history.add({ who: "you", text: "Hello" });
+  history.add({ who: "yidhari", text: "**Hi!**", turn: "1".repeat(16) });
+  const file = JSON.parse(history.exportFile(new Date("2026-11-14T00:00:00Z")));
+  assert.equal(file.version, 1);
+  assert.equal(file.exportedAt, "2026-11-14T00:00:00.000Z");
+  assert.deepEqual(file.entries, [
+    { who: "you", text: "Hello" },
+    { who: "yidhari", text: "**Hi!**", turn: "1".repeat(16) },
+  ]);
+  assert.equal(chatFile(file.entries, new Date("2026-11-14T00:00:00Z")), history.exportFile(new Date("2026-11-14T00:00:00Z")));
+});
+
+test("importing replaces the log, drops bad entries and reports damage", () => {
+  const session = storage();
+  const history = new ChatHistory({ storage: session, legacy: null });
+  history.add({ who: "you", text: "old" });
+  const text = JSON.stringify({ version: 1, entries: [
+    { who: "you", text: "kept" },
+    { who: "root", text: "bad role" },
+    { who: "yidhari", text: 42 },
+    null,
+  ] });
+  const imported = history.importFile(text);
+  assert.equal(imported.damaged, true);
+  assert.deepEqual(imported.entries, [{ who: "you", text: "kept" }]);
+  assert.deepEqual(new ChatHistory({ storage: session, legacy: null }).load().entries, [{ who: "you", text: "kept" }]);
+  assert.deepEqual(parseChatFile(text).entries, [{ who: "you", text: "kept" }]);
+});
+
+test("import rejects non-JSON, unsupported versions and oversize files", () => {
+  const history = new ChatHistory({ storage: storage(), legacy: null });
+  assert.throws(() => history.importFile("{not json"), /not valid JSON/);
+  assert.throws(() => history.importFile('{"version":2,"entries":[]}'), /Unsupported chat file/);
+  assert.throws(() => history.importFile("x".repeat(2_000_001)), /too large/);
+  assert.throws(() => parseChatFile(""), /empty/);
+});
+
+test("import enforces the entry and character caps, oldest first", () => {
+  const history = new ChatHistory({ storage: storage(), legacy: null, maxEntries: 2, maxChars: 100 });
+  const imported = history.importFile(JSON.stringify({ version: 1, entries: [
+    { who: "you", text: "one" }, { who: "you", text: "two" }, { who: "you", text: "three" },
+  ] }));
+  assert.deepEqual(imported.entries.map((entry) => entry.text), ["two", "three"]);
+});
+
+test("importing through the chat UI restores display only and sends nothing", async (t) => {
+  const page = installPage(t);
+  const session = storage();
+  const calls = [];
+  open(page, session, calls);
+  chat(page);
+  calls.length = 0;
+  page.sent.length = 0;
+  const fileInput = page.nodes.get("#chat-import-file");
+  fileInput.files = [{ text: async () => JSON.stringify({ version: 1, entries: [{ who: "you", text: "Imported hello" }, { who: "yidhari", text: "Imported **reply**" }] }) }];
+  await fileInput.listeners.change[0]();
+  const shown = lines(page);
+  assert.ok(shown.some((line) => line.text === "Imported hello"));
+  assert.ok(shown.some((line) => line.text.includes("Imported reply")));
+  assert.deepEqual(calls, [], "importing must not speak or change mood");
+  assert.deepEqual(page.sent, [], "importing must not send anything to the bridge");
+  assert.deepEqual(new ChatHistory({ storage: session, legacy: null }).load().entries.map((e) => e.text),
+    ["Imported hello", "Imported **reply**"]);
 });
 
 test("New chat in one tab is not undone by the other tab's next message", () => {

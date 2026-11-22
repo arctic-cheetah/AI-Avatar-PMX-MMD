@@ -145,7 +145,7 @@ test("replay buttons follow the busy state, and a pruned turn stays too old", (t
   page.receive(speak(T1));
   page.receive({ type: "agent", kind: "say", source: "A", text: "Two.", turn: T2 });
   page.receive(speak(T2));
-  const [one, two] = page.log().children.map(replayOf);
+  const [one, two] = [...page.log().children].map(replayOf);
   api.setReplayEnabled(false);
   assert.equal(one.disabled && two.disabled, true);
   api.setReplayEnabled(true);

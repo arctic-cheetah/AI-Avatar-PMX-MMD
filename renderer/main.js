@@ -18,7 +18,7 @@
 //   Live LLM speech, hand poses, hair/coat physics.
 //
 // Extension points:
-//   restArms()  — add elbow, wrist, or finger rotations here.
+//   restArms()  — elbow, wrist and finger rest rotations live in rest-pose.js.
 //   updateBlink — copy this pattern for other morph weights.
 //   applySway() — copy this pattern for other bone-motion layers.
 //   animate()   — keep per-frame work here, not in the loader callback.
@@ -32,7 +32,7 @@ import { loadExpressionCatalog } from "./expression-catalog.js";
 import { ExpressionController } from "./expression-controller.js";
 import { MorphAudition, buildMorphInventory } from "./morph-audition.js";
 import { AuditionPanel } from "./audition-panel.js";
-import { connectBridge } from "./bridge-client.js";
+import { bridgeEnabled, connectBridge } from "./bridge-client.js";
 import { SpeechPlayer, loadSpeechShapes } from "./speech-player.js";
 import { VoiceVolume, bindVoiceVolume } from "./voice-volume.js";
 import { LiveSpeechSession } from "./speech-session.js";
@@ -40,6 +40,10 @@ import { LastSpeechReplay, dropQueuedReplay, replayQueueItems } from "./speech-r
 import { FillerSession } from "./filler-session.js";
 import { ThinkingPose, THINKING_POSE, headGazeScale } from "./thinking-pose.js";
 import { buildThinkingRig } from "./thinking-rig.js";
+import { handAngles, thinkingFidgetAngles } from "./thinking-fidget.js";
+import { REST_POSES, bindRestPoseSetting, relaxArms } from "./rest-pose.js";
+import { buildHandDriftRig } from "./hand-drift-rig.js";
+import { SHOULDER_LIFT, counterShoulder } from "./shoulder-lift.js";
 import { GazeController, normalisePointer, clampEyePitch } from "./gaze-tracking.js";
 import { CameraGaze } from "./camera-gaze.js";
 import { CameraControls } from "./camera-controls.js";
@@ -52,11 +56,14 @@ import { addSeeThroughBrows, bindSeeThroughBrowsToggle } from "./see-through-bro
 import { installCollapsiblePanel } from "./collapsible-panel.js";
 import { FrameLoop, PopOut, popupWindow } from "./pop-out.js";
 import { IDLE_STATE_LABELS, IdleController, bindIdleSettings, idleBlocked } from "./idle-behaviour.js";
-import { ACTION_LABELS, FACE_MORPHS, IDLE_MOTION, IdleMotion, bindActionSettings, manualPlayBlocked } from "./idle-motion.js";
+import {
+  ACTION_LABELS, ARM_CHANNELS, FACE_MORPHS, IDLE_MOTION, IdleMotion, bindActionSettings, bindArmDriftSetting, manualPlayBlocked,
+} from "./idle-motion.js";
 import { fetchTurn, turnFile } from "./turn-replay.js";
 import { createAmmoLoader } from "./ammo-loader.js";
 import { filterPhysics } from "./physics-groups.js";
 import { PhysicsLayer } from "./physics-layer.js";
+import { TENTACLE_ACTIONS, TENTACLE_WAVE_KEY, TentacleWave, bindTentacleHeight, bindTentacleSize, tailChains, tentacleBlocks } from "./tentacle-motion.js";
 import { bindStoredToggle } from "./stored-toggle.js";
 import {
   HAIR_FOLLOW, RIGID_STRANDS, blendWeights, pinTargets, pinnedBones, sameMotionAs, stiffStrands,
@@ -119,6 +126,11 @@ const physicsRateInput = document.querySelector("#physics-rate");
 const physicsRateOutput = document.querySelector("#physics-rate-value");
 const gazeStatus = document.querySelector("#gaze-status");
 const idleToggle = document.querySelector("#idle-toggle");
+const tentacleToggle = document.querySelector("#tentacle-toggle");
+const tentacleSizeInput = document.querySelector("#tentacle-size");
+const tentacleSizeOutput = document.querySelector("#tentacle-size-value");
+const tentacleHeightInput = document.querySelector("#tentacle-height");
+const tentacleHeightOutput = document.querySelector("#tentacle-height-value");
 const idleAfterInput = document.querySelector("#idle-after");
 const sleepAfterInput = document.querySelector("#sleep-after");
 const sleepActionEveryInput = document.querySelector("#sleep-action-every");
@@ -237,6 +249,10 @@ const gazeQuat = new THREE.Quaternion();
 const thinkingPose = new ThinkingPose();
 /** @type {{ bone: THREE.Bone, rest: THREE.Quaternion, posed: THREE.Quaternion }[]} */
 let thinkingBones = [];
+/** Arm-target overrides from the preview hook (#217); empty uses THINKING_ARM. */
+let thinkingArm = {};
+/** Fidget size overrides from the preview hook (#218); a `clock` holds one moment. */
+let thinkingFidget = {};
 /** @type {{ bone: THREE.Bone, rest: THREE.Quaternion }[]} */
 let swayBones = [];
 const swayEuler = new THREE.Euler();
@@ -245,6 +261,15 @@ const swayQuat = new THREE.Quaternion();
 const sway = new SwayController();
 /** Idle-state timer (#71): sleepy after a long quiet, waking on activity. */
 const idle = new IdleController();
+// Tentacle wave (#182), built early: the action buttons below play it.
+const tentacleWave = new TentacleWave();
+bindStoredToggle(tentacleToggle, TENTACLE_WAVE_KEY, (on) => tentacleWave.setEnabled(on));
+bindTentacleSize(tentacleWave, tentacleSizeInput, {
+  show: (size) => { if (tentacleSizeOutput) tentacleSizeOutput.textContent = size.toFixed(2); },
+});
+bindTentacleHeight(tentacleWave, tentacleHeightInput, {
+  show: (height) => { if (tentacleHeightOutput) tentacleHeightOutput.textContent = height.toFixed(2); },
+});
 bindIdleSettings(idle, { toggle: idleToggle, idleAfterInput, sleepAfterInput, sleepActionEveryInput });
 /** Whether an agent ask is waiting for an answer; idle waits too. */
 let askOpen = false;
@@ -276,6 +301,8 @@ function actionCheckboxes(labels, container, prefix) {
   return boxes;
 }
 bindActionSettings(idleMotion, actionCheckboxes(ACTION_LABELS, "#actions", "action"));
+// Arm drift (#193) is always on while idle, not a picked action, so it has its own tick and key.
+bindArmDriftSetting(idleMotion, actionCheckboxes({ "arm-drift": "Arm drift" }, "#actions", "idle")["arm-drift"]);
 
 /**
  * One play button per action label (#164), disabled until refreshActionPlay
@@ -303,6 +330,38 @@ function actionPlayButtons(labels, container) {
   return buttons;
 }
 const actionButtons = actionPlayButtons(ACTION_LABELS, "#action-play-controls");
+/** Tentacle action buttons (#182): the wave and its reactions, played alongside the body actions. */
+const tentacleButtons = {};
+for (const [name, { label }] of Object.entries(TENTACLE_ACTIONS)) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.dataset.tentacleAction = name;
+  button.textContent = label;
+  button.disabled = true;
+  button.setAttribute("aria-pressed", "false");
+  button.addEventListener("click", () => {
+    tentacleWave.toggle(name);
+    refreshActionPlay();
+  });
+  document.querySelector("#action-play-controls").append(button);
+  tentacleButtons[name] = button;
+}
+/** The idle pose she rests in (#199): Idle-pose-clean or Idle-pose-natural, saved per browser. */
+let restPose = "idle-pose-clean";
+const restPoseButtons = {};
+for (const [name, { label }] of Object.entries(REST_POSES)) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.dataset.restPose = name;
+  button.textContent = label;
+  document.querySelector("#rest-pose-controls").append(button);
+  restPoseButtons[name] = button;
+}
+bindRestPoseSetting((name) => {
+  restPose = name;
+  // Before the model loads, restArms() picks the pose up.
+  previewRest();
+}, restPoseButtons);
 const actionPlayStatus = document.querySelector("#action-play-status");
 let shownActionPlay = null;
 
@@ -320,16 +379,24 @@ function refreshActionPlay() {
     state: idle.state,
   });
   if (reason) idleMotion.stop();
+  const tailReason = reason ?? (tentacleWave.enabled ? null : "Tentacle wave is off");
+  if (tailReason) tentacleWave.stop();
   const playing = idleMotion.playing;
-  const shown = `${reason}|${playing}`;
+  const tailPlaying = tentacleWave.playing;
+  const shown = `${reason}|${tailReason}|${playing}|${tailPlaying}`;
   if (shown === shownActionPlay) return;
   shownActionPlay = shown;
   for (const [name, button] of Object.entries(actionButtons)) {
     button.disabled = Boolean(reason);
     button.setAttribute("aria-pressed", String(playing === name));
   }
-  actionPlayStatus.textContent = reason
-    ?? (playing ? `Playing: ${ACTION_LABELS[playing]}` : "Ready: click an action to play it once");
+  for (const [name, button] of Object.entries(tentacleButtons)) {
+    button.disabled = Boolean(tailReason);
+    button.setAttribute("aria-pressed", String(tailPlaying === name));
+  }
+  const labels = [playing && ACTION_LABELS[playing], tailPlaying && TENTACLE_ACTIONS[tailPlaying].label].filter(Boolean);
+  const ready = labels.length ? `Playing: ${labels.join(" + ")}` : "Ready: click an action to play it once";
+  actionPlayStatus.textContent = reason ?? (tailReason ? `${ready} · ${tailReason}` : ready);
 }
 /**
  * Idle motion bones: which angle of the pose each one takes, and its sign
@@ -343,11 +410,32 @@ const IDLE_BONES = Object.freeze([
   { name: "首", pitch: [["headPitch", -0.4]] },
   { name: "頭", pitch: [["headPitch", -0.6], ["bobPitch", 1]], roll: [["tilt", 1], ["bobRoll", 1]] },
   // Her left shoulder is on the right of the screen (#149 shrugs are named by screen side).
-  { name: "左肩", roll: [["shoulders", -1], ["shoulderRight", -1], ["shiverWave", -0.8]], own: true },
-  { name: "右肩", roll: [["shoulders", 1], ["shoulderLeft", 1], ["shiverWave", 0.8]], own: true },
+  // The signs lift the shoulder tip; 腕 turns back so the arm keeps hanging (#236).
+  ...Object.entries(SHOULDER_LIFT).map(([name, { channel, sign }]) => ({
+    name, roll: [["shoulders", sign], [channel, sign], ["shiverWave", -0.8 * Math.sign(sign)]], own: true,
+  })),
 ]);
-/** @type {{ bone: THREE.Bone, rest: THREE.Quaternion | null, pitch?: [string, number][], roll?: [string, number][] }[]} */
+/** @type {{ bone: THREE.Bone, rest: THREE.Quaternion | null, delta: THREE.Quaternion, pitch?: [string, number][], roll?: [string, number][] }[]} */
 let idleBones = [];
+/** Each shoulder with its arm, to turn the arm back by the shoulder's lift (#236). */
+let shoulderArms = [];
+/**
+ * Arm drift bones (#193). Her right arm is on the left of the screen. The
+ * upper arms turn in the shoulder's frame (x swings forward and back, z
+ * lifts outward) and the elbows bend about their own y. Signs checked in
+ * front and side grids. The forearms, wrists and fingers use axes found from
+ * the rest pose instead (hand-drift-rig.js).
+ */
+const ARM_BONES = Object.freeze([
+  { name: "右腕", frame: "parent", x: [["armSwayLeft", 1]], z: [["armOutLeft", -1]] },
+  { name: "左腕", frame: "parent", x: [["armSwayRight", 1]], z: [["armOutRight", 1]] },
+  { name: "右ひじ", frame: "local", y: [["elbowLeft", 1]] },
+  { name: "左ひじ", frame: "local", y: [["elbowRight", -1]] },
+]);
+/** @type {{ bone: THREE.Bone, rest: THREE.Quaternion | null, frame: string, x?: [string, number][], y?: [string, number][], z?: [string, number][] }[]} */
+let armBones = [];
+/** Forearm, wrist and finger drift entries (natural hands, #199), with a rest copy where nothing else rewrites the bone. */
+let handBones = [];
 const idleEuler = new THREE.Euler();
 const idleQuat = new THREE.Quaternion();
 // Only conversation keeps her awake: sent chat, voice input and bridge events.
@@ -436,8 +524,9 @@ function applyGaze(delta) {
 }
 
 /** Cache the lowered-arm rest pose and a supported chin-rest pose. */
-function setupThinkingPose(object) {
-  thinkingBones = buildThinkingRig(object);
+function setupThinkingPose(object, arm = thinkingArm) {
+  thinkingArm = arm;
+  thinkingBones = buildThinkingRig(object, arm);
 }
 
 /** Blend the hand-to-chin gesture over the lowered-arm rest pose. */
@@ -476,8 +565,67 @@ function setupIdleMotion(object) {
   idleBones = [];
   for (const { name, pitch, roll, own } of IDLE_BONES) {
     const bone = object.skeleton?.getBoneByName(name);
-    if (bone) idleBones.push({ bone, rest: own ? bone.quaternion.clone() : null, pitch, roll });
+    if (bone) idleBones.push({ bone, rest: own ? bone.quaternion.clone() : null, delta: new THREE.Quaternion(), pitch, roll });
   }
+  shoulderArms = [];
+  for (const entry of idleBones) {
+    const arm = SHOULDER_LIFT[entry.bone.name] && object.skeleton.getBoneByName(SHOULDER_LIFT[entry.bone.name].arm);
+    if (arm) shoulderArms.push({ shoulder: entry.bone, arm, delta: entry.delta });
+  }
+  setupArmDrift(object);
+}
+
+/**
+ * Capture the arm drift bones (#193) on top of the arms' rest pose.
+ * @param {THREE.SkinnedMesh} object Loaded PMX mesh.
+ * @returns {void}
+ */
+function setupArmDrift(object) {
+  // The thinking rig rewrites its arm bones from rest every frame; others keep their own rest.
+  const rewritten = new Set(thinkingBones.map(({ bone }) => bone));
+  armBones = [];
+  for (const { name, ...axes } of ARM_BONES) {
+    const bone = object.skeleton?.getBoneByName(name);
+    if (bone) armBones.push({ bone, rest: rewritten.has(bone) ? null : bone.quaternion.clone(), ...axes });
+  }
+  // A base finger joint both curls and spreads: only its first entry resets it to rest.
+  const restored = new Set(rewritten);
+  handBones = buildHandDriftRig(object).map((entry) => {
+    const rest = restored.has(entry.bone) ? null : entry.bone.quaternion.clone();
+    restored.add(entry.bone);
+    return { ...entry, rest };
+  });
+}
+
+/**
+ * Multiply the arm drift (#193) on top of the thinking pose, which owns the
+ * arms: the drift fades as the hand goes to the chin and returns as it drops.
+ * Below the elbows the thinking fidget (#218) takes over as the drift fades.
+ * @returns {void}
+ */
+function applyArmDrift() {
+  const fade = 1 - thinkingPose.weight;
+  const { clock, ...sizes } = thinkingFidget;
+  const fidget = clock === undefined ? thinkingPose.fidget(sizes) : thinkingFidgetAngles(clock, thinkingPose.weight, sizes);
+  const hands = handAngles(idlePose, fidget, thinkingPose.weight);
+  const sum = (parts = []) => fade * parts.reduce((total, [key, sign]) => total + (idlePose[key] ?? 0) * sign, 0);
+  for (const { bone, rest, frame, x, y, z } of armBones) {
+    if (rest) bone.quaternion.copy(rest);
+    const ax = sum(x);
+    const ay = sum(y);
+    const az = sum(z);
+    if (ax === 0 && ay === 0 && az === 0) continue;
+    idleQuat.setFromEuler(idleEuler.set(ax, ay, az, "XYZ"));
+    if (frame === "parent") bone.quaternion.premultiply(idleQuat);
+    else bone.quaternion.multiply(idleQuat);
+  }
+  for (const { bone, rest, axis, channel, scale } of handBones) {
+    if (rest) bone.quaternion.copy(rest);
+    const angle = scale * (hands[channel] ?? 0);
+    if (angle !== 0) bone.quaternion.multiply(idleQuat.setFromAxisAngle(axis, angle));
+  }
+  // Last, so the arm keeps hanging the way the drift and thinking pose left it as the shoulder lifts (#236).
+  for (const { shoulder, arm, delta } of shoulderArms) counterShoulder(shoulder, arm, delta);
 }
 
 /**
@@ -508,13 +656,16 @@ function applyYawn() {
  */
 function applyIdleMotion() {
   const sum = (parts = []) => parts.reduce((total, [key, sign]) => total + (idlePose[key] ?? 0) * sign, 0);
-  for (const { bone, rest, pitch, roll } of idleBones) {
+  for (const { bone, rest, delta, pitch, roll } of idleBones) {
     const x = sum(pitch);
     const z = sum(roll);
     if (rest) bone.quaternion.copy(rest);
-    if (x === 0 && z === 0) continue;
+    if (x === 0 && z === 0) {
+      delta.identity();
+      continue;
+    }
     idleEuler.set(x, 0, z, "YXZ");
-    bone.quaternion.multiply(idleQuat.setFromEuler(idleEuler));
+    bone.quaternion.multiply(delta.setFromEuler(idleEuler));
   }
 }
 
@@ -969,8 +1120,14 @@ function hangBone(bone, worldTarget) {
   bone.quaternion.setFromUnitVectors(child.position.clone().normalize(), parentDown);
 }
 
+/** The arm and hand bones the rest pose sets, as restArms() lowered them (#199). */
+const ARM_REST_BONE = /^(?:右|左)(?:腕$|ひじ$|手首$|(?:親指|人指|中指|薬指|小指)[０１２３]$)/;
+/** @type {Map<THREE.Bone, THREE.Quaternion>} */
+let loweredArms = new Map();
+
 /**
- * Lower both upper arms from the T-pose while leaving elbows and fingers bound.
+ * Lower both upper arms from the T-pose, then relax the elbows, wrists and
+ * fingers (#199, see docs/rest-pose.md).
  * The target directions point mostly down, slightly outward and forward.
  * @param {THREE.SkinnedMesh} object Loaded PMX mesh.
  * @returns {void}
@@ -986,6 +1143,23 @@ function restArms(object) {
     hangBone(right, new THREE.Vector3(-0.28, -1, 0.16));
   }
   object.updateMatrixWorld(true);
+  loweredArms = new Map((object.skeleton?.bones ?? []).filter((bone) => ARM_REST_BONE.test(bone.name))
+    .map((bone) => [bone, bone.quaternion.clone()]));
+  relaxArms(object, REST_POSES[restPose].sizes);
+}
+
+/**
+ * Preview other rest sizes (#199): put the lowered arms back, relax them with
+ * `sizes`, and rebuild the layers that cache the arms' rest on top of it.
+ * @param {object} [sizes] Radians, as RELAXED_REST; defaults to the chosen idle pose.
+ * @returns {void}
+ */
+function previewRest(sizes = REST_POSES[restPose].sizes) {
+  if (!mesh) return;
+  for (const [bone, rest] of loweredArms) bone.quaternion.copy(rest);
+  relaxArms(mesh, sizes);
+  setupThinkingPose(mesh);
+  setupArmDrift(mesh);
 }
 
 /**
@@ -1039,6 +1213,7 @@ function updateIdle(delta) {
   idlePose = globalThis.__yidhariIdlePose
     ? { glance: null, tilt: 0, chest: 0, shoulders: 0, shoulderLeft: 0, shoulderRight: 0, back: 0, headPitch: 0, yawn: 0, squint: 0, winkLeft: 0, winkRight: 0, mouthLift: 0, surprise: 0,
       shiver: 0, shiverWave: 0, smile: 0, browRaise: 0, hum: 0, bobPitch: 0, bobRoll: 0, lean: 0, shy: 0, exhale: 0,
+      armDrift: 0, ...Object.fromEntries(ARM_CHANNELS.map((key) => [key, 0])),
       ...globalThis.__yidhariIdlePose }
     : idleMotion.update(delta.eased, idle.state, idle.stateTime, idle.timing.sleepActionEvery);
   gaze.setIdle(idlePose.glance);
@@ -1572,12 +1747,41 @@ function onModelLoaded(loaded, data) {
     speech,
     speak: enqueueSpeech,
     physics,
+    tentacleWave,
     /** Simulate the bridge ending a response (end, error or disconnect). */
     finish() {
       liveSpeech.responseFinished();
       relaxAfterSpeech();
     },
     frameCamera,
+    /** The loaded PMX mesh, for clearance checks in comparison grids (#236). */
+    get mesh() { return mesh; },
+    /** Reapply the relaxed rest pose with other sizes for comparison grids (#199). */
+    relax: previewRest,
+    /**
+     * Rebuild the thinking pose with other arm targets for comparison grids (#217).
+     * @param {Partial<typeof import("./thinking-rig.js").THINKING_ARM>} [arm] No argument restores the defaults.
+     * @returns {void}
+     */
+    thinkingArm(arm = {}) {
+      if (!mesh) return;
+      // Rebuild from the rest pose, not from the currently blended thinking pose.
+      for (const { bone, rest } of thinkingBones) bone.quaternion.copy(rest);
+      setupThinkingPose(mesh, arm);
+    },
+    /**
+     * Override the thinking fidget's sizes for comparison grids (#218).
+     * @param {Partial<typeof import("./thinking-fidget.js").THINKING_FIDGET> & { clock?: number }} [sizes]
+     *   `clock` holds one moment; no argument restores the defaults and the running clock.
+     * @returns {void}
+     */
+    thinkingFidget(sizes = {}) {
+      thinkingFidget = { ...sizes };
+    },
+    /** The loaded PMX mesh, for clearance measurements. */
+    get mesh() {
+      return mesh;
+    },
     /**
      * Hold one morph combination still, above the mood loop, for visual checks.
      * @param {Record<string, number>} morphs PMX morph names and weights.
@@ -1605,6 +1809,7 @@ function onModelLoaded(loaded, data) {
   setupIdleMotion(mesh);
   pinStrands(mesh, data);
   setupPhysics(mesh, data);
+  setupTentacles(mesh);
 
   const morphCount = mesh.morphTargetInfluences?.length ?? 0;
   const unavailable = [];
@@ -1624,6 +1829,8 @@ function onModelLoaded(loaded, data) {
   const greetingGate = bindGreetingToggle(new GreetingGate(), document.querySelector('#greeting-toggle'));
   bridgeControls = connectBridge({
     catalog: EXPRESSION_CATALOG,
+    // ?bridge=off (#215): a test page that leaves agent speech with the live avatar.
+    bridge: bridgeEnabled(location.search),
     onReplayTurn: replayTurn,
     greeting: greetingGate.claim(new Date()),
     onGreeting: ({ mood, weight }) => { expressions.stopLoop(); applyMood(mood, weight); },
@@ -1728,7 +1935,13 @@ async function buildPhysics(groups) {
   physicsWorld = physics.world;
   return {
     update: (delta) => physics.update(delta),
-    reset: () => physics.reset(),
+    reset: () => {
+      // reset() reads bone.matrixWorld: refresh it once the wave is off, or the
+      // tails' bodies start from the last drawn wave and buzz against their locked joints.
+      takeTentacleWaveOff();
+      object.updateMatrixWorld(true);
+      physics.reset();
+    },
     warmup: (cycles) => physics.warmup(cycles),
     setStep({ unitStep, maxStepNum }) {
       physics.unitStep = unitStep;
@@ -1750,6 +1963,8 @@ function restorePhysicsBones() {
     bone.quaternion.copy(quaternion);
     bone.position.copy(position);
   }
+  // The tails are back at rest, without the wave (#182).
+  tentacleWaveOn = false;
 }
 
 const physics = new PhysicsLayer({ build: buildPhysics, restoreBones: restorePhysicsBones });
@@ -1858,6 +2073,80 @@ function pinStrands(object, data) {
   }
 }
 
+// Tentacle wave (#182): added on top of the tails' physics pose after each
+// step, and taken off before the next. See docs/physics.md#tentacle-wave-182.
+/** @type {{phase: number, links: {bone: THREE.Bone, k: number, rest: THREE.Quaternion, base: THREE.Quaternion}[]}[]} */
+let tentacles = [];
+/** Whether the tail bones carry this frame's wave on top of their base pose. */
+let tentacleWaveOn = false;
+const tentacleEuler = new THREE.Euler();
+const tentacleQuat = new THREE.Quaternion();
+
+/**
+ * Find her four tails and capture each link's rest pose.
+ * @param {THREE.SkinnedMesh} object Loaded PMX mesh.
+ * @returns {void}
+ */
+function setupTentacles(object) {
+  const bones = object.skeleton?.bones ?? [];
+  tentacles = tailChains(bones.map((bone) => bone.name)).map(({ phase, links }) => ({
+    phase,
+    links: links.map(({ index, k }) => ({
+      bone: bones[index], k, rest: bones[index].quaternion.clone(), base: bones[index].quaternion.clone(),
+    })),
+  }));
+}
+
+/**
+ * Put the tails back on their base pose. MMDPhysics works out each bone's new
+ * rotation from its current one, so the wave must be off before every step
+ * and before a rebuild's reset.
+ * @returns {void}
+ */
+function takeTentacleWaveOff() {
+  if (!tentacleWaveOn) return;
+  for (const { links } of tentacles) for (const { bone, base } of links) bone.quaternion.copy(base);
+  tentacleWaveOn = false;
+}
+
+/**
+ * Note the tails' base pose (physics' result, or rest with physics off) and
+ * add this frame's wave on top of it.
+ * @param {number} delta Seconds since the previous frame.
+ * @returns {void}
+ */
+function applyTentacleWave(delta) {
+  // Her mood drives the reactions; speech sways the tails, thinking ponders (#225),
+  // and anything else that blocks idle keeps them composed.
+  if (expressions) tentacleWave.setMood(expressions.activeExpression);
+  const speaking = !speechIdle();
+  // An ask or a morph preview always settles the tails; thinking ponders over
+  // the rest (a streaming reply). The split is testable in tentacleBlocks().
+  tentacleWave.update(delta, idle.state, {
+    speaking,
+    ...tentacleBlocks({
+      blocked: idle.blocked, speaking, thinking: thinkingPose.active,
+      askOpen, previewing: Boolean(audition?.sweeping || globalThis.__yidhariHold),
+    }),
+  });
+  const moving = tentacleWave.gain > 0 || tentacleWave.lift !== 0 || tentacleWave.restLift !== 0;
+  const simulated = physics.status === "on";
+  // While a build loads or warms up, physics owns the bones but has not posed them.
+  if (!simulated && physics.status === "loading" && physics.enabled) return;
+  for (const { phase, links } of tentacles) {
+    for (const { bone, k, rest, base } of links) {
+      if (simulated) base.copy(bone.quaternion);
+      else base.copy(rest);
+      bone.quaternion.copy(base);
+      if (!moving) continue;
+      const { yaw, pitch } = tentacleWave.angles(phase, k, links.length);
+      tentacleEuler.set(pitch, yaw, 0, "YXZ");
+      bone.quaternion.multiply(tentacleQuat.setFromEuler(tentacleEuler));
+    }
+  }
+  tentacleWaveOn = moving;
+}
+
 /**
  * Step physics last, after every bone layer has posed the body.
  * @param {number} delta Seconds since the previous frame.
@@ -1918,7 +2207,10 @@ function animate() {
   applyGaze(delta);
   applySway(now / 1000, delta);
   applyIdleMotion();
+  applyArmDrift();
+  takeTentacleWaveOff();
   applyPhysics(delta);
+  applyTentacleWave(delta);
   audition?.update(delta);
   audition?.apply();
   // A held preview wins the frame so a visual check is not overwritten by the mood loop.

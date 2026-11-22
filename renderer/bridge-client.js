@@ -9,6 +9,8 @@ const MAX_RESET_TURNS = 1000;
 const REPLAY_LABEL = '▶ Replay';
 const MAX_PROMPT = 2000;
 const MAX_REPLY = 50000;
+/** Chat-log bubbles kept in the DOM (#24); the oldest are evicted first. */
+export const MAX_LOG_LINES = 200;
 const MAX_SOURCE = 40;
 const REPORT_STATUS = new Set(['progress', 'done', 'error']);
 const ASK_ID = /^[0-9a-f]{1,32}$/;
@@ -38,6 +40,15 @@ export function resetFrame(turns = []) {
 /** The bubble's spoken turn (#152), if the event names a valid one. */
 function turnOf(event) {
   return typeof event.turn === 'string' && TURN_ID.test(event.turn) ? { turn: event.turn } : {};
+}
+
+/**
+ * False when the page URL has ?bridge=off (#215): a test page that must not
+ * take agent speech from the live avatar, since the bridge routes it to the
+ * most recently connected page.
+ */
+export function bridgeEnabled(search = globalThis.location?.search ?? '') {
+  return new URLSearchParams(search).get('bridge') !== 'off';
 }
 
 /** Page-open greeting (#129): the bridge speaks this fixed phrase without the LLM. */
@@ -82,10 +93,11 @@ export function agentEvent(event, catalog) {
  * refresh (#105); win is the window whose pagehide saves a reply still streaming.
  * onActivity fires on every sent chat message, bridge event and voice-input
  * state change, and onAskChange(open) when an agent ask opens or closes; both
- * feed the idle timer (#71).
+ * feed the idle timer (#71). With bridge false (#215) no WebSocket is opened
+ * and the chat stays disabled; the restored log is still shown.
  */
 export function connectBridge({ catalog, onStart, onFinish, onExpression, onText, onSpeak, onFiller, onReset, onAgentSay, onAgentMood, onTurn, greeting = null, onGreeting,
-  onActivity, onAskChange, onReplayTurn, history = new ChatHistory(), win = globalThis }) {
+  onActivity, onAskChange, onReplayTurn, history = new ChatHistory(), win = globalThis, bridge = true }) {
   const button = document.querySelector('#bridge-start');
   const status = document.querySelector('#bridge-status');
   const chatBar = document.querySelector('#chat-bar');
@@ -95,6 +107,9 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
   const chatMic = document.querySelector('#chat-mic');
   const chatLog = document.querySelector('#chat-log');
   const chatNew = document.querySelector('#chat-new');
+  const chatSave = document.querySelector('#chat-save');
+  const chatImport = document.querySelector('#chat-import');
+  const chatImportFile = document.querySelector('#chat-import-file');
   let socket;
   let busy = false;
   let reply = null;
@@ -136,8 +151,29 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     body.className = who === 'you' || who === 'tool' ? 'chat-text' : 'chat-text chat-md';
     line.append(label, body);
     chatLog.append(line);
+    trimLog();
     chatLog.scrollTop = chatLog.scrollHeight;
     return body;
+  }
+
+  /**
+   * Bound the chat log (#24): evict the oldest bubbles beyond MAX_LOG_LINES.
+   * The in-flight reply and the greeting awaiting its turn are never evicted,
+   * and an evicted bubble's spoken-turn record goes with it.
+   */
+  function trimLog() {
+    const keep = new Set();
+    if (reply) keep.add(reply.parentElement);
+    if (greetingLine) keep.add(greetingLine);
+    while (chatLog.children.length > MAX_LOG_LINES) {
+      // `children` is a live HTMLCollection in a real browser: no .find().
+      const oldest = [...chatLog.children].find((line) => !keep.has(line));
+      if (!oldest) break;
+      for (const [turn, record] of turns) {
+        if (record.line === oldest) turns.delete(turn);
+      }
+      chatLog.removeChild(oldest);
+    }
   }
 
   /** Remember which bubble a spoken turn belongs to. */
@@ -239,6 +275,24 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     const line = renderEntry(entry);
     const saved = history.add(entry) ? history.last() : null;
     if (turn) bindTurn(turn, line, saved?.id ?? null);
+  }
+
+  /** Show an imported log (#192): display only, exactly like a refresh restore. */
+  function showImported({ damaged }) {
+    turns.clear();
+    greetingLine = null;
+    chatLog.replaceChildren();
+    history.entries.forEach((entry) => {
+      const { id, ...shown } = entry;
+      const line = renderEntry(shown, { restored: true });
+      if (shown.turn) {
+        bindTurn(shown.turn, line, id ?? null, true);
+        addReplayButton(shown.turn);
+      }
+    });
+    if (damaged) addNote(DAMAGED_NOTE);
+    addNote(RESTORED_NOTE);
+    status.textContent = 'Chat imported · display only';
   }
 
   /** A status line about restoring; shown only, never saved. */
@@ -461,6 +515,31 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
   chatNew.addEventListener('click', () => {
     if (socket?.readyState === WebSocket.OPEN) socket.send(resetFrame(chatTurns()));
   });
+  chatSave?.addEventListener?.('click', () => {
+    try {
+      const blob = new Blob([history.exportFile()], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `yidhari-chat-${new Date().toISOString().slice(0, 10)}.json`;
+      anchor.click?.();
+      URL.revokeObjectURL?.(url);
+      status.textContent = 'Chat saved as JSON';
+    } catch { status.textContent = 'Could not save the chat as JSON'; }
+  });
+  chatImport?.addEventListener?.('click', () => chatImportFile?.click?.());
+  chatImportFile?.addEventListener?.('change', async () => {
+    const file = chatImportFile.files?.[0];
+    chatImportFile.value = '';
+    if (!file) return;
+    if (reply) { status.textContent = 'Finish the current reply before importing a chat.'; return; }
+    if (typeof win?.confirm === 'function' && !win.confirm('Replace the current chat with the imported one?')) return;
+    try {
+      showImported(history.importFile(await file.text()));
+    } catch (error) {
+      status.textContent = error instanceof Error ? error.message : 'Could not import that chat file.';
+    }
+  });
   chatBar.addEventListener('submit', (event) => {
     event.preventDefault();
     sendPrompt(chatInput.value.trim());
@@ -514,7 +593,16 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
   if (saved.damaged) addNote(DAMAGED_NOTE);
   if (saved.entries.length) addNote(RESTORED_NOTE);
   win?.addEventListener?.('pagehide', () => finishReply({ interrupted: true }));
-  connect();
+  if (bridge) {
+    connect();
+  } else {
+    // Show the chat bar, disabled, so the layout matches the live page.
+    button.disabled = true;
+    chatBar.hidden = false;
+    chatInput.placeholder = 'Bridge off (test page)';
+    setChatEnabled(false);
+    status.textContent = 'Bridge off (test page)';
+  }
   return {
     /** Enable the replay buttons only while speech is idle and no reply is streaming. */
     setReplayEnabled(enabled) {

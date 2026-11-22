@@ -23,6 +23,24 @@ class FakeText {
   set textContent(value) { this.data = String(value); }
 }
 
+/**
+ * A real element's `children` is a live HTMLCollection: length and indexed
+ * access, plus [Symbol.iterator], but no Array methods like find/map/filter.
+ * Returning a plain Array let renderer code pass tests while crashing in the
+ * browser (#24: `chatLog.children.find is not a function`), so expose the
+ * same surface here and only the same surface.
+ */
+function htmlCollection(owner) {
+  return new Proxy(owner, {
+    get(target, property) {
+      if (property === "length") return target._childrenBacking.length;
+      if (property === Symbol.iterator) return target._childrenBacking[Symbol.iterator].bind(target._childrenBacking);
+      if (typeof property === "string" && /^\d+$/.test(property)) return target._childrenBacking[Number(property)];
+      return undefined;
+    },
+  });
+}
+
 class FakeElement {
   constructor(document, tag) {
     this.nodeType = 1;
@@ -30,7 +48,8 @@ class FakeElement {
     this.tagName = tag.toUpperCase();
     this.localName = tag.toLowerCase();
     this.attributes = new Map();
-    this.children = [];
+    this._childrenBacking = [];
+    this._childrenView = htmlCollection(this);
     this.parentElement = null;
     this.style = {};
     this.dataset = {};
@@ -58,6 +77,10 @@ class FakeElement {
   set className(value) { this.attributes.set("class", String(value)); }
   get href() { return this.attributes.get("href") ?? ""; }
   set href(value) { this.attributes.set("href", String(value)); }
+  // External reads see an HTMLCollection, like a real element. Internal code
+  // below keeps using the backing `this._childrenBacking` Array directly.
+  get children() { return this._childrenView; }
+  set children(value) { this._childrenBacking = value; }
   get childNodes() { return this.children; }
   get firstChild() { return this.children[0] ?? null; }
   setAttribute(name, value) { this.attributes.set(String(name).toLowerCase(), String(value)); }
@@ -68,25 +91,25 @@ class FakeElement {
     for (const node of nodes) {
       const child = typeof node === "string" ? new FakeText(this.ownerDocument, node) : node;
       child.parentElement = this;
-      this.children.push(child);
+      this._childrenBacking.push(child);
     }
   }
   appendChild(node) { this.append(node); return node; }
   removeChild(node) {
-    const index = this.children.indexOf(node);
+    const index = this._childrenBacking.indexOf(node);
     if (index < 0) throw new Error("Node is not a child");
-    this.children.splice(index, 1);
+    this._childrenBacking.splice(index, 1);
     node.parentElement = null;
     return node;
   }
   replaceChildren(...nodes) {
-    for (const child of this.children) child.parentElement = null;
-    this.children = [];
+    for (const child of this._childrenBacking) child.parentElement = null;
+    this._childrenBacking = [];
     this.append(...nodes);
   }
-  get textContent() { return this.children.map((child) => child.textContent).join(""); }
+  get textContent() { return this._childrenBacking.map((child) => child.textContent).join(""); }
   set textContent(value) { this.replaceChildren(...(String(value) === "" ? [] : [String(value)])); }
-  get innerHTML() { return this.children.map(serialize).join(""); }
+  get innerHTML() { return this._childrenBacking.map(serialize).join(""); }
   set innerHTML(_) { throw new Error("innerHTML must not be assigned"); }
   set outerHTML(_) { throw new Error("outerHTML must not be assigned"); }
   insertAdjacentHTML() { throw new Error("insertAdjacentHTML must not be used"); }
@@ -98,7 +121,7 @@ class FakeElement {
   getBoundingClientRect() { return { height: 0, width: 0 }; }
   /** Every element below this one, depth first. */
   descendants() {
-    return this.children.flatMap((child) => (child.nodeType === 1 ? [child, ...child.descendants()] : []));
+    return this._childrenBacking.flatMap((child) => (child.nodeType === 1 ? [child, ...child.descendants()] : []));
   }
   querySelectorAll(tag) { return this.descendants().filter((element) => element.localName === tag); }
   querySelector(tag) { return this.querySelectorAll(tag)[0] ?? null; }
@@ -108,7 +131,7 @@ export function serialize(node) {
   if (node.nodeType === 3) return escapeText(node.data);
   const attrs = [...node.attributes].map(([name, value]) => ` ${name}="${escapeAttr(value)}"`).join("");
   if (VOID.has(node.localName)) return `<${node.localName}${attrs}>`;
-  return `<${node.localName}${attrs}>${node.children.map(serialize).join("")}</${node.localName}>`;
+  return `<${node.localName}${attrs}>${[...node.children].map(serialize).join("")}</${node.localName}>`;
 }
 
 export function createDocument() {

@@ -1,0 +1,129 @@
+{
+  "name": "yidhari-copilot-name-poc",
+  "displayName": "Yidhari Copilot Name (POC)",
+  "description": "Experimental local proxy for yidhari identity and friendly, concise replies.",
+  "version": "0.0.5",
+  "publisher": "yidhari-local",
+  "private": true,
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./extension.js",
+  "extensionKind": [
+    "ui"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    },
+    "virtualWorkspaces": false
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js && python3 -m unittest discover -s test -v",
+    "package": "npx --yes --package @vscode/vsce@4.1.1 vsce package --no-dependencies --allow-missing-repository --skip-license",
+    "test:proxy": "python3 tools/smoke_proxy.py",
+    "test:local": "python3 tools/smoke_local.py"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "yidhariName.checkCertificate",
+        "title": "Yidhari: Check Certificate Setup"
+      },
+      {
+        "command": "yidhariName.prepare",
+        "title": "Yidhari: Prepare Proxy Certificate"
+      },
+      {
+        "command": "yidhariName.enable",
+        "title": "Yidhari: Enable Name Rewrite"
+      },
+      {
+        "command": "yidhariName.disable",
+        "title": "Yidhari: Disable Name Rewrite"
+      },
+      {
+        "command": "yidhariName.status",
+        "title": "Yidhari: Show Status"
+      }
+    ],
+    "configuration": {
+      "title": "Yidhari Name",
+      "properties": {
+        "yidhariName.mitmdumpPath": {
+          "type": "string",
+          "default": "mitmdump",
+          "scope": "machine",
+          "description": "Path to the mitmdump executable."
+        },
+        "yidhariName.port": {
+          "type": "integer",
+          "default": 8766,
+          "minimum": 1024,
+          "maximum": 65535,
+          "scope": "machine",
+          "description": "Loopback proxy port."
+        },
+        "yidhariName.certificateTrusted": {
+          "type": "boolean",
+          "default": false,
+          "scope": "machine",
+          "description": "Confirm that you configured trust for the dedicated proxy CA in the Agent Host runtime."
+        },
+        "yidhariName.hosts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "api.githubcopilot.com",
+            "api.individual.githubcopilot.com",
+            "api.business.githubcopilot.com",
+            "api.enterprise.githubcopilot.com"
+          ],
+          "scope": "machine",
+          "description": "Exact HTTPS hosts permitted for interception."
+        },
+        "yidhariName.paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "/chat/completions",
+            "/v1/chat/completions",
+            "/responses",
+            "/v1/responses",
+            "/v1/messages"
+          ],
+          "scope": "machine",
+          "description": "Exact model request paths, without query strings."
+        },
+        "yidhariName.transport": {
+          "type": "string",
+          "enum": [
+            "httpsProxy",
+            "localEndpoint"
+          ],
+          "default": "httpsProxy",
+          "scope": "machine",
+          "description": "httpsProxy intercepts selected HTTPS hosts. localEndpoint forwards loopback model requests; point your custom model URL to the listener port."
+        },
+        "yidhariName.localUpstreamPort": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 65535,
+          "default": 8317,
+          "scope": "machine",
+          "description": "Existing local HTTP model server port for localEndpoint mode. Must differ from the listener port."
+        }
+      }
+    }
+  }
+}

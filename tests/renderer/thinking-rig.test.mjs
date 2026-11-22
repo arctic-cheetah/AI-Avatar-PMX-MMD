@@ -1,13 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { buildThinkingRig, elbowForTarget } from "../../renderer/thinking-rig.js";
+import { THINKING_ARM, buildThinkingRig, elbowForTarget, handFrame } from "../../renderer/thinking-rig.js";
+import { DIGITS, JOINTS, LOWER_LENGTH, UPPER_LENGTH, bustDepth, fixture } from "./arm-fixture.mjs";
 
-const UPPER_LENGTH = 2.96;
-const LOWER_LENGTH = 2.71;
 const TOLERANCE = 1e-7;
-const DIGITS = ["親指", "人指", "中指", "薬指", "小指"];
-const JOINTS = ["１", "２", "３"];
 
 function close(actual, expected, message, tolerance = TOLERANCE) {
   assert.ok(Math.abs(actual - expected) <= tolerance,
@@ -24,78 +21,6 @@ function finite(values, message) {
 
 function worldPosition(object) {
   return object.getWorldPosition(new THREE.Vector3());
-}
-
-function fixture({ fingers = true } = {}) {
-  const mesh = new THREE.Object3D();
-  mesh.rotation.set(0.12, -0.19, 0.08);
-  const bones = [];
-  function atWorld(parent, name, position, rotation = new THREE.Euler()) {
-    const bone = new THREE.Bone();
-    bone.name = name;
-    parent.add(bone);
-    parent.updateWorldMatrix(true, false);
-    bone.position.copy(parent.worldToLocal(position.clone()));
-    bone.quaternion.copy(parent.getWorldQuaternion(new THREE.Quaternion()).invert())
-      .multiply(new THREE.Quaternion().setFromEuler(rotation));
-    bones.push(bone);
-    mesh.updateMatrixWorld(true);
-    return bone;
-  }
-  const torso = atWorld(mesh, "上半身", new THREE.Vector3(0, 15.4, -0.55),
-    new THREE.Euler(-0.09, 0.16, -0.11));
-  atWorld(torso, "頭", new THREE.Vector3(0, 19.27, -0.55));
-  for (const [side, sign] of [["右", -1], ["左", 1]]) {
-    const shoulderPosition = new THREE.Vector3(sign * 1.32, 17.76, -0.57);
-    const upperDirection = new THREE.Vector3(sign * 0.22, -0.94, 0.26).normalize();
-    const lowerDirection = new THREE.Vector3(sign * 0.12, -0.98, 0.14).normalize();
-    const elbowPosition = shoulderPosition.clone().addScaledVector(upperDirection, UPPER_LENGTH);
-    const wristPosition = elbowPosition.clone().addScaledVector(lowerDirection, LOWER_LENGTH);
-    const shoulder = atWorld(torso, `${side}肩`, shoulderPosition,
-      new THREE.Euler(0.13, sign * 0.21, sign * -0.17));
-    const arm = atWorld(shoulder, `${side}腕`, shoulderPosition,
-      new THREE.Euler(-0.14, sign * 0.18, sign * 0.24));
-    const upperTwist = atWorld(arm, `${side}腕捩`, shoulderPosition.clone().lerp(elbowPosition, 0.45),
-      new THREE.Euler(0.11, sign * -0.16, sign * 0.09));
-    const elbow = atWorld(upperTwist, `${side}ひじ`, elbowPosition,
-      new THREE.Euler(0.08, sign * 0.15, sign * -0.12));
-    const lowerTwist = atWorld(elbow, `${side}手捩`, elbowPosition.clone().lerp(wristPosition, 0.55),
-      new THREE.Euler(-0.1, sign * 0.13, sign * 0.19));
-    const wrist = atWorld(lowerTwist, `${side}手首`, wristPosition);
-    const handRotation = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), lowerDirection);
-    wrist.quaternion.copy(lowerTwist.getWorldQuaternion(new THREE.Quaternion()).invert()).multiply(handRotation);
-    if (!fingers) continue;
-    for (const [digitIndex, digit] of DIGITS.entries()) {
-      let parent = wrist;
-      if (digit === "親指") {
-        parent = new THREE.Bone();
-        parent.name = `${side}${digit}０`;
-        parent.position.set(sign * 0.42, 0.2, 0.06);
-        wrist.add(parent);
-        bones.push(parent);
-      }
-      for (const [jointIndex, joint] of JOINTS.entries()) {
-        const bone = new THREE.Bone();
-        bone.name = `${side}${digit}${joint}`;
-        if (jointIndex === 0) {
-          bone.position.set(sign * (digitIndex - 2) * 0.2, 0.5 + (digitIndex === 2 ? 0.1 : 0), 0);
-        } else {
-          bone.position.set(0, jointIndex === 1 ? 0.32 : 0.24, 0);
-        }
-        bone.rotation.set(0.025, 0, sign * 0.015);
-        parent.add(bone);
-        bones.push(bone);
-        parent = bone;
-      }
-      const tip = new THREE.Object3D();
-      tip.name = `${side}${digit}先`;
-      tip.position.set(0, 0.18, 0);
-      parent.add(tip);
-    }
-  }
-  mesh.skeleton = new THREE.Skeleton(bones);
-  mesh.updateMatrixWorld(true);
-  return { mesh, get: (name) => mesh.skeleton.getBoneByName(name) };
 }
 
 function snapshot(mesh) {
@@ -185,13 +110,59 @@ test("cached pose reaches the chin and supports the lowered right elbow through 
   const head = worldPosition(get("頭"));
   const entries = buildThinkingRig(mesh);
   applyPose(mesh, entries, 1);
-  vectorClose(worldPosition(get("右手首")), head.clone().add(new THREE.Vector3(-0.35, -1.5, 2.05)), "chin wrist target");
+  vectorClose(worldPosition(get("右手首")), head.clone().add(new THREE.Vector3(...THINKING_ARM.chin)), "chin wrist target");
   const elbow = worldPosition(get("右ひじ"));
   assert.ok(elbow.y < worldPosition(get("右手首")).y, "right elbow hangs below the wrist");
-  vectorClose(worldPosition(get("左手首")), elbow.clone().add(new THREE.Vector3(0.45, -0.3, 0.85)), "support wrist target");
+  vectorClose(worldPosition(get("左手首")), elbow.clone().add(new THREE.Vector3(...THINKING_ARM.support)), "support wrist target");
   for (const side of ["右", "左"]) {
     close(worldPosition(get(`${side}腕`)).distanceTo(worldPosition(get(`${side}ひじ`))), UPPER_LENGTH, "posed upper length");
     close(worldPosition(get(`${side}ひじ`)).distanceTo(worldPosition(get(`${side}手首`))), LOWER_LENGTH, "posed lower length");
+  }
+});
+
+test("posed forearm bones keep clear of the bust; only cloth may press in (#217)", () => {
+  const { mesh, get } = fixture();
+  applyPose(mesh, buildThinkingRig(mesh), 1);
+  for (const side of ["右", "左"]) {
+    const elbow = worldPosition(get(`${side}ひじ`));
+    const wrist = worldPosition(get(`${side}手首`));
+    for (let step = 0; step <= 20; step++) {
+      const point = elbow.clone().lerp(wrist, step / 20);
+      const depth = bustDepth(point);
+      assert.ok(depth <= 0, `${side} forearm bone at ${step * 5}% from the elbow sinks ${depth.toFixed(3)} into the bust `
+        + `at (${point.toArray().map((value) => value.toFixed(2)).join(", ")})`);
+    }
+  }
+});
+
+test("the left hand rests at the right elbow, cupping it from below (#217)", () => {
+  const { mesh, get } = fixture();
+  applyPose(mesh, buildThinkingRig(mesh), 1);
+  const elbow = worldPosition(get("右ひじ"));
+  const wrist = worldPosition(get("左手首"));
+  assert.ok(wrist.distanceTo(elbow) <= 0.9, `left wrist is ${wrist.distanceTo(elbow).toFixed(2)} from the right elbow`);
+  assert.ok(wrist.y < elbow.y, "left hand sits under the right elbow");
+});
+
+test("the left elbow lifts out toward the right one, so her shoulders look balanced (#221)", () => {
+  const { mesh, get } = fixture();
+  applyPose(mesh, buildThinkingRig(mesh), 1);
+  // How far an upper arm swings out from hanging straight down, in degrees.
+  const swing = (side) => {
+    const down = worldPosition(get(`${side}ひじ`)).sub(worldPosition(get(`${side}腕`))).normalize();
+    return THREE.MathUtils.radToDeg(Math.acos(-down.y));
+  };
+  assert.ok(swing("左") >= 40, `left upper arm swings ${swing("左").toFixed(1)}° out (right: ${swing("右").toFixed(1)}°)`);
+  const gap = worldPosition(get("右ひじ")).y - worldPosition(get("左ひじ")).y;
+  assert.ok(gap <= 0.7, `left elbow sits ${gap.toFixed(2)} below the right one`);
+});
+
+test("the right fist follows the fist setting, so it can tilt under the chin (#217)", () => {
+  for (const fist of [THINKING_ARM.fist, [0.15, 0.64, -0.77]]) {
+    const { mesh } = fixture();
+    applyPose(mesh, buildThinkingRig(mesh, { fist, fistPalm: [0, -0.77, -0.64] }), 1);
+    const expected = new THREE.Vector3(...fist).normalize();
+    close(handFrame(mesh, "右").finger.angleTo(expected), 0, `finger direction for ${fist}`, 1e-6);
   }
 });
 

@@ -12,6 +12,7 @@ splits the work into tickets, one PR each:
 | #156–#159 | Puffy-sleeve physics as a load-time rig overlay | Planned |
 | #116 | Profile on Strix Halo, fix jitter, check `delta` | Planned |
 | #115 | Raise the sway amplitudes | Planned, last |
+| #182 | Tentacle wave on top of the tails' physics | Idle wave: [below](#tentacle-wave-182); reactions planned |
 
 ## The rig
 
@@ -292,6 +293,9 @@ one and two steps per frame, so they can still beat a little.
 thinking pose → gaze → sway → idle motion → mesh.updateMatrixWorld() → physics.update(delta) → render
 ```
 
+The tentacle wave (#182) wraps the physics step; see
+[Frame order with the wave](#frame-order-with-the-wave).
+
 Physics runs **after idle motion** (decided on 13 November 2026), so the
 hair and tails react to the stretch, the shrugs and sleep as well as to the
 sway. The morph layers (expressions, speech, audition) don't touch bones,
@@ -305,10 +309,302 @@ so their place in the frame doesn't matter to physics.
 | Chest physics · 胸 | `yidhari.physics.chest` | off |
 | Hip physics · 腰 | `yidhari.physics.hips` | off |
 | Physics steps (65–120 /s) | `yidhari.physics.rate` | 120 |
+| Tentacle wave · 触手 | `yidhari.tentacles` | on |
+| Wave size (0–6) | `yidhari.tentacles.size` | 0.4 |
 
 The main toggle is the kill-switch. The chest and hip toggles change their
 groups independently (a change rebuilds), and they keep their choice while
 physics is off. `bindStoredToggle` takes `defaultOn: false` for these.
+
+## Tentacle wave (#182)
+
+While she idles, a slow wave travels along her four tails, from the root to
+the tip, with each tail out of step with the others. Physics still owns the
+tails: the wave is added **on top of the pose physics gives them**, after the
+physics step, and taken off again before the next one.
+
+### The spike: why not kinematic roots
+
+The plan was the fringe's first technique: give the first links kinematic
+bodies, drive them, and let physics carry the motion down the chain. Her rig
+rules that out:
+
+- `Ctr_Tail_Root` **does** have a body (dynamic, 150,756 mass). It hangs from
+  `下半身` on the only free joint of the tails: X −30° to +4°, Z −20° to 0°.
+- **Every other tail joint is locked** (all rotation and translation limits
+  are 0, no springs). Each 17-link tail is one rigid piece, so physics only
+  swings all four tails together about that root. A wave can't travel along
+  them inside the solver.
+- After the warm-up the tails rest 3.5° below their bind pose, and their links
+  bend less than 1° against each other.
+
+So driving kinematic roots would only turn the tails into rigid, bone-driven
+pieces. Unlocking the chain joints would mean the stiff joints and springs
+that made the fringe fight itself (see *Stiffened hair*), with mass ratios of
+87,343 : 0.1 along each tail.
+
+Two routes were measured in the browser (the spike's code is not merged):
+
+1. **Kinematic roots:** `Ctr_Tail_Root` and each `…Tail…_1` made kinematic,
+   the first links swung by the wave.
+2. **Overlay after physics:** physics unchanged; each link's bone gets a small
+   rotation after `physics.update()`, which is taken off before the next step.
+
+Measured over 6 s at 60 fps, vertex motion in the `下半身` frame, after 10 s
+settled. *Jitter* is the mean second difference per frame. *Buzz* is the
+largest distance from a 15-frame moving average, which a smooth wave barely
+shows and a frame-rate buzz does. *Swing* is how far a vertex travels:
+
+| Tips (links 14–17) | Speed | Jitter | Buzz | Swing |
+|---|---|---|---|---|
+| Physics, standing still | 0 | 0 | 0 | 0 |
+| Overlay, wave off, standing still | 0 | 0 | 0 | 0 |
+| Overlay, wave 0.25, standing still | 0.54 units/s | 0.0005 | 0.011 | 1.25 |
+| Overlay, wave 0.5, standing still | 1.07 units/s | 0.0008 | 0.005 | 2.48 |
+| Physics, swaying | 0.11 units/s | 0.0012 | 0.003 | 0.20 |
+| Overlay, wave 0.25, swaying | 0.54 units/s | 0.0009 | 0.004 | 1.27 |
+| Overlay, wave 0.5, swaying | 1.07 units/s | 0.0011 | 0.006 | 2.51 |
+| Kinematic roots, wave off, standing still | 0 | 0 | 0 | 0 |
+| Kinematic roots, wave sized to match 0.25 | 0.55 units/s | 0.0009 | 0.007 | 1.26 |
+| Kinematic roots, large wave | 3.8 units/s | 0.0063 | **0.18** | 8.8 |
+
+- **The overlay adds no buzz.** With the wave off it matches physics exactly.
+  With it on, buzz stays at 0.003–0.011 units, below the fringe's 5 Hz buzz
+  (0.011–0.014, *The spiral curl*), and jitter stays at the physics level.
+  The small buzz values come from uneven frame times, not from the solver.
+- **Clearance doesn't change:** the closest tail vertex stays 0.096–0.098
+  units from her body (legs, hips, skirt) with the wave off, at 0.25 and at
+  0.5.
+- **The warm-up is unchanged:** after the model is shown, the tail tips still
+  drift 0.05–0.08 units as they finish settling, the same with and without
+  the overlay.
+- Kinematic roots stay clean only at small sizes. They lose the tails' own
+  physics swing, and they follow `上半身` instead of hanging from `下半身`. At
+  larger swings the locked dynamic links lag the driven link and buzz (0.18).
+
+### How the wave is built
+
+`renderer/tentacle-motion.js` is pure (no DOM or Three.js), so Node tests
+cover it:
+
+- `tailChains(boneNames)` finds the four `[左右]Tail[12]_1…17` chains and gives
+  each its own phase.
+- `waveAngles(t, phase, k, count, amplitude)` returns a yaw (side to side) and
+  a smaller pitch (up and down, a quarter period ahead) for link `k`. Each
+  link bends at most `amplitude / 6 × k / count`, so the tip moves most and
+  the root link hardly at all. The phase lags 0.35 rad per link, so the wave
+  travels toward the tip. Summed along a tail, the bend stays under
+  1.5 × `amplitude`.
+- `TentacleWave` eases a gain toward the idle state's size with a critically
+  damped spring (about 1.5 s, no overshoot): active and waking 0, idle and
+  stretching 1, sleepy 0.5. The toggle eases it out and back in the same way,
+  so nothing snaps.
+
+`TENTACLE_WAVE` holds the sizes: amplitude **0.4** (picked by eye from the
+grids below on 15 November 2026), a 5 s period, travel 0.35 rad per link,
+lift 0.5. The spike measured 0.25 and 0.5 on either side of it, and both
+stayed clean.
+
+### Wave size slider
+
+The **Wave size** slider under the toggle sets the amplitude from **0 to 6**
+in steps of 0.05; it ran 0–2 until 17 November 2026, when the user asked for
+bigger waves (3–6). It is
+saved as `yidhari.tentacles.size`. `tentacleSize()` clamps and snaps the
+value, and anything unreadable falls back to 0.4. While the tails wave, a new
+size eases in with the same spring as the gain, so a dragged slider never
+jumps. While they are still, it applies at once. At 0 the tails settle
+exactly still. The toggle stays as the quick on/off.
+
+The range was checked before the slider went in. These are the spike's
+overlay numbers, standing still, tips, 6 s. The last three columns are the
+closest a tail came to her body, her other tails and the floor over a full
+cycle (every 5th tail vertex, 20 moments):
+
+| Size | Tip speed | Jitter | Buzz | Swing | Body | Other tail | Floor (y) |
+|---|---|---|---|---|---|---|---|
+| 0 | 0 | 0 | 0 | 0 | 0.098 | 1.53 | 5.27 |
+| 0.4 | 0.86 units/s | 0.0006 | 0.004 | 2.0 | 0.097 | 1.42 | 4.88 |
+| 0.6 | 1.29 units/s | 0.0010 | 0.006 | 3.0 | 0.097 | | |
+| 0.8 | 1.68 units/s | 0.0014 | 0.008 | 3.9 | 0.096 | | |
+| 1.0 | 2.07 units/s | 0.0018 | 0.010 | 4.8 | 0.096 | 1.31 | 4.34 |
+| 1.5 | | | | | 0.094 | 1.12 | 3.96 |
+| 2.0 | | | | | 0.093 | 0.86 | 3.66 |
+
+- Buzz and jitter grow with the tips' speed, as a smooth wave's do. At 1.0
+  the buzz is still below the fringe's (0.011–0.014).
+- No size brings a tail closer to her body: 0.093 is where the tails meet
+  her hips. The tails come closer to each other but never touch, and they
+  stay well above the floor.
+- **By eye:** from 1.5 up the curl turns bold. At 2.0 the near tail sweeps
+  across her legs in the three-quarter back view, passing in front of them,
+  and the tips hook sharply. It's lively rather than calm, so the default
+  stays 0.4.
+- Sizes **3–6** were added on request (17 November 2026). They scale the same
+  curve — bigger arcs, faster tips — rather than adding new behaviour, so the
+  same clip and collision margins apply proportionally.
+
+### Raised rest and tail height slider (#229, #231)
+
+Her tails used to rest low behind her, so the bust camera never showed them.
+Each tail now rests bent up by an even arc, `TENTACLE_WAVE.restLift`, spread
+over its 17 links like the reactions' lift. `TentacleWave.angles()` adds it to
+every link's pitch, on top of the wave and the reactions. It uses the same
+overlay, added after physics and taken off before the next step, so physics
+still owns the tails.
+- **A posture, not a motion.** The rest arc does not follow the wave size
+  slider, and it stays with the **Tentacle wave** toggle off.
+- **The default, 1.7 rad, is the user's pick (#229).** In the bust camera,
+  two tails rise beside her head and two show at the lower corners. The grids
+  went from 0 to 1.5 in steps. From 0.9 two tips peek out beside her
+  shoulders, and the user asked for higher than 1.5 so that all four show.
+- **Tail height slider (#231).** The **Tail height** slider under **Wave
+  size** sets the rest arc from **0 to 3 rad** in 0.05 steps. It is saved as
+  `yidhari.tentacles.height`. `tentacleHeight()` clamps and snaps the value,
+  and anything unreadable falls back to 1.7.
+  - A slider change eases in with the same spring as the gain, even while the
+    wave is still, so the tails never jump.
+  - A stored height applies at once when the page loads.
+  - Previews can set `tentacleWave.restLift` directly, which also applies at
+    once.
+- **The top of the range was checked by eye** on a `?bridge=off` page, with the
+  wave off, at 1.7, 2, 2.5 and 3 rad. The grids are in the gitignored
+  `assets/private/tail-height/`.
+  - In the bust camera all four tails stay beside her. From 2.0, a tail's
+    marking shows behind her neck.
+  - From the side, the tails curl up and back over her, and the innermost
+    curl comes close behind her hat at 3.
+  - A held perk on top of 3 (3.5 in total) hooks the tips forward above her
+    head like horns, still behind her. No grid showed a tail through her head
+    or face.
+  - The range is not capped below 3. Closeness to her head is checked by eye
+    only, not measured.
+
+### Reactions
+
+Her tails answer her mood, on top of the wave and with the same overlay, so
+physics still owns them:
+
+| Reaction | Moods | Shape | Size (total arc) |
+|---|---|---|---|
+| **Perk** | surprised, shocked, gasp, scared | Up in 0.35 s, hold 0.4 s, down over 1.2 s | +0.5 rad |
+| **Lift** | happy, joyful, excited, grin, lovestruck | Up in 0.8 s, hold 1.2 s, down over 1.6 s | +0.3 rad |
+| **Droop** | sleepy, sad, sorrowful, disappointed, cry | Eases down, held while the mood lasts, eases back | −0.35 rad |
+| **Sway** | while she speaks | The wave at 0.35 of its size | |
+| **Ponder** (#225) | while she thinks | The full wave (`thinkingGain` 1), at 0.8 of its pace (`thinkingTempo`) | |
+
+- A reaction fires when the mood **changes** to one of its moods. The same
+  mood again does nothing. The lift is spread evenly over the 17 links, so
+  each tail arcs up or down as one curve.
+- **Composed:** while idle is blocked by anything other than speech or
+  thinking (an open ask, a streaming reply, a morph preview), the wave, sway
+  and reactions all ease out, and new moods are ignored. While she speaks,
+  only the sway plays, and her moods still react.
+- **Ponder (#225):** thinking blocks idle too, but her tails used to freeze
+  next to her fidgeting hands (#218), so the user asked for them to keep
+  moving. While the thinking pose is active, `applyTentacleWave()` passes
+  `thinking` to `TentacleWave.update()`, and the tails ease to a slower wave
+  (`TENTACLE_WAVE.thinkingGain` 1, `thinkingTempo` 0.8) instead of going
+  still. The wave's clock runs at `thinkingTempo` while she thinks, so the
+  pace changes without a jump. If she speaks while thinking, the larger of
+  the two sizes plays at the usual pace. The precedence is decided in
+  `tentacleBlocks()`: an open ask or a morph preview is a **hard block** that
+  always settles the tails, while thinking only ponders over the remaining
+  blocks (a streaming reply) — before the review fix, `!thinking` had cleared
+  composed for every block at once. The toggle and the size slider work
+  as usual. On 17 November 2026 the user was offered 0.35 of the size at the
+  usual pace (the speaking sway), 0.5 and 0.7 at 0.6 of the pace, or the full
+  idle wave, and picked **the full size at 0.8 of the pace**: one wave takes
+  6.25 s instead of 5 s.
+- Reactions follow the **size slider** up to the default: full size at 0.4
+  and above, half at 0.2, none at 0. The toggle eases them out like the wave.
+- A reaction stopped part-way (composure, the toggle, the Stop button) hands
+  its current lift to the droop spring, so it eases back instead of snapping.
+
+Checked in the browser with each reaction held at full size (tips, 20 % of
+tail vertices against 25 % of body vertices):
+
+| Held | Highest tip (y) | Lowest tail point (y) | Closest to body | Closest to another tail |
+|---|---|---|---|---|
+| Rest | 13.19 | 5.26 | 0.098 | 1.53 |
+| Perk +0.5 | 16.74 | 8.70 | 0.101 | 1.53 |
+| Lift +0.3 | 15.35 | 7.27 | 0.099 | 1.53 |
+| Droop −0.35 | 10.95 | 3.25 | 0.096 | 1.53 |
+
+A positive lift raises the tails in every view, and the droop stays well
+above the floor. Played live:
+- The perk peaks at 0.5 within about 0.5 s and is back at 0 by 2 s.
+- Surprise from the mood does the same.
+- Sad droops to −0.35 in about 1.5 s.
+- Thinking eases the droop to 0, disables the tentacle buttons and says so.
+- Stopping the wave eases it out over about 1.5 s.
+The sway while speaking is covered by the tests only: the mocked bridge
+plays no speech.
+
+### Frame cost
+
+Timed around the physics step in the browser over 6 s each (the page's timer
+has a 0.1 ms resolution): taking the wave off and adding it back costs a
+median under 0.1 ms and 0.1 ms at p95, both while still and while the wave
+plays. `physics.update` itself takes a median of 2.1–2.3 ms (p95 2.8 ms while
+the wave played). #116 profiles the whole frame on the Strix Halo.
+
+### Playing them from Animation actions
+
+The **Animation actions · 仕草再生** section (#164) has four more buttons:
+**Tentacle wave** (10 s of the full wave), **Tentacle perk**, **Tentacle droop**
+(held 4 s) and **Tentacle sway** (8 s at the speaking size). They work like
+the body actions: the same button again stops the action and eases back,
+another button switches, and they are gated the same way, as well as when the
+**Tentacle wave** toggle is off. A tentacle action plays alongside a body
+action, since they move different bones.
+
+### Frame order with the wave
+
+```
+… idle motion → take the wave off the tails → mesh.updateMatrixWorld() → physics.update(delta)
+  → note the tails' physics pose → add the wave → render
+```
+
+Taking the wave off before the step matters: `MMDPhysics` works out each
+bone's new rotation from its current local rotation, so a wave left on would
+feed into the next physics pose. Before a rebuild's `reset()` the wave is
+taken off too and the mesh's matrices are refreshed, because `reset()` places
+the bodies from `bone.matrixWorld`, which still holds the last drawn wave. With physics off,
+the wave is added to the tails' rest pose instead.
+
+Speech, a streaming reply, an open ask and real thinking block idle, so the
+idle state returns to active and the wave eases out. Speech keeps a sway and
+thinking keeps a slow wave (#225). The reactions from #182
+(lift, droop, the sway while speaking) are planned separately.
+
+### Checked in the browser
+
+With *Idle after* at 5 s, sway and gaze off, vertex motion in the `下半身`
+frame over 6 s (tips, links 14–17), measured at the earlier 0.25 default:
+
+| | Speed | Jitter | Buzz | Swing |
+|---|---|---|---|---|
+| Idle, wave on (0.25) | 0.55 units/s | 0.0005 | 0.003 | 1.25 |
+| Idle, wave toggled off | 0 | 0 | 0 | 0 |
+| Idle, wave on, after physics off → on | 0.55 units/s | 0.0004 | 0.003 | 1.25 |
+
+- The gain rises 0 → 0.5 in about 0.45 s and reaches 0.99 by 1.6 s. It eases
+  out the same way when the toggle goes off, or when real thinking blocks idle
+  and she returns to active.
+- With physics off, the wave plays on the tails' rest pose. When physics comes
+  back, it builds without errors and the wave carries on.
+- **Not from the wave:** after a body-group rebuild (switching chest physics
+  on), the tails keep a faint buzz on `master` too (tips 0.07 units/s, jitter
+  0.0024, swing 0.002), and on this branch with the wave on or off (0.11 units/s, jitter
+  0.0034, swing 0.004). A fresh load or a physics off → on doesn't show it.
+  This one belongs to #116.
+
+### Grids
+
+Labelled grids and GIFs (front, three-quarter front, three-quarter back,
+back × wave off / 0.15 / 0.25 / 0.4 / 0.6 / 0.8 / 1.0 / 1.5 / 2.0) are kept under
+`assets/private/tails-182/` (gitignored, since the model is private).
 
 ## Tests
 
@@ -322,3 +618,8 @@ skipped when the PMX or `node_modules/three` is absent.
 `tests/renderer/physics-layer.test.mjs` covers the lifecycle table above with
 a fake build, `ammo-loader.test.mjs` covers the one-time script load and its
 errors, and `stored-toggle.test.mjs` covers default-off toggles.
+
+`tests/renderer/tentacle-motion.test.mjs` covers the wave's bounds, its
+travel from root to tip, the per-tail phases, the easing with the idle
+states and the toggle, and her real rig's four 17-link tails (skipped without
+the PMX).

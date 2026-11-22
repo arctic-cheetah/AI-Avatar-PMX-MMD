@@ -1,5 +1,5 @@
-"""Endearments get their own, higher lift (#83): at 4 st "sweetheart!" still sounded a bit down;
-of 4 / 6 / 8 st, 8 sounded best (listened 9 Nov 2026)."""
+😊"""Endearments get their own, higher lift (#83): at 4 st "sweetheart!" still sounded a bit down;
+of 4 / 6 / 8 st, 8 sounded best (listened 9 Nov 2026); raised to 9 st on 15 Nov 2026 (#183)."""
 from pathlib import Path
 import sys
 import tempfile

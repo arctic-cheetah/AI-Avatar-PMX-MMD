@@ -147,14 +147,17 @@ order and blink combination rules are in
 [animation-transitions.md](./animation-transitions.md). Channel independence is not a
 guarantee of non-conflicting geometry.
 
-The thinking mood adds an eased chin-rest gesture: curled right fingers beneath
-the chin, elbow lowered, and the left arm crossing underneath to support it,
-plus a thought bubble and an upward eye offset (not a head tilt). The static
+The thinking mood adds an eased chin-rest gesture: a right fist tilted back
+under the bottom of the chin, the right elbow tucked in so the forearm bone
+stays out of her bust (only the sleeve and glove press in), and the left hand
+cupped under the right elbow, plus a thought bubble and an upward eye offset
+(not a head tilt). The targets and their clearance
+measurements are in [thinking-pose.md](./thinking-pose.md) (#217). The static
 pose is solved from shoulder/elbow/wrist positions with a two-segment arm solver,
 including intervening twist bones; finger curls are cached before restoring the
 exact rest rotations. Targets are tuned for Yidhari's PMX proportions, not a
 general-purpose retargeter. Both wrist targets and the raised elbow are spaced
-forward to keep fingers/gloves outside the face and outfit. Eye tracking keeps
+to keep the arm bones out of the bust and the fist under the chin, not over the face. Eye tracking keeps
 its normal limits throughout the gesture. Head/neck tracking follows at 35 % of
 its range while the pose is in, so the chin stays over the hand. The hand target
 remains fixed relative to the torso rather than following the head.

@@ -48,9 +48,10 @@ uniform float gooFacingDot;
 uniform float gooLightFacingPow;
 uniform float gooEdgeLight;
 
-// The smoothstep node group: t clamped, t²(3 − 2t).
+// The smoothstep node group: t clamped, t²(3 − 2t). Blender's divide gives 0 for /0.
 float gooSmooth( float e0, float e1, float x ) {
-  float t = clamp( ( x - e0 ) / ( e1 - e0 ), 0.0, 1.0 );
+  float d = e1 - e0;
+  float t = d == 0.0 ? 0.0 : clamp( ( x - e0 ) / d, 0.0, 1.0 );
   return t * t * ( 3.0 - 2.0 * t );
 }
 
@@ -70,6 +71,72 @@ int gooMatId( float r ) {
 }
 
 vec3 gooScreen( vec3 a, vec3 b ) { return 1.0 - ( 1.0 - a ) * ( 1.0 - b ); }
+
+// Highlights [HAIR] and [BODY] (#253).
+uniform float gooHairHighlightMask;
+uniform float gooHairHighlightIntensity;
+uniform float gooHairHighlightSpread;
+uniform vec3 gooHairHighlightColor;
+uniform float gooMatcapEnabled;
+uniform float gooBodyHighlightRamp[GOO_RAMP_SIZE];
+uniform float gooBodyShadeRamp[GOO_RAMP_SIZE];
+
+vec3 gooHighlights( vec3 col, vec3 mask, float NdotL, float NdotH ) {
+  // Hair Mask: Col.b · 10 > 0.05, only where Enable Hair Highlight Mask is on.
+  float hairMask = clamp( ( vGooCol.b * 10.0 > 0.05 ? 1.0 : 0.0 ) * gooHairHighlightMask, 0.0, 1.0 );
+  float spread = clamp( pow( max( NdotL * 0.5 + 0.5, 0.0 ), gooHairHighlightSpread ), 0.0, 1.0 );
+  float inv = 1.0 - spread;
+  float band = gooSmooth( clamp( clamp( inv - 0.3, 0.0, 1.0 ) + 0.5, 0.0, 1.0 ), clamp( inv + 0.5, 0.0, 1.0 ), mask.b );
+  vec3 hair = col * gooHairHighlightColor * band * spread * 1.314;
+  vec3 withHair = mix( col, mix( col, gooScreen( col, hair ), gooHairHighlightIntensity ), hairMask );
+  // Body: (smoothstep(_M.b) · N·H)^10 through two ramps; skipped on the hair.
+  float h = clamp( pow( abs( gooSmooth( 0.0, 1.0, mask.b ) * NdotH ), 10.0 ), 0.0, 1.0 );
+  vec3 body = mix( ( h * 3.14 + gooLut( gooBodyHighlightRamp, h ) ) * col * gooMatcapEnabled, vec3( 0.0 ), hairMask );
+  float shade = mix( 1.0, mix( 1.0, gooLut( gooBodyShadeRamp, h ), mask.b ), gooMatcapEnabled );
+  shade = mix( shade, 1.0, mix( 1.0, hairMask, gooHairHighlightMask ) );
+  return ( withHair + body ) * shade;
+}
+
+#ifdef GOO_MATCAP
+uniform sampler2D gooMatcapA;
+uniform sampler2D gooMatcapB;
+uniform vec3 gooMatcapColors[5];
+uniform float gooMatcapSampler[5];
+uniform float gooMatcapAdd[5];
+uniform float gooMatcapMultiplyFactor;
+uniform float gooMatcapAddFactor;
+
+// [ZZZB] MatCaps + [MatCaps]: the matcap for this ID, multiplied or added, by _M.b.
+vec3 gooMatcap( vec3 D, vec3 N, int id, float strength ) {
+  // matCap Mapping: view-space normal · 0.5 + 0.5; v flipped because flipY = false.
+  vec2 uv = N.xy * 0.5 + 0.5;
+  uv.y = 1.0 - uv.y;
+  vec3 m = gooMatcapColors[ id ];
+  float s = gooMatcapSampler[ id ];
+  if ( s > 1.5 ) m *= texture2D( gooMatcapB, uv ).rgb;
+  else if ( s > 0.5 ) m *= texture2D( gooMatcapA, uv ).rgb;
+  m = clamp( m, 0.0, 1.0 );
+  float add = gooMatcapAdd[ id ];
+  vec3 m066 = mix( D, D * mix( vec3( 1.0 ), m, 1.0 - add ), gooMatcapMultiplyFactor );
+  vec3 m067 = clamp( mix( vec3( 0.0 ), m, add ) * m066, 0.0, 1.0 );
+  return clamp( mix( D, m066 + gooMatcapAddFactor * m067, clamp( strength, 0.0, 1.0 ) ), 0.0, 1.0 );
+}
+#endif
+
+#ifdef GOO_RIM
+uniform vec3 gooRimMultiplier;
+uniform vec3 gooRimAdditional;
+uniform float gooRimRamp[GOO_RAMP_SIZE];
+
+// Rim Lighting. Goo's screen-space Scene Rim is approximated by a fresnel term.
+vec3 gooRim( vec3 col, float NdotL, float NdotV, float normalRed ) {
+  float rim = gooLut( gooRimRamp, pow( clamp( 1.0 - NdotV, 0.0, 1.0 ), 4.0 ) );
+  float lightSide = clamp( pow( max( NdotL, 0.0 ), 5.0 ), 0.0, 1.0 );
+  float mask = gooSmooth( 0.25, 0.3, normalRed );   // Normal Map Mask
+  vec3 tint = gooScreen( col * gooRimMultiplier, gooRimAdditional );
+  return col + tint * clamp( clamp( rim * lightSide, 0.0, 1.0 ) * mask, 0.0, 1.0 );
+}
+#endif
 
 vec3 gooShade( vec4 diffuse, vec3 n ) {
   vec3 D = diffuse.rgb;
@@ -109,6 +176,9 @@ vec3 gooShade( vec4 diffuse, vec3 n ) {
   vec3 V = normalize( vViewPosition );
   float NdotL = dot( N, L );
   float NdotV = dot( N, V );
+#ifdef GOO_MATCAP
+  D = gooMatcap( D, N, id, mask.b * gooMatcapEnabled );
+#endif
   vec3 shadowColor = gooShadowColors[ id ];
   float colA = mix( gooColAlphaConstant, vGooCol.a, gooColAlphaFromAttribute );
   float s4 = gooSmooth( pos, pos + soft, NdotL );               // Shallow
@@ -134,7 +204,19 @@ vec3 gooShade( vec4 diffuse, vec3 n ) {
 #endif
   // Local Indirect Color, then the SSS blend; times the processed diffuse.
   vec3 indirectLight = mix( indirect * light, vec3( 1.0 ), 0.666 );
-  return base * mix( indirectLight, light, sss );
+  vec3 col = base * mix( indirectLight, light, sss );
+#ifndef GOO_FACE
+  col = gooHighlights( col, mask, NdotL, dot( normalize( V + L ), N ) );
+#ifdef GOO_RIM
+#ifdef USE_NORMALMAP
+  float normalRed = texture2D( normalMap, vNormalMapUv ).r;
+#else
+  float normalRed = 1.0;
+#endif
+  col = gooRim( col, NdotL, NdotV, normalRed );
+#endif
+#endif
+  return col;
 }
 `;
 
@@ -194,7 +276,55 @@ export function gooMaterialUniforms(p, scene) {
     gooLightmap: { value: null },
     gooSssRamp: { value: resample(scene.ramps["Color Ramp.006"].samples) },
     gooFadeRamp: { value: resample(scene.ramps["Color Ramp"].samples) },
+    // Highlights and rim (#253).
+    gooHairHighlightMask: { value: snap(p["Enable Hair Highlight Mask"]) },
+    gooHairHighlightIntensity: { value: Number(p["Hair Highlight Intensity"] ?? 0) },
+    gooHairHighlightSpread: { value: Number(p["Hair Highlight Spread Power"] ?? 1) },
+    gooHairHighlightColor: { value: vec3(p["Hair Highlight Color Multiplier"] ?? [1, 1, 1]) },
+    gooMatcapEnabled: { value: snap(p["Enable MatCap Effect"]) },
+    gooBodyHighlightRamp: { value: resample(scene.ramps["Color Ramp.003"].samples) },
+    gooBodyShadeRamp: { value: resample(scene.ramps["Color Ramp.004"].samples) },
+    gooRimMultiplier: { value: vec3(p["Rim Light Color Multiplier"] ?? [1, 1, 1]) },
+    gooRimAdditional: { value: vec3(p["Rim Light Additional Color"] ?? [0, 0, 0]) },
+    gooRimRamp: { value: resample(scene.ramps["Color Ramp.001"].samples) },
+    gooMatcapA: { value: null },
+    gooMatcapB: { value: null },
+    gooMatcapColors: { value: NUMBERED.map(() => new THREE.Vector3(1, 1, 1)) },
+    gooMatcapSampler: { value: new Float32Array(5) },
+    gooMatcapAdd: { value: new Float32Array(5) },
+    gooMatcapMultiplyFactor: { value: Number(p["MatCap Multiplier Factor"] ?? 1) },
+    gooMatcapAddFactor: { value: Number(p["MatCap Addition Factor"] ?? 1) },
   };
+}
+
+/** Blender's Math SNAP to 1, clamped: 1 when the switch is on. */
+const snap = (v) => (Number(v) >= 1 ? 1 : 0);
+
+/**
+ * Fill the matcap slots from the baked `[ZZZB] MatCaps` inputs.
+ * @param {object} uniforms From gooMaterialUniforms().
+ * @param {Record<string, any>} matcaps params._matcaps.
+ * @param {(file: string) => THREE.Texture} texture Loads a game texture.
+ */
+export function setUpMatcaps(uniforms, matcaps, texture) {
+  const samplers = [];
+  NUMBERED.forEach((n, i) => {
+    const color = matcaps[`MatCap Map Color${n}`];
+    const tint = matcaps[`MatCap Color Tint${n}`] ?? [1, 1, 1];
+    uniforms.gooMatcapAdd.value[i] = snap(matcaps[`MatCap Multiplier/Addition${n}`]);
+    if (color?.texture) {
+      let slot = samplers.indexOf(color.texture);
+      if (slot < 0) slot = samplers.push(color.texture) - 1;
+      if (slot > 1) throw new Error("more than two matcap textures");
+      uniforms.gooMatcapSampler.value[i] = slot + 1;
+      uniforms.gooMatcapColors.value[i].set(tint[0], tint[1], tint[2]);
+    } else {
+      const c = Array.isArray(color) ? color : [1, 1, 1];
+      uniforms.gooMatcapColors.value[i].set(c[0] * tint[0], c[1] * tint[1], c[2] * tint[2]);
+    }
+  });
+  if (samplers[0]) uniforms.gooMatcapA.value = texture(samplers[0]);
+  if (samplers[1]) uniforms.gooMatcapB.value = texture(samplers[1]);
 }
 
 /** Per-frame uniforms, one object shared by every Goo material. */

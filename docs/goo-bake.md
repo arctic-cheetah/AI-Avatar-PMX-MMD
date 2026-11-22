@@ -14,11 +14,13 @@ the renderer uses them. For how the V1.3 file was made, see
 
 ## Run it
 
-Run it with Goo Engine 4.4.3 so the `ZZZB` node groups load as saved:
+Run it with Goo Engine 4.4.3 so the `ZZZB` node groups load as saved.
+`--disable-autoexec` stops any Python embedded in the third-party-derived
+`.blend` from running during the bake:
 
 ```bash
-~/build_linux_goo44/bin/blender -b assets/Blender/Yidhari_V1.3_PMX.blend \
-  --python tools/goo-bake/bake.py -- assets/private/goo
+~/build_linux_goo44/bin/blender -b -y --disable-autoexec \
+  assets/Blender/Yidhari_V1.3_PMX.blend --python tools/goo-bake/bake.py -- assets/private/goo
 ```
 
 Then check the result against the PMX the renderer loads:
@@ -37,14 +39,21 @@ can be spotted.
 
 | File | Contents |
 | --- | --- |
-| `manifest.json` | Format version (1), source file and SHA-256, Blender version, PMX vertex count, PMX material names in PMX order, and the SHA-256 of every other file |
-| `material-map.json` | One entry per PMX material, in PMX order: the PMX name, the game material (or `null` and `hidden: true` for the `髮+` shell), its `shader`, and its texture files by role (`diffuse`, `a`, `m`, `normal`, `faceLightmap`, `matcap2`, `matcap3`). `shader` is `"zzzb"` for the Goo shader (18 materials), or `"transparent"` with an RGBA `color` for `目影`. Eye Shadow is only a Transparent BSDF that darkens what is behind it by that colour. Anything else is `"unsupported"`, and the renderer rejects the bake |
+| `manifest.json` | Format version (1), source file and SHA-256, Blender version, `col.bin`'s colour space (`sRGB`), PMX vertex count, PMX material names in PMX order, 32 sampled vertex positions in PMX space (`pmx.samples`), and the SHA-256 of every file this run wrote |
+| `material-map.json` | One entry per PMX material, in PMX order: the PMX name, the game material, the `params.json` key of a Goo material (`params`) (or `null` and `hidden: true` for the `髮+` shell), its `shader`, and its texture files by role (`diffuse`, `a`, `m`, `normal`, `faceLightmap`, `matcap2`, `matcap3`). `shader` is `"zzzb"` for the Goo shader (18 materials), or `"transparent"` with an RGBA `color` for `目影`. Eye Shadow is only a Transparent BSDF that darkens what is behind it by that colour. Anything else is `"unsupported"`, and the renderer rejects the bake |
 | `params.json` | For each game material, every input of its `Zenless Zone Zero Braincells [Shader]` node: a constant (number or RGBA), or where it comes from (`texture`, `attribute`, or `computed` when it is the result of other nodes) |
-| `col.bin` | The `Col` colour attribute: 4 bytes (RGBA) per PMX vertex, in PMX vertex order |
+| `col.bin` | The `Col` colour attribute: 4 bytes (RGBA) per PMX vertex, in PMX vertex order. RGB are the **sRGB-encoded bytes Blender stores** (`color_srgb`), so nothing is lost to re-quantising; the shader decodes them to linear, which is what Blender's Color Attribute node gives the material. Alpha is linear |
 | `textures/*.png` | The game textures the materials use, written from the packed images |
 
 The output does not include a bake date, so baking the same `.blend` twice
-gives identical files.
+gives identical files. The manifest lists only the files this run wrote, so a
+stale texture left in the folder from an earlier bake is not mistaken for
+part of the bake.
+
+At load, `validateGooAssets()` also compares the 32 sampled vertex positions
+with the PMX (within 0.001 units). A PMX whose vertices were reordered or
+moved, but whose count is unchanged, is rejected instead of drawn with the
+wrong colours.
 
 ## Why per-vertex colours and PMX order are safe
 

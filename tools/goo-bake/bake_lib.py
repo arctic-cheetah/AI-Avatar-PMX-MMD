@@ -23,20 +23,41 @@ def pack_col(colours: Iterable[Sequence[float] | None], vertex_count: int) -> by
     for index, rgba in enumerate(colours):
         if rgba is None:
             raise ValueError(f"vertex {index} has no colour")
-        out.extend(_byte(channel) for channel in rgba[:4])
+        if len(rgba) != 4:
+            raise ValueError(f"vertex {index} has {len(rgba)} channels")
+        out.extend(_byte(channel) for channel in rgba)
     return bytes(out)
 
 
 def build_manifest(*, source: str, source_sha256: str, blender: str, vertex_count: int,
-                   materials: list[str], files: dict[str, str]) -> dict:
+                   materials: list[str], files: dict[str, str], samples: list[dict]) -> dict:
     """What the renderer checks before using a bake."""
     return {
         "version": MANIFEST_VERSION,
         "source": {"file": source, "sha256": source_sha256},
         "blender": blender,
-        "pmx": {"vertexCount": vertex_count, "materials": list(materials)},
+        "colSpace": "sRGB",
+        "pmx": {"vertexCount": vertex_count, "materials": list(materials), "samples": list(samples)},
         "files": dict(files),
     }
+
+
+def sample_indices(vertex_count: int, count: int = 32) -> list[int]:
+    """Evenly spread vertex indices for the position fingerprint, first and last included."""
+    if vertex_count <= count:
+        return list(range(vertex_count))
+    return [round(i * (vertex_count - 1) / (count - 1)) for i in range(count)]
+
+
+def pmx_position(blender_co) -> list[float]:
+    """Undo the MMD Tools import (Blender = (x, -z, y) * 0.08 of three.js's parsed PMX position)."""
+    x, y, z = blender_co
+    return [round(v / 0.08, 4) + 0.0 for v in (x, z, -y)]
+
+
+def hash_files(paths, root: Path) -> dict[str, str]:
+    """SHA-256 of exactly these files, keyed by their path relative to root, sorted."""
+    return {p.relative_to(root).as_posix(): sha256_file(p) for p in sorted(Path(p) for p in paths)}
 
 
 def dump_json(value: object) -> str:

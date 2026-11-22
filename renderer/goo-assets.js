@@ -27,11 +27,11 @@ export function decodeCol(buffer, vertexCount) {
 
 /**
  * Check a bake against the loaded PMX.
- * @param {{ manifest: any, materialMap: any, colBytes: Uint8Array }} baked
- * @param {{ vertexCount: number, materialNames: string[] }} pmx
+ * @param {{ manifest: any, materialMap: any, colBytes: Uint8Array, params?: any }} baked
+ * @param {{ vertexCount: number, materialNames: string[], positionOf?: (index: number) => number[] }} pmx
  * @returns {{ ok: boolean, errors: string[] }}
  */
-export function validateGooAssets({ manifest, materialMap, colBytes }, { vertexCount, materialNames }) {
+export function validateGooAssets({ manifest, materialMap, colBytes, params }, { vertexCount, materialNames, positionOf }) {
   const errors = [];
   if (manifest?.version !== GOO_MANIFEST_VERSION) {
     errors.push(`manifest version ${manifest?.version} is not supported`);
@@ -49,15 +49,36 @@ export function validateGooAssets({ manifest, materialMap, colBytes }, { vertexC
       errors.push(`material ${i} is ${name} in the bake, ${materialNames[i]} in the PMX`);
     }
   });
-  const entries = materialMap?.materials ?? [];
+  if (manifest?.colSpace !== "sRGB") errors.push(`col.bin colour space ${manifest?.colSpace} is not supported`);
+  const samples = baked.samples;
+  if (!Array.isArray(samples) || samples.length === 0) {
+    errors.push("manifest has no vertex position samples");
+  } else if (positionOf) {
+    // Same count but reordered or moved vertices would draw the wrong colours.
+    for (const { index, position } of samples) {
+      const actual = index < vertexCount ? positionOf(index) : null;
+      if (!actual || position.some((v, axis) => Math.abs(v - actual[axis]) > 1e-3)) {
+        errors.push(`vertex ${index} is at ${position.join(",")} in the bake, ${actual ? [...actual].join(",") : "missing"} in the PMX`);
+        break;
+      }
+    }
+  }
+  const raw = materialMap?.materials;
+  if (!Array.isArray(raw)) errors.push("material map has no materials list");
+  const entries = Array.isArray(raw) ? raw : [];
   if (entries.length !== bakedNames.length) {
     errors.push(`material map has ${entries.length} entries, the manifest ${bakedNames.length}`);
   }
   entries.forEach((entry, i) => {
+    if (!entry || typeof entry !== "object") {
+      errors.push(`material map entry ${i} is not an object`);
+      return;
+    }
     if (entry.pmx !== bakedNames[i]) errors.push(`material map entry ${i} is ${entry.pmx}, expected ${bakedNames[i]}`);
     if (entry.hidden) return;
     if (entry.shader === "zzzb") {
       if (!entry.textures?.diffuse) errors.push(`${entry.pmx} has no diffuse texture`);
+      if (params && !params[entry.params]) errors.push(`${entry.pmx} uses params ${entry.params}, which params.json does not have`);
     } else if (entry.shader === "transparent") {
       if (!Array.isArray(entry.color) || entry.color.length !== 4) {
         errors.push(`${entry.pmx} is a transparent tint without a colour`);

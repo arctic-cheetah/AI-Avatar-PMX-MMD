@@ -38,9 +38,9 @@ const params = (face) => ({
 const RAMPS = Object.fromEntries(["Color Ramp.006", "Color Ramp", "Color Ramp.001", "Color Ramp.003", "Color Ramp.004"].map((n) => [n, { samples: [0, 1, 1] }]));
 function bake() {
   return {
-    manifest: { version: 1, pmx: { vertexCount: 3, materials: ["颜", "目影", "髮+"] } },
+    manifest: { version: 1, colSpace: "sRGB", pmx: { vertexCount: 3, materials: ["颜", "目影", "髮+"], samples: [{ index: 0, position: [0, 0, 0] }] } },
     materialMap: { materials: [
-      { pmx: "颜", game: "Yidhari Face", hidden: false, shader: "zzzb", textures: { diffuse: "F.png", faceLightmap: "L.png" } },
+      { pmx: "颜", game: "Yidhari Face", params: "Yidhari Face", hidden: false, shader: "zzzb", textures: { diffuse: "F.png", faceLightmap: "L.png" } },
       { pmx: "目影", game: "Eye Shadow", hidden: false, shader: "transparent", color: [0.5, 0.5, 0.5, 1], textures: {} },
       { pmx: "髮+", game: null, hidden: true, shader: null, textures: {} },
     ] },
@@ -64,8 +64,10 @@ function skinnedMesh() {
   mesh.morphTargetDictionary = { "まばたき": 0 };
   return mesh;
 }
+const TEXTURES = new Map(["F.png", "L.png"].map((f) => [f, new THREE.Texture()]));
+const PMX_INFO = (names) => ({ vertexCount: 3, materialNames: names, positionOf: () => [0, 0, 0] });
 const build = (mesh = skinnedMesh()) => createGooMaterials(mesh, bake(), {
-  pmx: { vertexCount: 3, materialNames: ["颜", "目影", "髮+"] }, baseUrl: "/goo", loadTexture: () => new THREE.Texture(),
+  pmx: PMX_INFO(["颜", "目影", "髮+"]), textures: TEXTURES,
 });
 
 test("part switches are shared uniforms that need no recompile", () => {
@@ -195,9 +197,7 @@ function shineBuild() {
   const assets = bake();
   assets.manifest.pmx.materials = ["目光", "目影", "髮+"];
   assets.materialMap.materials[0] = { ...assets.materialMap.materials[0], pmx: "目光" };
-  const goo = createGooMaterials(mesh, assets, {
-    pmx: { vertexCount: 3, materialNames: ["目光", "目影", "髮+"] }, baseUrl: "/goo", loadTexture: () => new THREE.Texture(),
-  });
+  const goo = createGooMaterials(mesh, assets, { pmx: PMX_INFO(["目光", "目影", "髮+"]), textures: TEXTURES });
   return goo;
 }
 

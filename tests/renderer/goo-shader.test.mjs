@@ -43,21 +43,21 @@ const SCENE = {
 function bake() {
   const names = ["颜", "髮", "体"];
   return {
-    manifest: { version: 1, pmx: { vertexCount: 3, materials: names } },
+    manifest: { version: 1, colSpace: "sRGB", pmx: { vertexCount: 3, materials: names, samples: [{ index: 0, position: [0, 0, 0] }] } },
     materialMap: {
       materials: [
         {
-          pmx: "颜", game: "Yidhari Face", hidden: false, shader: "zzzb",
+          pmx: "颜", game: "Yidhari Face", params: "Yidhari Face", hidden: false, shader: "zzzb",
           textures: { diffuse: "Face_D.png", faceLightmap: "Lightmap.png" },
           colorSpaces: { diffuse: "sRGB", faceLightmap: "Non-Color" },
         },
         {
-          pmx: "髮", game: "Yidhari Hair", hidden: false, shader: "zzzb",
+          pmx: "髮", game: "Yidhari Hair", params: "Yidhari Hair", hidden: false, shader: "zzzb",
           textures: { diffuse: "Map2_D.png", m: "Map2_M.png", normal: "Map2_N.png" },
           colorSpaces: { diffuse: "sRGB", m: "sRGB", normal: "Non-Color" },
         },
         {
-          pmx: "体", game: "Yidhari MAT 1", hidden: false, shader: "zzzb",
+          pmx: "体", game: "Yidhari MAT 1", params: "Yidhari MAT 1", hidden: false, shader: "zzzb",
           textures: { diffuse: "Map1_D.png", m: "Map1_M.png", normal: "Map1_N.png", matcap2: "Matcap_116.png", matcap3: "Matcap_115.png" },
           colorSpaces: { diffuse: "sRGB", m: "Non-Color", normal: "Non-Color", matcap2: "sRGB", matcap3: "sRGB" },
         },
@@ -77,16 +77,17 @@ function build(assets = bake()) {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(9), 3));
   const mesh = { geometry, material: materials };
-  const loadTexture = (url) => Object.assign(new THREE.Texture(), { url });
+  const files = assets.materialMap.materials.flatMap((e) => Object.values(e.textures));
+  const textures = new Map(files.map((f) => [f, Object.assign(new THREE.Texture(), { url: `/goo/textures/${f}` })]));
   const goo = createGooMaterials(mesh, assets, {
-    pmx: { vertexCount: 3, materialNames: ["颜", "髮", "体"] }, baseUrl: "/goo", loadTexture,
+    pmx: { vertexCount: 3, materialNames: ["颜", "髮", "体"], positionOf: () => [0, 0, 0] }, textures,
   });
   return { goo, face: goo.materials[0], hair: goo.materials[1], body: goo.materials[2] };
 }
 
 const FAKE_SHADER = () => ({
   uniforms: {},
-  vertexShader: "#include <common>\nvoid main() {\n#include <begin_vertex>\n}",
+  vertexShader: "#include <common>\nvoid main() {\n#include <begin_vertex>\n#include <project_vertex>\n}",
   fragmentShader: "#include <common>\n#include <clipping_planes_pars_fragment>\nvoid main() {\n#include <map_fragment>\n#include <normal_fragment_maps>\n#include <opaque_fragment>\n}",
 });
 
@@ -133,7 +134,7 @@ test("the five shadow, shallow and indirect colours come from the params", () =>
 test("a Goo material without its params is refused", () => {
   const assets = bake();
   delete assets.params["Yidhari Hair"];
-  assert.throws(() => build(assets), /no shader params for Yidhari Hair/);
+  assert.throws(() => build(assets), /uses params Yidhari Hair, which params\.json does not have/);
 });
 
 test("onBeforeCompile adds the Col attribute and replaces the lighting", () => {
@@ -141,7 +142,7 @@ test("onBeforeCompile adds the Col attribute and replaces the lighting", () => {
   const shader = FAKE_SHADER();
   hair.onBeforeCompile(shader);
   assert.match(shader.vertexShader, /attribute vec4 gooCol;/);
-  assert.match(shader.vertexShader, /vGooCol = gooCol;/);
+  assert.match(shader.vertexShader, /vGooCol = vec4\( gooSrgbToLinear/);
   assert.match(shader.fragmentShader, /vec3 gooShade\(/);
   // It needs vMapUv and vViewPosition, which the pars chunks declare.
   assert.ok(shader.fragmentShader.indexOf("vec3 gooShade(") > shader.fragmentShader.indexOf("#include <clipping_planes_pars_fragment>"));
@@ -164,12 +165,23 @@ test("all Goo materials share one set of per-frame uniforms", () => {
   }
 });
 
-test("the shading ramps are resampled to fixed-size LUT uniforms", () => {
-  const { hair } = build();
-  const u = hair.userData.gooUniforms;
-  assert.equal(u.gooSssRamp.value.length, 33);
-  assert.deepEqual([u.gooSssRamp.value[0], u.gooSssRamp.value[16], u.gooSssRamp.value[32]].map((v) => Number(v.toFixed(3))), [1, 0.33, 1]);
-  assert.deepEqual([u.gooFadeRamp.value[0], u.gooFadeRamp.value[16], u.gooFadeRamp.value[32]], [0, 1, 1]);
+test("all ramps share one small texture, one row each, instead of uniform arrays", () => {
+  const { face, hair, body } = build();
+  const ramps = body.userData.gooUniforms.gooRamps.value;
+  assert.ok(ramps.isDataTexture);
+  assert.equal(face.userData.gooUniforms.gooRamps.value, ramps, "shared by every Goo material");
+  assert.equal(hair.userData.gooUniforms.gooRamps.value, ramps);
+  assert.equal(ramps.image.width, 33);
+  assert.equal(ramps.image.height, 5);
+  const at = (row, i) => ramps.image.data[row * 33 + i];
+  // Row 0: Fake SSS (1, 0.33, 1); row 1: Shadow Fade Gradient (0, 1, 1).
+  assert.deepEqual([at(0, 0), at(0, 16), at(0, 32)], [255, 84, 255]);
+  assert.deepEqual([at(1, 0), at(1, 16), at(1, 32)], [0, 255, 255]);
+  assert.equal(body.userData.gooUniforms.gooSssRamp, undefined, "no float[33] uniforms left");
+  const shader = FAKE_SHADER();
+  body.onBeforeCompile(shader);
+  assert.doesNotMatch(shader.fragmentShader, /uniform float goo\w+Ramp\[/);
+  assert.match(shader.fragmentShader, /uniform sampler2D gooRamps;/);
 });
 
 test("body materials with Enable MatCap Effect get the five matcap slots", () => {
@@ -198,8 +210,7 @@ test("rim light and hair highlights follow the material's switches", () => {
   assert.equal(h.gooHairHighlightIntensity.value, 0.75);
   assert.equal(h.gooHairHighlightSpread.value, 2.5);
   assert.equal(body.userData.gooUniforms.gooHairHighlightMask.value, 0);
-  assert.equal(body.userData.gooUniforms.gooRimRamp.value.length, 33);
-  assert.equal(body.userData.gooUniforms.gooBodyHighlightRamp.value.length, 33);
+  assert.ok(body.userData.gooUniforms.gooRamps.value.isDataTexture);
 });
 
 test("the extras run after the core shading in the fragment shader", () => {
@@ -210,4 +221,25 @@ test("the extras run after the core shading in the fragment shader", () => {
   assert.match(f, /vec3 gooMatcap\(/);
   assert.match(f, /vec3 gooHighlights\(/);
   assert.match(f, /vec3 gooRim\(/);
+});
+
+test("the baked sRGB Col is decoded to linear in the vertex shader", () => {
+  const { hair } = build();
+  const shader = FAKE_SHADER();
+  hair.onBeforeCompile(shader);
+  assert.match(shader.vertexShader, /vGooCol = vec4\( gooSrgbToLinear\( gooCol\.rgb \), gooCol\.a \);/);
+});
+
+test("a shader chunk that is missing (a three.js upgrade) throws instead of failing silently", () => {
+  const { hair } = build();
+  const shader = FAKE_SHADER();
+  shader.fragmentShader = shader.fragmentShader.replace("#include <opaque_fragment>", "");
+  assert.throws(() => hair.onBeforeCompile(shader), /shader chunk #include <opaque_fragment> not found/);
+});
+
+test("a bad matcap setup names its material", () => {
+  const assets = bake();
+  assets.params["Yidhari MAT 1"]._matcaps["MatCap Map Color4"] = { texture: "Third.png" };
+  assets.materialMap.materials[2].textures.matcap4 = "Third.png";
+  assert.throws(() => build(assets), /Yidhari MAT 1: more than two matcap textures/);
 });

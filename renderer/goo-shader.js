@@ -12,6 +12,10 @@ export const RAMP_SIZE = 33;
 const VERTEX_PARS = /* glsl */ `
 attribute vec4 gooCol;
 varying vec4 vGooCol;
+// col.bin holds Blender's sRGB bytes; the Color Attribute node gives the shader linear values.
+vec3 gooSrgbToLinear( vec3 c ) {
+  return mix( c / 12.92, pow( ( c + 0.055 ) / 1.055, vec3( 2.4 ) ), step( vec3( 0.04045 ), c ) );
+}
 #ifdef GOO_OUTLINE
 // [ZZZB] Outlines V0.8: Col.r · 0.01 · mix(0.125, 0.375, clamp(distance − 0.75)) metres,
 // converted to PMX units (the import scale is 0.08 m per unit).
@@ -26,7 +30,7 @@ const OUTLINE_PUSH = /* glsl */ `
 #ifdef GOO_OUTLINE
   {
     vec3 worldPos = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;
-    transformed += normalize( objectNormal ) * gooOutlineWidth( gooCol.r, distance( worldPos, cameraPosition ) );
+    transformed += normalize( objectNormal ) * gooOutlineWidth( vGooCol.r, distance( worldPos, cameraPosition ) );
   }
 #endif
 #include <project_vertex>`;
@@ -47,8 +51,8 @@ uniform float gooSssStrength;
 uniform float gooCastShadows;
 uniform float gooColAlphaFromAttribute;
 uniform float gooColAlphaConstant;
-uniform float gooSssRamp[GOO_RAMP_SIZE];
-uniform float gooFadeRamp[GOO_RAMP_SIZE];
+// All ramps in one shared texture, one row each (see RAMP_ROWS).
+uniform sampler2D gooRamps;
 uniform vec3 gooMaskConstant;
 #ifdef GOO_MASK
 uniform sampler2D gooMask;
@@ -83,10 +87,17 @@ float gooSmooth( float e0, float e1, float x ) {
   return t * t * ( 3.0 - 2.0 * t );
 }
 
-float gooLut( const in float lut[ GOO_RAMP_SIZE ], float x ) {
-  float t = clamp( x, 0.0, 1.0 ) * float( GOO_RAMP_SIZE - 1 );
-  int i = int( min( floor( t ), float( GOO_RAMP_SIZE - 2 ) ) );
-  return mix( lut[ i ], lut[ i + 1 ], t - float( i ) );
+#define GOO_RAMP_SSS 0
+#define GOO_RAMP_FADE 1
+#define GOO_RAMP_RIM 2
+#define GOO_RAMP_BODY_HIGHLIGHT 3
+#define GOO_RAMP_BODY_SHADE 4
+#define GOO_RAMP_ROWS 5
+// Sample texel centres so linear filtering reproduces the 33-sample table.
+float gooRamp( int row, float x ) {
+  float u = ( clamp( x, 0.0, 1.0 ) * float( GOO_RAMP_SIZE - 1 ) + 0.5 ) / float( GOO_RAMP_SIZE );
+  float v = ( float( row ) + 0.5 ) / float( GOO_RAMP_ROWS );
+  return texture2D( gooRamps, vec2( u, v ) ).r;
 }
 
 // [ZZZB] matIDs + idSwitcher: _M.r bands -> Shadow/Shallow colour index (0-based).
@@ -106,8 +117,6 @@ uniform float gooHairHighlightIntensity;
 uniform float gooHairHighlightSpread;
 uniform vec3 gooHairHighlightColor;
 uniform float gooMatcapEnabled;
-uniform float gooBodyHighlightRamp[GOO_RAMP_SIZE];
-uniform float gooBodyShadeRamp[GOO_RAMP_SIZE];
 
 vec3 gooHighlights( vec3 col, vec3 mask, float NdotL, float NdotH ) {
   // Hair Mask: Col.b · 10 > 0.05, only where Enable Hair Highlight Mask is on.
@@ -119,8 +128,8 @@ vec3 gooHighlights( vec3 col, vec3 mask, float NdotL, float NdotH ) {
   vec3 withHair = mix( col, mix( col, gooScreen( col, hair ), gooHairHighlightIntensity ), hairMask );
   // Body: (smoothstep(_M.b) · N·H)^10 through two ramps; skipped on the hair.
   float h = clamp( pow( abs( gooSmooth( 0.0, 1.0, mask.b ) * NdotH ), 10.0 ), 0.0, 1.0 );
-  vec3 body = mix( ( h * 3.14 + gooLut( gooBodyHighlightRamp, h ) ) * col * gooMatcapEnabled, vec3( 0.0 ), hairMask );
-  float shade = mix( 1.0, mix( 1.0, gooLut( gooBodyShadeRamp, h ), mask.b ), gooMatcapEnabled );
+  vec3 body = mix( ( h * 3.14 + gooRamp( GOO_RAMP_BODY_HIGHLIGHT, h ) ) * col * gooMatcapEnabled, vec3( 0.0 ), hairMask );
+  float shade = mix( 1.0, mix( 1.0, gooRamp( GOO_RAMP_BODY_SHADE, h ), mask.b ), gooMatcapEnabled );
   shade = mix( shade, 1.0, mix( 1.0, hairMask, gooHairHighlightMask ) );
   return ( withHair + body ) * shade;
 }
@@ -154,11 +163,10 @@ vec3 gooMatcap( vec3 D, vec3 N, int id, float strength ) {
 #ifdef GOO_RIM
 uniform vec3 gooRimMultiplier;
 uniform vec3 gooRimAdditional;
-uniform float gooRimRamp[GOO_RAMP_SIZE];
 
 // Rim Lighting. Goo's screen-space Scene Rim is approximated by a fresnel term.
 vec3 gooRim( vec3 col, float NdotL, float NdotV, float normalRed ) {
-  float rim = gooLut( gooRimRamp, pow( clamp( 1.0 - NdotV, 0.0, 1.0 ), 4.0 ) );
+  float rim = gooRamp( GOO_RAMP_RIM, pow( clamp( 1.0 - NdotV, 0.0, 1.0 ), 4.0 ) );
   float lightSide = clamp( pow( max( NdotL, 0.0 ), 5.0 ), 0.0, 1.0 );
   float mask = gooSmooth( 0.25, 0.3, normalRed );   // Normal Map Mask
   vec3 tint = gooScreen( col * gooRimMultiplier, gooRimAdditional );
@@ -208,7 +216,7 @@ vec3 gooShade( vec4 diffuse, vec3 n ) {
   // Body/Face Transition: outside the lightmap's alpha the transition colour shows.
   light = mix( light, gooTransitionColor * gooShadowMultiplier, 1.0 - lmV.a );
   // Fake SSS [FACE].
-  float sss = mix( 1.0, gooLut( gooSssRamp, lit ), gooSssStrength * gooPartEdgeSss );
+  float sss = mix( 1.0, gooRamp( GOO_RAMP_SSS, lit ), gooSssStrength * gooPartEdgeSss );
   sss = mix( 1.0, mix( sss, 1.0, lit ), lmV.a );
 #else
   vec3 N = normalize( n );
@@ -230,14 +238,14 @@ vec3 gooShade( vec4 diffuse, vec3 n ) {
   // Cast Shadow Mask: no Goo cast shadows here, so only the shallow edge.
   float castMask = mix( 1.0, s4, gooCastShadows );
   // Fake SSS [BODY].
-  float sss = mix( 1.0, gooLut( gooSssRamp, castMask ), gooSssStrength * gooPartEdgeSss );
+  float sss = mix( 1.0, gooRamp( GOO_RAMP_SSS, castMask ), gooSssStrength * gooPartEdgeSss );
   sss = mix( mix( sss, 1.0, s4 ), 1.0, colA );
   // Shadows [BODY].
   vec3 shadow = shadowColor * gooShadowMultiplier;
   vec3 shallow = gooShallowColors[ id ] * gooShadowMultiplier;
   vec3 dark = mix( shadow, shadow * shallow, 0.5 );
   float fadeX = clamp( ( NdotL - 0.5 ) * 0.5 + 0.5, 0.0, 1.0 );
-  float fade = mix( 1.0, mix( 1.0, gooLut( gooFadeRamp, fadeX ), s5 ), gooFadeStrength );
+  float fade = mix( 1.0, mix( 1.0, gooRamp( GOO_RAMP_FADE, fadeX ), s5 ), gooFadeStrength );
   vec3 lit3 = mix( mix( dark, shallow, fade ), gooSunColor, clamp( castMask + clamp( 1.0 - s5, 0.0, 1.0 ), 0.0, 1.0 ) );
   vec3 light = mix( dark, lit3, s16 );
   light = mix( light, gooTransitionColor * gooShadowMultiplier, colA );
@@ -280,6 +288,10 @@ const OPAQUE = /* glsl */ `
 #endif
 #include <opaque_fragment>`;
 
+const NORMAL_MAP_LINE = "vec3 mapN = texture2D( normalMap, vNormalMapUv ).xyz * 2.0 - 1.0;";
+if (!THREE.ShaderChunk.normal_fragment_maps.includes(NORMAL_MAP_LINE)) {
+  throw new Error("three's normal_fragment_maps chunk changed; update the [Fix Blue Channel] patch");
+}
 const NORMAL_MAPS = THREE.ShaderChunk.normal_fragment_maps.replace(
   "vec3 mapN = texture2D( normalMap, vNormalMapUv ).xyz * 2.0 - 1.0;",
   // [Fix Blue Channel]: Blender's Normal Map input sees blue = 1.
@@ -293,20 +305,49 @@ const NORMAL_MAPS = THREE.ShaderChunk.normal_fragment_maps.replace(
  */
 export function patchGooShader(shader, uniforms) {
   Object.assign(shader.uniforms, uniforms);
-  shader.vertexShader = shader.vertexShader
-    .replace("#include <common>", `#include <common>\n${VERTEX_PARS}`)
-    .replace("#include <begin_vertex>", "#include <begin_vertex>\n  vGooCol = gooCol;")
-    .replace("#include <project_vertex>", OUTLINE_PUSH);
-  shader.fragmentShader = shader.fragmentShader
-    // After the last pars chunk, so vMapUv and vViewPosition are declared.
-    .replace("#include <clipping_planes_pars_fragment>", `#include <clipping_planes_pars_fragment>\n${FRAGMENT_PARS}`)
-    .replace("#include <normal_fragment_maps>", NORMAL_MAPS)
-    // Blender's Enable Alpha Usage is off: the shader output is opaque.
-    .replace("#include <opaque_fragment>", OPAQUE);
+  // Each chunk must be found: a three.js upgrade that renames one throws here,
+  // so the existing fallback reports it instead of a quiet visual regression.
+  const swap = (source, chunk, replacement) => {
+    if (!source.includes(chunk)) throw new Error(`shader chunk ${chunk} not found`);
+    return source.replace(chunk, replacement);
+  };
+  let vertex = swap(shader.vertexShader, "#include <common>", `#include <common>\n${VERTEX_PARS}`);
+  vertex = swap(vertex, "#include <begin_vertex>", "#include <begin_vertex>\n  vGooCol = vec4( gooSrgbToLinear( gooCol.rgb ), gooCol.a );");
+  vertex = swap(vertex, "#include <project_vertex>", OUTLINE_PUSH);
+  shader.vertexShader = vertex;
+  // After the last pars chunk, so vMapUv and vViewPosition are declared.
+  let fragment = swap(shader.fragmentShader, "#include <clipping_planes_pars_fragment>", `#include <clipping_planes_pars_fragment>\n${FRAGMENT_PARS}`);
+  fragment = swap(fragment, "#include <normal_fragment_maps>", NORMAL_MAPS);
+  // Blender's Enable Alpha Usage is off: the shader output is opaque.
+  fragment = swap(fragment, "#include <opaque_fragment>", OPAQUE);
+  shader.fragmentShader = fragment;
 }
 
 const vec3 = (c) => new THREE.Vector3(c[0], c[1], c[2]);
 const resample = (samples) => Float32Array.from({ length: RAMP_SIZE }, (_, i) => sampleRamp(samples, i / (RAMP_SIZE - 1)));
+
+/** Rows of the shared ramp texture, in the order the GLSL GOO_RAMP_* defines use. */
+export const RAMP_ROWS = ["Color Ramp.006", "Color Ramp", "Color Ramp.001", "Color Ramp.003", "Color Ramp.004"];
+
+/**
+ * Pack every ramp the port uses into one 33 × 5 8-bit texture, shared by all
+ * Goo materials, instead of five float[33] uniform arrays per material.
+ * @param {{ ramps: Record<string, { samples: number[] }> }} scene
+ * @returns {THREE.DataTexture}
+ */
+export function createRampTexture(scene) {
+  const data = new Uint8Array(RAMP_SIZE * RAMP_ROWS.length);
+  RAMP_ROWS.forEach((name, row) => {
+    resample(scene.ramps[name].samples).forEach((v, i) => {
+      data[row * RAMP_SIZE + i] = Math.round(Math.min(1, Math.max(0, v)) * 255);
+    });
+  });
+  const texture = new THREE.DataTexture(data, RAMP_SIZE, RAMP_ROWS.length, THREE.RedFormat, THREE.UnsignedByteType);
+  texture.magFilter = texture.minFilter = THREE.LinearFilter;
+  texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
+  texture.needsUpdate = true;
+  return texture;
+}
 const NUMBERED = ["", "2", "3", "4", "5"];
 
 /**
@@ -335,19 +376,14 @@ export function gooMaterialUniforms(p, scene) {
     gooMaskConstant: { value: vec3(maskConstant) },
     gooMask: { value: null },
     gooLightmap: { value: null },
-    gooSssRamp: { value: resample(scene.ramps["Color Ramp.006"].samples) },
-    gooFadeRamp: { value: resample(scene.ramps["Color Ramp"].samples) },
     // Highlights and rim (#253).
     gooHairHighlightMask: { value: snap(p["Enable Hair Highlight Mask"]) },
     gooHairHighlightIntensity: { value: Number(p["Hair Highlight Intensity"] ?? 0) },
     gooHairHighlightSpread: { value: Number(p["Hair Highlight Spread Power"] ?? 1) },
     gooHairHighlightColor: { value: vec3(p["Hair Highlight Color Multiplier"] ?? [1, 1, 1]) },
     gooMatcapEnabled: { value: snap(p["Enable MatCap Effect"]) },
-    gooBodyHighlightRamp: { value: resample(scene.ramps["Color Ramp.003"].samples) },
-    gooBodyShadeRamp: { value: resample(scene.ramps["Color Ramp.004"].samples) },
     gooRimMultiplier: { value: vec3(p["Rim Light Color Multiplier"] ?? [1, 1, 1]) },
     gooRimAdditional: { value: vec3(p["Rim Light Additional Color"] ?? [0, 0, 0]) },
-    gooRimRamp: { value: resample(scene.ramps["Color Ramp.001"].samples) },
     gooMatcapA: { value: null },
     gooMatcapB: { value: null },
     gooMatcapColors: { value: NUMBERED.map(() => new THREE.Vector3(1, 1, 1)) },
@@ -367,7 +403,7 @@ const snap = (v) => (Number(v) >= 1 ? 1 : 0);
  * @param {Record<string, any>} matcaps params._matcaps.
  * @param {(file: string) => THREE.Texture} texture Loads a game texture.
  */
-export function setUpMatcaps(uniforms, matcaps, texture) {
+export function setUpMatcaps(uniforms, matcaps, texture, name = "material") {
   const samplers = [];
   NUMBERED.forEach((n, i) => {
     const color = matcaps[`MatCap Map Color${n}`];
@@ -376,7 +412,7 @@ export function setUpMatcaps(uniforms, matcaps, texture) {
     if (color?.texture) {
       let slot = samplers.indexOf(color.texture);
       if (slot < 0) slot = samplers.push(color.texture) - 1;
-      if (slot > 1) throw new Error("more than two matcap textures");
+      if (slot > 1) throw new Error(`${name}: more than two matcap textures`);
       uniforms.gooMatcapSampler.value[i] = slot + 1;
       uniforms.gooMatcapColors.value[i].set(tint[0], tint[1], tint[2]);
     } else {

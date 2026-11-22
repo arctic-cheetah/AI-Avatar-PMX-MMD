@@ -111,17 +111,21 @@ export function createFrameUpdater({ mesh, scene }) {
   const bones = mesh.skeleton?.bones ?? [];
   const index = bones.findIndex((bone) => bone.name === scene.head.bone);
   if (index < 0) throw new Error(`the PMX has no ${scene.head.bone} bone`);
+  const bone = bones[index];
+  // World-space bind orientation: the mesh's bind matrix times the bone's inverse bind, inverted.
   const bindQuaternion = new THREE.Quaternion();
   const scratch = new THREE.Vector3();
-  new THREE.Matrix4().copy(mesh.skeleton.boneInverses[index]).invert().decompose(scratch, bindQuaternion, new THREE.Vector3());
+  const scale = new THREE.Vector3();
+  new THREE.Matrix4().copy(mesh.bindMatrix).multiply(new THREE.Matrix4().copy(mesh.skeleton.boneInverses[index]).invert())
+    .decompose(scratch, bindQuaternion, scale);
   const baseEuler = scene.light.eulerXYZ;
-  const local = new THREE.Matrix4();
   const currentQuaternion = new THREE.Quaternion();
   const forward = new THREE.Vector3();
   const lightThree = new THREE.Vector3();
   return (camera, lightControls = { mode: "fixed", yaw: 0, pitch: 0 }) => {
-    local.copy(mesh.matrixWorld).invert().multiply(bones[index].matrixWorld);
-    local.decompose(scratch, currentQuaternion, new THREE.Vector3());
+    // Gaze, sway and gestures set local rotations; refresh the world matrix before reading it.
+    bone.updateWorldMatrix(true, false);
+    bone.matrixWorld.decompose(scratch, currentQuaternion, scale);
     const head = headVectors({ bindQuaternion, currentQuaternion, restForward: scene.head.forward, restUp: scene.head.up });
     const cameraForward = threeToBlender(camera.getWorldDirection(forward).toArray());
     const cameraBack = cameraForward.map((c) => -c);

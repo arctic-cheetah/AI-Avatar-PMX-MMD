@@ -135,9 +135,16 @@ colour = mix(colour, screen(colour, colour · band · spread · 1.314), Intensit
 ### Body highlight (where matcaps are on)
 
 `h = (smoothstep(0, 1, _M.b) · N·H)^10`, with `H` the half vector between the
-light and the view. `h · 3.14 + ramp(h)` times the colour is added, and a
-second ramp darkens it where `_M.b` is low. On the hair, the hair mask skips
-it.
+light and the view. `h · 3.14 + ramp(h)` times the colour is added. On the
+hair, the hair mask skips it.
+
+The graph also has a second, darkening ramp (`Color Ramp.004`), but it only
+takes effect where `Enable Hair Highlight Mask` is on *and* the pixel is not
+hair: `Mix_104 = mix(Mix_100, 1, Mix_111)` with `Mix_111 = mix(1, hairMask,
+Enable Hair Highlight Mask)`. On the body materials that switch is off, so
+`Mix_111` is 1 and the ramp is unused, in Blender as here. `N·H` is raised to
+the 10th power of its absolute value, as Blender's Power node does with an
+even exponent.
 
 ### Rim light (`Enable Rim Lighting` = 1)
 
@@ -242,11 +249,25 @@ three.js +Z.
 | Input | Source |
 | --- | --- |
 | Light direction | `+Z` rotated by the Main Light's XYZ Euler from `scene.json` (90° about X: straight at her face) |
-| Head forward / up | The Head Controller's rest vectors from `scene.json` (`(0, −0.5, 0)` and `(0, 0, 0.5)`, not normalised, as in Blender), turned by how far the `頭` bone has rotated from its bind pose |
+| Head forward / up | The Head Controller's rest vectors from `scene.json` (`(0, −0.5, 0)` and `(0, 0, 0.5)`, not normalised, as in Blender), turned by how far the `頭` bone has rotated from its bind pose. Both rotations are taken in world space (the bone's world matrix is refreshed first), so moving or turning the model does not skew the face shadow |
 | Camera forward / back | The three.js camera, converted to Blender axes |
 
 The light is fixed in the world by default, like the Blender scene; see
 [Light controls and live switches](#light-controls-and-live-switches-254).
+
+The facing terms are faithful, not inert by mistake: Blender's head-forward
+vector is also 0.5 long, so `Face Facing Forward` stays near 0 and the Dynamic
+Face Highlight only appears when the face points away from the camera. The
+Nose line slider (#254) is the way to show the nose from the front.
+
+`col.bin` holds Blender's sRGB bytes; the vertex shader decodes RGB to linear
+(`gooSrgbToLinear`), which is what Blender's Color Attribute node gives the
+material, so thresholds such as `Col.b < 0.005` match exactly.
+
+`patchGooShader()` checks that every chunk it patches exists. If a three.js
+upgrade renames one, it throws, and the toggle falls back with a message
+instead of drawing a silently wrong shader. Shader errors only switch the game
+shaders off when the failing program is a Goo one.
 
 ## Known differences from Blender
 
@@ -256,8 +277,11 @@ The light is fixed in the world by default, like the Blender scene; see
 - **Colour management:** Blender renders with the `Standard` view and the
   `Medium High Contrast` look. The renderer outputs plain sRGB, so contrast is
   a little lower.
-- The B-spline SSS ramps are baked as 33-sample tables and read with linear
-  interpolation.
+- All five ramps the port uses (Fake SSS, Shadow Fade Gradient, the two body
+  highlight ramps and the rim ramp) are baked as 33 samples and packed into
+  **one shared 33 × 5 texture** (8-bit, linear filtering). That keeps each
+  material well under WebGL2's minimum of 224 fragment uniform vectors, which
+  five `float[33]` arrays per material could exceed on some drivers.
 - **Eye shine:** half size by default (0.5), which Blender is not; set it to 1 for the game's blobs.
 - **Nose line:** on by default (strength 1), which Blender is not; set it to 0 for the exact Blender face.
 - **Rim light:** a fresnel approximation of Goo's screen-space `Scene Rim`

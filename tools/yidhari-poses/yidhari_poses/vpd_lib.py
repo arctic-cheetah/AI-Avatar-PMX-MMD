@@ -121,7 +121,8 @@ def _check_name(name: str) -> None:
 
 
 def _num(value: float) -> str:
-    return repr(float(value))
+    """Six decimals, as MMD writes them. three.js only reads `-?digits.digits`."""
+    return f"{float(value):.6f}"
 
 
 def format_vpd(pose: VpdPose) -> bytes:

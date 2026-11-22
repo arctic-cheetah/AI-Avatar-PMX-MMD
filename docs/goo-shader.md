@@ -10,7 +10,7 @@ How the renderer's **Game shaders** mode reproduces Dillongoo's
 | --- | --- | --- |
 | Core | #252 | Cel light steps, shadow and shallow tint by material ID, sun colour, indirect colour, fake SSS, edge highlight, face lightmap shadow, nose line, dynamic face highlight, normal maps |
 | Extras | #253 | Matcaps, hair and body highlights, rim light (approximated), and the `Set Depth` check |
-| Finish | #254 | Outlines and outline colours, light controls, final comparison |
+| Finish | #254 | Outline hull and colours, light controls, live part switches, frame cost, final comparison |
 
 ## How the port was made
 
@@ -163,6 +163,47 @@ attribute does not exist). Hair in front of the face therefore stays hair,
 and the result looks the same as ordinary depth testing. The existing
 see-through brows (#99) keep the brows readable under the fringe.
 
+## Outlines (#254)
+
+Goo draws outlines with the `[ZZZB] Outlines V0.8` geometry nodes: a copy of
+the mesh with flipped faces, pushed out along the normals and tagged
+`outline = 1`. The ZZZB shader then gives those faces the outline colour. The
+renderer does the same with an **outline hull**: a second skinned mesh that
+shares the PMX geometry, skeleton and live morph weights, drawn with back
+faces only (`createOutlineHull`). It replaces three's `OutlineEffect` for
+Goo materials, so their MMD outlines are switched off.
+
+```text
+width  = Col.r · 0.01 · mix(0.125, 0.375, clamp(distance_to_camera − 0.75))   Blender metres
+offset = normal · width                                                       ÷ 0.08 for PMX units
+colour = shaded · OutlineColor[id] → mix(c, c · 0.25, f)
+```
+
+`Outline Color` (ID 1) is screened with 0.75 grey first, as in
+`[Adjust Colors To Match Some Stuff]`. `f` is 1, except on ID 2, where it is
+`1 − smoothstep(0.25, 0.5, Col.g)` (`[Fix Outline Discoloration]`). The
+hidden shell, the eye-shadow tint and materials added after load have no
+outline.
+
+## Light controls and live switches (#254)
+
+Under **Game shaders** in *Independent channels*:
+
+| Control | What it does |
+| --- | --- |
+| Light: **Fixed** | Blender's Main Light, turned by **yaw** (round her, degrees) and **pitch** (up, degrees). Yaw 0 / pitch 0 is the V1.3 scene. |
+| Light: **Follow camera** | The light points from the camera at her, so she is lit from the viewer's side when you orbit |
+| **Cel lighting** | Off: the game diffuse without any lighting |
+| **Face shadow** | Off: the face is fully lit |
+| **Matcaps**, **Highlights**, **Rim light**, **Edge + SSS** | Each part on or off |
+| **Outlines** | Shows or hides the outline hull |
+
+The switches are uniform values shared by every Goo material, so flipping one
+is instant and never recompiles a shader. The light Euler feeds both the
+`N·L` direction and the per-frame `faceLogic` and `[Light Facing Forward]`
+terms, so the face shadow follows it. All choices are remembered in this
+browser (`yidhari.gooParts.*`, `yidhari.gooLight`).
+
 ## Per-frame inputs
 
 `renderer/goo-frame.js` works in Blender's world space: three.js
@@ -175,8 +216,8 @@ three.js +Z.
 | Head forward / up | The Head Controller's rest vectors from `scene.json` (`(0, −0.5, 0)` and `(0, 0, 0.5)`, not normalised, as in Blender), turned by how far the `頭` bone has rotated from its bind pose |
 | Camera forward / back | The three.js camera, converted to Blender axes |
 
-The light stays fixed in the world, like the Blender scene; #254 adds
-controls for it.
+The light is fixed in the world by default, like the Blender scene; see
+[Light controls and live switches](#light-controls-and-live-switches-254).
 
 ## Known differences from Blender
 

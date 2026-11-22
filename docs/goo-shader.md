@@ -187,7 +187,7 @@ outline.
 
 ## Light controls and live switches (#254)
 
-Under **Game shaders** in *Independent channels*:
+In the *Graphics · グラフィック* panel section, under **Game shaders**:
 
 | Control | What it does |
 | --- | --- |

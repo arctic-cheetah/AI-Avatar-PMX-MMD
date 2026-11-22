@@ -92,35 +92,11 @@
         <button id="edit-preset-button" type="button" disabled>Edit in sliders</button>
       </div>
     </section>
-    <section aria-labelledby="channels-heading">
-      <h2 id="channels-heading">Independent channels</h2>
-      <label class="check"><input id="blink-toggle" type="checkbox" checked disabled>Auto-blink · まばたき</label>
-      <label class="check"><input id="sway-toggle" type="checkbox" checked disabled>Slow sway · ゆらぎ</label>
-      <label class="check" title="Hair, hat, tails, bag and chains move with her. Switch off to save CPU."><input id="physics-toggle" type="checkbox" checked>Physics · 物理</label>
-      <label class="check sub-check"><input id="chest-physics-toggle" type="checkbox">Chest physics · 胸</label>
-      <label class="check sub-check"><input id="hip-physics-toggle" type="checkbox">Hip physics · 腰</label>
-      <div class="slider-row" title="How many physics steps per second. 120 (two per 60 fps frame) is the smoothest; 65 is the model's default.">
-        <label for="physics-rate">Physics steps</label>
-        <input id="physics-rate" type="range" min="65" max="120" step="5" value="120">
-        <output id="physics-rate-value" for="physics-rate">120 /s</output>
-      </div>
-      <p id="physics-status" class="note" role="status"></p>
-      <label class="check"><input id="cursor-gaze-toggle" type="checkbox" checked disabled>Cursor gaze tracking · 視線追従</label>
-      <label class="check"><input id="camera-gaze-toggle" type="checkbox" disabled>Camera gaze tracking · カメラ追従</label>
-      <div class="camera-device-controls">
-        <label for="camera-device">Tracking camera</label>
-        <div class="camera-device-row">
-          <select id="camera-device" aria-describedby="camera-device-note gaze-status"><option value="">System default camera</option></select>
-          <button id="camera-device-refresh" type="button" title="Refresh the camera list without starting capture">Refresh</button>
-        </div>
-        <p id="camera-device-note" class="note">Choose a camera, then enable tracking. Names may appear after permission is granted.</p>
-        <p id="gaze-status" class="note" role="status"></p>
-      </div>
-      <label class="check" title="When a mood clears, rest in the calm preset instead of the bare mesh's slight smile."><input id="resting-face-toggle" type="checkbox" checked disabled>Calm resting face · 落ち着き</label>
-      <label class="check" title="Draw the brows faintly over the bangs so brow expressions show."><input id="see-through-brows-toggle" type="checkbox" checked disabled>See-through brows · 透け眉</label>
+    <section aria-labelledby="graphics-heading">
+      <h2 id="graphics-heading">Graphics · グラフィック</h2>
       <label class="check" title="Use the game's textures and Goo shader look, baked from Yidhari_V1.3_PMX.blend into assets/private/goo (see docs/goo-bake.md). Off by default."><input id="goo-shaders-toggle" type="checkbox" disabled>Game shaders · ゲーム風</label>
       <p id="goo-shaders-status" class="note" role="status"></p>
-      <div class="goo-controls sub-check" title="Live switches for each part of the game shader (#254). They change instantly and are remembered.">
+      <div class="goo-controls" title="Live switches for each part of the game shader (#254). They change instantly and are remembered.">
         <label class="check sub-check"><input type="checkbox" data-goo-part="cel" checked>Cel lighting</label>
         <label class="check sub-check"><input type="checkbox" data-goo-part="faceShadow" checked>Face shadow</label>
         <label class="check sub-check"><input type="checkbox" data-goo-part="matcaps" checked>Matcaps</label>
@@ -149,6 +125,33 @@
           <input id="goo-light-pitch" type="range" min="-60" max="80" step="5" value="0">
         </div>
       </div>
+    </section>
+    <section aria-labelledby="channels-heading">
+      <h2 id="channels-heading">Independent channels</h2>
+      <label class="check"><input id="blink-toggle" type="checkbox" checked disabled>Auto-blink · まばたき</label>
+      <label class="check"><input id="sway-toggle" type="checkbox" checked disabled>Slow sway · ゆらぎ</label>
+      <label class="check" title="Hair, hat, tails, bag and chains move with her. Switch off to save CPU."><input id="physics-toggle" type="checkbox" checked>Physics · 物理</label>
+      <label class="check sub-check"><input id="chest-physics-toggle" type="checkbox">Chest physics · 胸</label>
+      <label class="check sub-check"><input id="hip-physics-toggle" type="checkbox">Hip physics · 腰</label>
+      <div class="slider-row" title="How many physics steps per second. 120 (two per 60 fps frame) is the smoothest; 65 is the model's default.">
+        <label for="physics-rate">Physics steps</label>
+        <input id="physics-rate" type="range" min="65" max="120" step="5" value="120">
+        <output id="physics-rate-value" for="physics-rate">120 /s</output>
+      </div>
+      <p id="physics-status" class="note" role="status"></p>
+      <label class="check"><input id="cursor-gaze-toggle" type="checkbox" checked disabled>Cursor gaze tracking · 視線追従</label>
+      <label class="check"><input id="camera-gaze-toggle" type="checkbox" disabled>Camera gaze tracking · カメラ追従</label>
+      <div class="camera-device-controls">
+        <label for="camera-device">Tracking camera</label>
+        <div class="camera-device-row">
+          <select id="camera-device" aria-describedby="camera-device-note gaze-status"><option value="">System default camera</option></select>
+          <button id="camera-device-refresh" type="button" title="Refresh the camera list without starting capture">Refresh</button>
+        </div>
+        <p id="camera-device-note" class="note">Choose a camera, then enable tracking. Names may appear after permission is granted.</p>
+        <p id="gaze-status" class="note" role="status"></p>
+      </div>
+      <label class="check" title="When a mood clears, rest in the calm preset instead of the bare mesh's slight smile."><input id="resting-face-toggle" type="checkbox" checked disabled>Calm resting face · 落ち着き</label>
+      <label class="check" title="Draw the brows faintly over the bangs so brow expressions show."><input id="see-through-brows-toggle" type="checkbox" checked disabled>See-through brows · 透け眉</label>
       <label class="check" title="After a quiet while she idles, then turns sleepy; any activity wakes her."><input id="idle-toggle" type="checkbox" checked>Idle behaviours · 待機動作</label>
       <label class="check sub-check" title="While she idles, a slow wave travels along her tails."><input id="tentacle-toggle" type="checkbox" checked>Tentacle wave · 触手</label>
       <div class="slider-row sub-check" title="How far the wave curls her tails: 0 is still, 6 is a big bold sweep.">

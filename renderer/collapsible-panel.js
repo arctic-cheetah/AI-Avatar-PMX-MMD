@@ -3,6 +3,7 @@ const SECTIONS = [
   ["chat", "bridge-heading", "Chat", false],
   ["speech", "speech-heading", "Speech test", true],
   ["presets", "presets-heading", "Mood presets", true],
+  ["graphics", "graphics-heading", "Graphics", true],
   ["channels", "channels-heading", "Independent channels", true],
   ["actions", "actions-heading", "Actions", true],
   ["action-play", "action-play-heading", "Animation actions", true],

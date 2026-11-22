@@ -92,7 +92,7 @@ light  = mix(light, Transition · multiplier, 1 − lightmap(uv′).a)
 
 `L_xy` and `F_xy` are the light and head-forward directions flattened onto the
 ground (Blender's XY plane). `uv′` is the UV with `u` mirrored when the light
-comes from the face's left (`dot(L_xy, headRight_xy) > 0`), because the
+comes from her right (`dot(L_xy, headRight_xy) > 0`), because the
 lightmap only stores one side. The nose line (diffuse alpha, faded by
 `Face Facing Forward`) and the dynamic highlight (lightmap blue) follow the
 `[Process Diffuse]` frame.

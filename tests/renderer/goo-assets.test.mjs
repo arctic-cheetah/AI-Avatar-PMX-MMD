@@ -7,14 +7,18 @@ import { fileURLToPath } from "node:url";
 import { MMDParser } from "three/examples/jsm/libs/mmdparser.module.js";
 import { decodeCol, validateGooAssets } from "../../renderer/goo-assets.js";
 
-const PMX = { vertexCount: 3, materialNames: ["颜", "目影", "髮+"] };
+const POSITIONS = [[0, 0, 0], [1, 2, 3], [4, 5, 6]];
+const PMX = { vertexCount: 3, materialNames: ["颜", "目影", "髮+"], positionOf: (i) => POSITIONS[i] };
 
 function assets() {
   return {
-    manifest: { version: 1, pmx: { vertexCount: 3, materials: ["颜", "目影", "髮+"] } },
+    manifest: {
+      version: 1, colSpace: "sRGB",
+      pmx: { vertexCount: 3, materials: ["颜", "目影", "髮+"], samples: [{ index: 2, position: [4, 5, 6] }] },
+    },
     materialMap: {
       materials: [
-        { pmx: "颜", game: "Yidhari Face", hidden: false, shader: "zzzb", textures: { diffuse: "Yidhari_Face_D.png" } },
+        { pmx: "颜", game: "Yidhari Face", params: "Yidhari Face", hidden: false, shader: "zzzb", textures: { diffuse: "Yidhari_Face_D.png" } },
         // Eye Shadow is a tinted Transparent BSDF: it darkens what is behind it.
         { pmx: "目影", game: "Eye Shadow", hidden: false, shader: "transparent", color: [0.46, 0.58, 0.68, 1], textures: {} },
         { pmx: "髮+", game: null, hidden: true, shader: null, textures: {} },
@@ -27,6 +31,7 @@ function assets() {
       ramps: Object.fromEntries(["Color Ramp.006", "Color Ramp", "Color Ramp.001", "Color Ramp.003", "Color Ramp.004"]
         .map((name) => [name, { samples: [0, 1, 1] }])),
     },
+    params: { "Yidhari Face": {} },
   };
 }
 
@@ -101,6 +106,37 @@ test("a scene without the light or a shading ramp is reported", () => {
   assert.match(errors, /scene\.json has no ramp Color Ramp\.006/);
 });
 
+test("a Goo material whose params are missing is reported", () => {
+  const baked = assets();
+  baked.params = {};
+  assert.match(validateGooAssets(baked, PMX).errors.join("\n"), /颜 uses params Yidhari Face, which params\.json does not have/);
+});
+
+test("a PMX with the same vertex count but moved vertices is reported", () => {
+  const moved = { ...PMX, positionOf: (i) => (i === 2 ? [4, 5, 7] : POSITIONS[i]) };
+  assert.match(validateGooAssets(assets(), moved).errors.join("\n"), /vertex 2 is at 4,5,6 in the bake, 4,5,7 in the PMX/);
+  const nudged = { ...PMX, positionOf: (i) => (i === 2 ? [4, 5, 6.0005] : POSITIONS[i]) };
+  assert.deepEqual(validateGooAssets(assets(), nudged).errors, [], "float rounding is tolerated");
+});
+
+test("a bake without position samples or with linear colours is reported", () => {
+  const baked = assets();
+  delete baked.manifest.pmx.samples;
+  baked.manifest.colSpace = "linear";
+  const errors = validateGooAssets(baked, PMX).errors.join("\n");
+  assert.match(errors, /manifest has no vertex position samples/);
+  assert.match(errors, /col\.bin colour space linear is not supported/);
+});
+
+test("a corrupt material map is reported instead of throwing", () => {
+  for (const materials of ["nope", [null, 1, "x"]]) {
+    const baked = assets();
+    baked.materialMap.materials = materials;
+    const result = validateGooAssets(baked, PMX);
+    assert.equal(result.ok, false);
+  }
+});
+
 test("an unknown manifest version is reported", () => {
   const baked = assets();
   baked.manifest.version = 2;
@@ -128,10 +164,12 @@ test("the private bake lines up with the private PMX", { skip: !haveReal && "pri
     materialMap: read("material-map.json"),
     colBytes: new Uint8Array(readFileSync(`${GOO_DIR}/col.bin`)),
     scene: read("scene.json"),
+    params: read("params.json"),
   };
   const result = validateGooAssets(baked, {
     vertexCount: pmx.metadata.vertexCount,
     materialNames: pmx.materials.map((m) => m.name),
+    positionOf: (i) => pmx.vertices[i].position,
   });
   assert.deepEqual(result, { ok: true, errors: [] });
   for (const entry of baked.materialMap.materials) {

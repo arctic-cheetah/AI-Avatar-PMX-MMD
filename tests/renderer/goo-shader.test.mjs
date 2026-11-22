@@ -43,21 +43,21 @@ const SCENE = {
 function bake() {
   const names = ["颜", "髮", "体"];
   return {
-    manifest: { version: 1, pmx: { vertexCount: 3, materials: names } },
+    manifest: { version: 1, colSpace: "sRGB", pmx: { vertexCount: 3, materials: names, samples: [{ index: 0, position: [0, 0, 0] }] } },
     materialMap: {
       materials: [
         {
-          pmx: "颜", game: "Yidhari Face", hidden: false, shader: "zzzb",
+          pmx: "颜", game: "Yidhari Face", params: "Yidhari Face", hidden: false, shader: "zzzb",
           textures: { diffuse: "Face_D.png", faceLightmap: "Lightmap.png" },
           colorSpaces: { diffuse: "sRGB", faceLightmap: "Non-Color" },
         },
         {
-          pmx: "髮", game: "Yidhari Hair", hidden: false, shader: "zzzb",
+          pmx: "髮", game: "Yidhari Hair", params: "Yidhari Hair", hidden: false, shader: "zzzb",
           textures: { diffuse: "Map2_D.png", m: "Map2_M.png", normal: "Map2_N.png" },
           colorSpaces: { diffuse: "sRGB", m: "sRGB", normal: "Non-Color" },
         },
         {
-          pmx: "体", game: "Yidhari MAT 1", hidden: false, shader: "zzzb",
+          pmx: "体", game: "Yidhari MAT 1", params: "Yidhari MAT 1", hidden: false, shader: "zzzb",
           textures: { diffuse: "Map1_D.png", m: "Map1_M.png", normal: "Map1_N.png", matcap2: "Matcap_116.png", matcap3: "Matcap_115.png" },
           colorSpaces: { diffuse: "sRGB", m: "Non-Color", normal: "Non-Color", matcap2: "sRGB", matcap3: "sRGB" },
         },
@@ -77,9 +77,10 @@ function build(assets = bake()) {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(9), 3));
   const mesh = { geometry, material: materials };
-  const loadTexture = (url) => Object.assign(new THREE.Texture(), { url });
+  const files = assets.materialMap.materials.flatMap((e) => Object.values(e.textures));
+  const textures = new Map(files.map((f) => [f, Object.assign(new THREE.Texture(), { url: `/goo/textures/${f}` })]));
   const goo = createGooMaterials(mesh, assets, {
-    pmx: { vertexCount: 3, materialNames: ["颜", "髮", "体"] }, baseUrl: "/goo", loadTexture,
+    pmx: { vertexCount: 3, materialNames: ["颜", "髮", "体"], positionOf: () => [0, 0, 0] }, textures,
   });
   return { goo, face: goo.materials[0], hair: goo.materials[1], body: goo.materials[2] };
 }
@@ -133,7 +134,7 @@ test("the five shadow, shallow and indirect colours come from the params", () =>
 test("a Goo material without its params is refused", () => {
   const assets = bake();
   delete assets.params["Yidhari Hair"];
-  assert.throws(() => build(assets), /no shader params for Yidhari Hair/);
+  assert.throws(() => build(assets), /uses params Yidhari Hair, which params\.json does not have/);
 });
 
 test("onBeforeCompile adds the Col attribute and replaces the lighting", () => {
@@ -141,7 +142,7 @@ test("onBeforeCompile adds the Col attribute and replaces the lighting", () => {
   const shader = FAKE_SHADER();
   hair.onBeforeCompile(shader);
   assert.match(shader.vertexShader, /attribute vec4 gooCol;/);
-  assert.match(shader.vertexShader, /vGooCol = gooCol;/);
+  assert.match(shader.vertexShader, /vGooCol = vec4\( gooSrgbToLinear/);
   assert.match(shader.fragmentShader, /vec3 gooShade\(/);
   // It needs vMapUv and vViewPosition, which the pars chunks declare.
   assert.ok(shader.fragmentShader.indexOf("vec3 gooShade(") > shader.fragmentShader.indexOf("#include <clipping_planes_pars_fragment>"));
@@ -210,4 +211,18 @@ test("the extras run after the core shading in the fragment shader", () => {
   assert.match(f, /vec3 gooMatcap\(/);
   assert.match(f, /vec3 gooHighlights\(/);
   assert.match(f, /vec3 gooRim\(/);
+});
+
+test("the baked sRGB Col is decoded to linear in the vertex shader", () => {
+  const { hair } = build();
+  const shader = FAKE_SHADER();
+  hair.onBeforeCompile(shader);
+  assert.match(shader.vertexShader, /vGooCol = vec4\( gooSrgbToLinear\( gooCol\.rgb \), gooCol\.a \);/);
+});
+
+test("a shader chunk that is missing (a three.js upgrade) throws instead of failing silently", () => {
+  const { hair } = build();
+  const shader = FAKE_SHADER();
+  shader.fragmentShader = shader.fragmentShader.replace("#include <opaque_fragment>", "");
+  assert.throws(() => hair.onBeforeCompile(shader), /shader chunk #include <opaque_fragment> not found/);
 });

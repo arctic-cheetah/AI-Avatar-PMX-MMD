@@ -12,6 +12,10 @@ export const RAMP_SIZE = 33;
 const VERTEX_PARS = /* glsl */ `
 attribute vec4 gooCol;
 varying vec4 vGooCol;
+// col.bin holds Blender's sRGB bytes; the Color Attribute node gives the shader linear values.
+vec3 gooSrgbToLinear( vec3 c ) {
+  return mix( c / 12.92, pow( ( c + 0.055 ) / 1.055, vec3( 2.4 ) ), step( vec3( 0.04045 ), c ) );
+}
 `;
 
 const FRAGMENT_PARS = /* glsl */ `
@@ -220,6 +224,10 @@ vec3 gooShade( vec4 diffuse, vec3 n ) {
 }
 `;
 
+const NORMAL_MAP_LINE = "vec3 mapN = texture2D( normalMap, vNormalMapUv ).xyz * 2.0 - 1.0;";
+if (!THREE.ShaderChunk.normal_fragment_maps.includes(NORMAL_MAP_LINE)) {
+  throw new Error("three's normal_fragment_maps chunk changed; update the [Fix Blue Channel] patch");
+}
 const NORMAL_MAPS = THREE.ShaderChunk.normal_fragment_maps.replace(
   "vec3 mapN = texture2D( normalMap, vNormalMapUv ).xyz * 2.0 - 1.0;",
   // [Fix Blue Channel]: Blender's Normal Map input sees blue = 1.
@@ -233,15 +241,21 @@ const NORMAL_MAPS = THREE.ShaderChunk.normal_fragment_maps.replace(
  */
 export function patchGooShader(shader, uniforms) {
   Object.assign(shader.uniforms, uniforms);
-  shader.vertexShader = shader.vertexShader
-    .replace("#include <common>", `#include <common>\n${VERTEX_PARS}`)
-    .replace("#include <begin_vertex>", "#include <begin_vertex>\n  vGooCol = gooCol;");
-  shader.fragmentShader = shader.fragmentShader
-    // After the last pars chunk, so vMapUv and vViewPosition are declared.
-    .replace("#include <clipping_planes_pars_fragment>", `#include <clipping_planes_pars_fragment>\n${FRAGMENT_PARS}`)
-    .replace("#include <normal_fragment_maps>", NORMAL_MAPS)
-    // Blender's Enable Alpha Usage is off: the shader output is opaque.
-    .replace("#include <opaque_fragment>", "outgoingLight = gooShade( diffuseColor, normal );\n  diffuseColor.a = 1.0;\n#include <opaque_fragment>");
+  // Each chunk must be found: a three.js upgrade that renames one throws here,
+  // so the existing fallback reports it instead of a quiet visual regression.
+  const swap = (source, chunk, replacement) => {
+    if (!source.includes(chunk)) throw new Error(`shader chunk ${chunk} not found`);
+    return source.replace(chunk, replacement);
+  };
+  let vertex = swap(shader.vertexShader, "#include <common>", `#include <common>\n${VERTEX_PARS}`);
+  vertex = swap(vertex, "#include <begin_vertex>", "#include <begin_vertex>\n  vGooCol = vec4( gooSrgbToLinear( gooCol.rgb ), gooCol.a );");
+  shader.vertexShader = vertex;
+  // After the last pars chunk, so vMapUv and vViewPosition are declared.
+  let fragment = swap(shader.fragmentShader, "#include <clipping_planes_pars_fragment>", `#include <clipping_planes_pars_fragment>\n${FRAGMENT_PARS}`);
+  fragment = swap(fragment, "#include <normal_fragment_maps>", NORMAL_MAPS);
+  // Blender's Enable Alpha Usage is off: the shader output is opaque.
+  fragment = swap(fragment, "#include <opaque_fragment>", "outgoingLight = gooShade( diffuseColor, normal );\n  diffuseColor.a = 1.0;\n#include <opaque_fragment>");
+  shader.fragmentShader = fragment;
 }
 
 const vec3 = (c) => new THREE.Vector3(c[0], c[1], c[2]);

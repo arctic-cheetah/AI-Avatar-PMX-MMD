@@ -73,6 +73,8 @@ uniform float gooPartRim;
 uniform float gooPartEdgeSss;
 // Nose line strength (#254): 0 = Blender (hidden when facing the camera), 1 = always drawn.
 uniform float gooNoseLine;
+// Eye shine (#254): the 目光 overlay's blue highlights. 1 = game size, lower = smaller and fainter.
+uniform float gooEyeShine;
 
 // The smoothstep node group: t clamped, t²(3 − 2t). Blender's divide gives 0 for /0.
 float gooSmooth( float e0, float e1, float x ) {
@@ -263,6 +265,21 @@ vec3 gooShade( vec4 diffuse, vec3 n ) {
 }
 `;
 
+const OPAQUE = /* glsl */ `
+#ifdef GOO_EYE_SHINE
+  float gooShineAlpha = diffuseColor.a;
+#endif
+  outgoingLight = gooShade( diffuseColor, normal );
+  diffuseColor.a = 1.0;
+#ifdef GOO_EYE_SHINE
+  {
+    // Raise the alpha threshold to shrink the soft blobs, and fade them out below 0.5.
+    float edge = ( 1.0 - gooEyeShine ) * 0.9;
+    diffuseColor.a = smoothstep( edge, edge + 0.1, gooShineAlpha ) * clamp( gooEyeShine * 2.0, 0.0, 1.0 );
+  }
+#endif
+#include <opaque_fragment>`;
+
 const NORMAL_MAPS = THREE.ShaderChunk.normal_fragment_maps.replace(
   "vec3 mapN = texture2D( normalMap, vNormalMapUv ).xyz * 2.0 - 1.0;",
   // [Fix Blue Channel]: Blender's Normal Map input sees blue = 1.
@@ -285,7 +302,7 @@ export function patchGooShader(shader, uniforms) {
     .replace("#include <clipping_planes_pars_fragment>", `#include <clipping_planes_pars_fragment>\n${FRAGMENT_PARS}`)
     .replace("#include <normal_fragment_maps>", NORMAL_MAPS)
     // Blender's Enable Alpha Usage is off: the shader output is opaque.
-    .replace("#include <opaque_fragment>", "outgoingLight = gooShade( diffuseColor, normal );\n  diffuseColor.a = 1.0;\n#include <opaque_fragment>");
+    .replace("#include <opaque_fragment>", OPAQUE);
 }
 
 const vec3 = (c) => new THREE.Vector3(c[0], c[1], c[2]);
@@ -388,6 +405,7 @@ export function gooFrameUniforms() {
     gooPartRim: { value: 1 },
     gooPartEdgeSss: { value: 1 },
     gooNoseLine: { value: 1 },
+    gooEyeShine: { value: 0.5 },
   };
 }
 

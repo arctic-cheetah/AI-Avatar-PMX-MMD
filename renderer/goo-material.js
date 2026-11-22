@@ -24,6 +24,9 @@ export const GOO_PART_KEYS = Object.freeze({
 });
 export const GOO_LIGHT_KEY = "yidhari.gooLight";
 export const GOO_NOSE_LINE_KEY = "yidhari.gooNoseLine";
+export const GOO_EYE_SHINE_KEY = "yidhari.gooEyeShine";
+/** The PMX eye light overlay: blue highlight blobs drawn over the irises. */
+const EYE_LIGHT_MATERIAL = "目光";
 const PART_UNIFORMS = {
   cel: "gooPartCel", faceShadow: "gooPartFaceShadow", matcaps: "gooPartMatcaps",
   highlights: "gooPartHighlights", rim: "gooPartRim", edgeSss: "gooPartEdgeSss",
@@ -128,6 +131,7 @@ export function createGooMaterials(mesh, assets, { pmx, baseUrl, loadTexture }) 
       for (const [part, on] of Object.entries(parts)) {
         if (part === "outlines") outlines = Boolean(on);
         else if (part === "noseLine") frame.gooNoseLine.value = Number(on);
+        else if (part === "eyeShine") frame.gooEyeShine.value = Number(on);
         else if (PART_UNIFORMS[part]) frame[PART_UNIFORMS[part]].value = on ? 1 : 0;
       }
       syncHull();
@@ -162,7 +166,7 @@ export function createOutlineHull(mesh, goo) {
   const count = Array.isArray(mesh.material) ? mesh.material.length : goo.materials.length;
   const materials = Array.from({ length: count }, (_, i) => {
     const source = goo.materials[i];
-    if (!source || source.userData.goo !== "zzzb") return hidden;
+    if (!source || source.userData.goo !== "zzzb" || source.defines?.GOO_EYE_SHINE !== undefined) return hidden;
     const outline = cloneSharingTextures(source);
     Object.assign(outline, { name: `${source.name} outline`, side: THREE.BackSide, map: source.map, normalMap: null });
     outline.defines = { ...source.defines, GOO_OUTLINE: "" };
@@ -212,14 +216,16 @@ export function bindGooControls(controls, target, { local } = {}) {
       });
     }
   }
-  const nose = controls.noseLine;
-  const storedNose = Number(read(GOO_NOSE_LINE_KEY));
-  parts.noseLine = read(GOO_NOSE_LINE_KEY) !== null && Number.isFinite(storedNose) ? storedNose : 1;
-  if (nose) {
-    nose.value = String(parts.noseLine);
-    nose.addEventListener("input", () => {
-      write(GOO_NOSE_LINE_KEY, String(nose.value));
-      target.setParts({ noseLine: Number(nose.value) });
+  // Strength sliders: remembered numbers.
+  for (const [part, key, fallback] of [["noseLine", GOO_NOSE_LINE_KEY, 1], ["eyeShine", GOO_EYE_SHINE_KEY, 0.5]]) {
+    const slider = controls[part];
+    const stored = read(key);
+    parts[part] = stored !== null && Number.isFinite(Number(stored)) ? Number(stored) : fallback;
+    if (!slider) continue;
+    slider.value = String(parts[part]);
+    slider.addEventListener("input", () => {
+      write(key, String(slider.value));
+      target.setParts({ [part]: Number(slider.value) });
     });
   }
   target.setParts(parts);
@@ -268,6 +274,11 @@ function setUpZzzb(material, entry, assets, texture, frame) {
     setUpMatcaps(uniforms, params._matcaps, (file) => texture(file, spaces[roleOf[file]] ?? "sRGB"));
   }
   if (!face && Number(params["Enable Rim Lighting"]) >= 1) material.defines.GOO_RIM = "";
+  if (entry.pmx === EYE_LIGHT_MATERIAL) {
+    // Soft, shrinkable highlights instead of the opaque Goo output (#254).
+    material.defines.GOO_EYE_SHINE = "";
+    Object.assign(material, { transparent: true, depthWrite: false, alphaTest: 0, opacity: 1 });
+  }
   material.userData.gooUniforms = uniforms;
   material.userData.gooParams = params;
   // The Goo outline hull (#254) replaces three's MMD outline for these materials.

@@ -1738,7 +1738,8 @@ function bindGameShaders(target, data) {
       return goo;
     },
   });
-  bindGooControls({ parts: gooPartToggles, light: gooLightControls, noseLine: document.querySelector("#goo-nose-line") }, {
+  bindGooControls({ parts: gooPartToggles, light: gooLightControls, noseLine: document.querySelector("#goo-nose-line"),
+    eyeShine: document.querySelector("#goo-eye-shine") }, {
     setParts(parts) {
       Object.assign(gooParts, parts);
       gooShaders?.goo.setParts(parts);

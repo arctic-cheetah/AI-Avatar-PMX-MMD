@@ -159,3 +159,33 @@ test("controls apply remembered parts and light, and save changes", () => {
   assert.deepEqual(applied.light, { mode: "camera", yaw: -45, pitch: 10 });
   assert.deepEqual(JSON.parse(local.values[GOO_LIGHT_KEY]), { mode: "camera", yaw: -45, pitch: 10 });
 });
+
+test("the nose line strength is a shared uniform, remembered, default 1", () => {
+  const goo = build();
+  const u = goo.materials[0].userData.gooUniforms;
+  assert.equal(u.gooNoseLine.value, 1);
+  goo.setParts({ noseLine: 0.4 });
+  assert.equal(u.gooNoseLine.value, 0.4);
+
+  const parts = Object.fromEntries(Object.keys(GOO_PART_KEYS).map((p) => [p, control(true)]));
+  const nose = control(1);
+  const local = storage({ "yidhari.gooNoseLine": "0.25" });
+  const applied = {};
+  bindGooControls({ parts, light: {}, noseLine: nose }, { setParts: (p) => Object.assign(applied, p), setLight() {} }, { local });
+  assert.equal(applied.noseLine, 0.25);
+  assert.equal(nose.value, "0.25");
+  nose.set(0.75);
+  assert.equal(applied.noseLine, 0.75);
+  assert.equal(local.values["yidhari.gooNoseLine"], "0.75");
+});
+
+test("the face shader blends the nose mark in by the nose line strength", () => {
+  const goo = build();
+  const shader = {
+    uniforms: {},
+    vertexShader: "#include <common>\nvoid main() {\n#include <begin_vertex>\n#include <project_vertex>\n}",
+    fragmentShader: "#include <common>\n#include <clipping_planes_pars_fragment>\nvoid main() {\n#include <map_fragment>\n#include <normal_fragment_maps>\n#include <opaque_fragment>\n}",
+  };
+  goo.materials[0].onBeforeCompile(shader);
+  assert.match(shader.fragmentShader, /gooNoseLine/);
+});

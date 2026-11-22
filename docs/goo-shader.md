@@ -204,6 +204,33 @@ is instant and never recompiles a shader. The light Euler feeds both the
 terms, so the face shadow follows it. All choices are remembered in this
 browser (`yidhari.gooParts.*`, `yidhari.gooLight`).
 
+## Cost (#254)
+
+Measured on 22 November 2026 on the Strix Halo laptop (Radeon 8060S, Chrome
+via ANGLE/OpenGL ES 3.2), with a 2004 × 1400 canvas showing the bust. GPU time
+is from `EXT_disjoint_timer_query_webgl2` around each frame's render, about 300
+frames per row:
+
+| Setup | GPU ms per frame, mean | p95 | Frame time |
+| --- | --- | --- | --- |
+| MMD material (Game shaders off) | 0.94 | 1.17 | 16.8 ms (60 Hz vsync) |
+| Game shaders, all parts on | 1.16 | 1.49 | 16.7 ms |
+| Game shaders, outlines off | 0.96 | 1.25 | 16.7 ms |
+| Game shaders, cel, matcaps, highlights, rim and edge/SSS off | 1.15 | 1.32 | 16.7 ms |
+
+- The Goo shader itself costs almost nothing over the MMD one. Turning the
+  lighting parts off saves under 0.02 ms.
+- The outline hull, which draws the mesh a second time, is most of the extra
+  ~0.2 ms.
+- Frame time stays locked to 60 Hz either way.
+- **Texture memory:** the renderer loads 13 of the baked textures (the `_A`
+  maps are not used): five 2048², five 1024² and three 256². That is about
+  134 MB with mipmaps, on top of the MMD textures, which stay loaded for
+  switching back.
+
+So there is **no quality option**: the measured cost is too small to need
+one. The part switches are there to compare the look, not for speed.
+
 ## Per-frame inputs
 
 `renderer/goo-frame.js` works in Blender's world space: three.js
@@ -230,4 +257,5 @@ The light is fixed in the world by default, like the Blender scene; see
 - The B-spline SSS ramps are baked as 33-sample tables and read with linear
   interpolation.
 - **Rim light:** a fresnel approximation of Goo's screen-space `Scene Rim`
-  (see above).
+  (see above). In side views it can catch thin light edges on hair cards that
+  Blender does not show; compare with the Rim light switch.

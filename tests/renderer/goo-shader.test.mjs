@@ -165,12 +165,23 @@ test("all Goo materials share one set of per-frame uniforms", () => {
   }
 });
 
-test("the shading ramps are resampled to fixed-size LUT uniforms", () => {
-  const { hair } = build();
-  const u = hair.userData.gooUniforms;
-  assert.equal(u.gooSssRamp.value.length, 33);
-  assert.deepEqual([u.gooSssRamp.value[0], u.gooSssRamp.value[16], u.gooSssRamp.value[32]].map((v) => Number(v.toFixed(3))), [1, 0.33, 1]);
-  assert.deepEqual([u.gooFadeRamp.value[0], u.gooFadeRamp.value[16], u.gooFadeRamp.value[32]], [0, 1, 1]);
+test("all ramps share one small texture, one row each, instead of uniform arrays", () => {
+  const { face, hair, body } = build();
+  const ramps = body.userData.gooUniforms.gooRamps.value;
+  assert.ok(ramps.isDataTexture);
+  assert.equal(face.userData.gooUniforms.gooRamps.value, ramps, "shared by every Goo material");
+  assert.equal(hair.userData.gooUniforms.gooRamps.value, ramps);
+  assert.equal(ramps.image.width, 33);
+  assert.equal(ramps.image.height, 5);
+  const at = (row, i) => ramps.image.data[row * 33 + i];
+  // Row 0: Fake SSS (1, 0.33, 1); row 1: Shadow Fade Gradient (0, 1, 1).
+  assert.deepEqual([at(0, 0), at(0, 16), at(0, 32)], [255, 84, 255]);
+  assert.deepEqual([at(1, 0), at(1, 16), at(1, 32)], [0, 255, 255]);
+  assert.equal(body.userData.gooUniforms.gooSssRamp, undefined, "no float[33] uniforms left");
+  const shader = FAKE_SHADER();
+  body.onBeforeCompile(shader);
+  assert.doesNotMatch(shader.fragmentShader, /uniform float goo\w+Ramp\[/);
+  assert.match(shader.fragmentShader, /uniform sampler2D gooRamps;/);
 });
 
 test("body materials with Enable MatCap Effect get the five matcap slots", () => {
@@ -199,8 +210,7 @@ test("rim light and hair highlights follow the material's switches", () => {
   assert.equal(h.gooHairHighlightIntensity.value, 0.75);
   assert.equal(h.gooHairHighlightSpread.value, 2.5);
   assert.equal(body.userData.gooUniforms.gooHairHighlightMask.value, 0);
-  assert.equal(body.userData.gooUniforms.gooRimRamp.value.length, 33);
-  assert.equal(body.userData.gooUniforms.gooBodyHighlightRamp.value.length, 33);
+  assert.ok(body.userData.gooUniforms.gooRamps.value.isDataTexture);
 });
 
 test("the extras run after the core shading in the fragment shader", () => {
@@ -225,4 +235,11 @@ test("a shader chunk that is missing (a three.js upgrade) throws instead of fail
   const shader = FAKE_SHADER();
   shader.fragmentShader = shader.fragmentShader.replace("#include <opaque_fragment>", "");
   assert.throws(() => hair.onBeforeCompile(shader), /shader chunk #include <opaque_fragment> not found/);
+});
+
+test("a bad matcap setup names its material", () => {
+  const assets = bake();
+  assets.params["Yidhari MAT 1"]._matcaps["MatCap Map Color4"] = { texture: "Third.png" };
+  assets.materialMap.materials[2].textures.matcap4 = "Third.png";
+  assert.throws(() => build(assets), /Yidhari MAT 1: more than two matcap textures/);
 });

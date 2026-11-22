@@ -106,11 +106,25 @@ three.js +Z.
 | Input | Source |
 | --- | --- |
 | Light direction | `+Z` rotated by the Main Light's XYZ Euler from `scene.json` (90° about X: straight at her face) |
-| Head forward / up | The Head Controller's rest vectors from `scene.json` (`(0, −0.5, 0)` and `(0, 0, 0.5)`, not normalised, as in Blender), turned by how far the `頭` bone has rotated from its bind pose |
+| Head forward / up | The Head Controller's rest vectors from `scene.json` (`(0, −0.5, 0)` and `(0, 0, 0.5)`, not normalised, as in Blender), turned by how far the `頭` bone has rotated from its bind pose. Both rotations are taken in world space (the bone's world matrix is refreshed first), so moving or turning the model does not skew the face shadow |
 | Camera forward / back | The three.js camera, converted to Blender axes |
 
 The light stays fixed in the world, like the Blender scene; #254 adds
 controls for it.
+
+The facing terms are faithful, not inert by mistake: Blender's head-forward
+vector is also 0.5 long, so `Face Facing Forward` stays near 0 and the Dynamic
+Face Highlight only appears when the face points away from the camera. The
+Nose line slider (#254) is the way to show the nose from the front.
+
+`col.bin` holds Blender's sRGB bytes; the vertex shader decodes RGB to linear
+(`gooSrgbToLinear`), which is what Blender's Color Attribute node gives the
+material, so thresholds such as `Col.b < 0.005` match exactly.
+
+`patchGooShader()` checks that every chunk it patches exists. If a three.js
+upgrade renames one, it throws, and the toggle falls back with a message
+instead of drawing a silently wrong shader. Shader errors only switch the game
+shaders off when the failing program is a Goo one.
 
 ## Known differences from Blender
 

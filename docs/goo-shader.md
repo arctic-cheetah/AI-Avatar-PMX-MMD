@@ -187,10 +187,12 @@ colour = shaded · OutlineColor[id] → mix(c, c · 0.25, f)
 ```
 
 `Outline Color` (ID 1) is screened with 0.75 grey first, as in
-`[Adjust Colors To Match Some Stuff]`. `f` is 1, except on ID 2, where it is
-`1 − smoothstep(0.25, 0.5, Col.g)` (`[Fix Outline Discoloration]`). The
+`[Adjust Colors To Match Some Stuff]`. `f` is 1 on ID 2 and
+`1 − smoothstep(0.25, 0.5, Col.g)` on every other ID
+(`[Fix Outline Discoloration]`: `Mix_061 = Mix(id(2), Math_102, 1.0)`). The
 hidden shell, the eye-shadow tint and materials added after load have no
-outline.
+outline. Width and factor are mirrored in JavaScript
+(`gooOutlineWidthUnits`, `gooOutlineFactor`) so tests check the numbers.
 
 ## Light controls and live switches (#254)
 
@@ -200,7 +202,7 @@ In the *Graphics · グラフィック* panel section, under **Game shaders**:
 | --- | --- |
 | Light: **Fixed** | Blender's Main Light, turned by **yaw** (round her, degrees) and **pitch** (up, degrees). Yaw 0 / pitch 0 is the V1.3 scene. |
 | Light: **Follow camera** | The light points from the camera at her, so she is lit from the viewer's side when you orbit |
-| **Cel lighting** | Off: the game diffuse without any lighting |
+| **Cel lighting** | Off: the game diffuse without any lighting. With every part off (and Nose line 0), the face is the flat diffuse too: the Highlights switch also gates the face's dynamic highlight |
 | **Face shadow** | Off: the face is fully lit |
 | **Matcaps**, **Highlights**, **Rim light**, **Edge + SSS** | Each part on or off |
 | **Outlines** | Shows or hides the outline hull |
@@ -211,7 +213,10 @@ The switches are uniform values shared by every Goo material, so flipping one
 is instant and never recompiles a shader. The light Euler feeds both the
 `N·L` direction and the per-frame `faceLogic` and `[Light Facing Forward]`
 terms, so the face shadow follows it. All choices are remembered in this
-browser (`yidhari.gooParts.*`, `yidhari.gooLight`).
+browser (`yidhari.gooParts.*`, `yidhari.gooLight`). Stored light values are
+checked: an unknown mode becomes Fixed, and yaw and pitch are clamped to the
+sliders' ranges. The light's tilt is kept between the zenith and the nadir, so
+a large pitch can't flip it over the top.
 
 ## Cost (#254)
 

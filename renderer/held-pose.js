@@ -38,6 +38,41 @@ export function poseFileNames(html) {
   return [...new Set(names)].sort();
 }
 
+export const POSE_ACTIONS_KEY = "yidhari.poseActions";
+
+/**
+ * Which poses may be picked as idle actions. New poses default to on; the
+ * user's unticks are kept per browser.
+ * @param {string[]} names
+ * @param {{ local?: Storage }} [options]
+ * @returns {Record<string, boolean>}
+ */
+export function poseActionTicks(names, { local } = {}) {
+  let saved = {};
+  try {
+    local ??= globalThis.localStorage;
+    const parsed = JSON.parse(local?.getItem(POSE_ACTIONS_KEY) ?? "{}");
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) saved = parsed;
+  } catch { /* Missing, blocked or corrupt: all on. */ }
+  return Object.fromEntries(names.map((name) => [name, saved[name] !== false]));
+}
+
+/**
+ * Remember one pose's tick.
+ * @param {string} name
+ * @param {boolean} ticked
+ * @param {{ local?: Storage }} [options]
+ * @returns {void}
+ */
+export function savePoseActionTick(name, ticked, { local } = {}) {
+  try {
+    local ??= globalThis.localStorage;
+    const saved = JSON.parse(local?.getItem(POSE_ACTIONS_KEY) ?? "{}") ?? {};
+    saved[name] = Boolean(ticked);
+    local?.setItem(POSE_ACTIONS_KEY, JSON.stringify(saved));
+  } catch { /* Session-only. */ }
+}
+
 /** Holds one VPD pose and eases it in and out. */
 export class HeldPose {
   /**

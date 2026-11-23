@@ -927,7 +927,7 @@ test("an external action is picked like a share-1 action and named while it play
   assert.equal(motion.externalPlaying, "wink-v-sign");
   assert.ok(Math.abs(motion.externalWeight("wink-v-sign") - glance) < 1e-12);
   const poses = play(motion, "idle", 4);
-  for (const pose of poses) for (const key of ANGLES) assert.equal(pose[key], 0, `${key} stays still`);
+  for (const pose of poses) for (const key of ANGLES) assert.equal(Math.abs(pose[key]), 0, `${key} stays still`);
   play(motion, "idle", 1);
   assert.equal(motion.externalPlaying, null, "over after its duration");
 });

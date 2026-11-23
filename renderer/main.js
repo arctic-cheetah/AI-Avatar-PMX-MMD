@@ -38,6 +38,7 @@ import { VoiceVolume, bindVoiceVolume } from "./voice-volume.js";
 import { LiveSpeechSession } from "./speech-session.js";
 import { LastSpeechReplay, dropQueuedReplay, replayQueueItems } from "./speech-replay.js";
 import { FillerSession } from "./filler-session.js";
+import { HeldPose, poseFileNames, readVpd } from "./held-pose.js";
 import { ThinkingPose, THINKING_POSE, headGazeScale } from "./thinking-pose.js";
 import { buildThinkingRig } from "./thinking-rig.js";
 import { handAngles, thinkingFidgetAngles } from "./thinking-fidget.js";
@@ -1768,8 +1769,70 @@ function bindGameShaders(target, data) {
  * @param {{ morphs: { name: string, englishName: string, panel: number }[] }} data Parsed PMX.
  * @returns {void}
  */
+// Held VPD poses from Blender (#49). See docs/held-poses.md.
+const POSES_URL = "/assets/private/poses/";
+const heldPoseSelect = document.querySelector("#held-pose-select");
+const heldPoseToggle = document.querySelector("#held-pose-toggle");
+const heldPoseStatus = document.querySelector("#held-pose-status");
+let heldPose = null;
+
+/**
+ * Fetch and load the chosen pose into the held-pose layer.
+ * @param {string} name
+ * @returns {Promise<boolean>} Whether it loaded.
+ */
+async function loadHeldPose(name) {
+  try {
+    const response = await fetch(`${POSES_URL}${encodeURIComponent(name)}.vpd`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const text = new TextDecoder("shift_jis").decode(await response.arrayBuffer());
+    const { bones, missing } = heldPose.load(name, readVpd(text));
+    heldPoseStatus.textContent = `${name}: ${bones} bones` + (missing.length ? ` · not on this model: ${missing.join(", ")}` : "");
+    return true;
+  } catch (error) {
+    heldPoseStatus.textContent = `${name}: ${error.message}`;
+    heldPose.hold(false);
+    heldPoseToggle.checked = false;
+    return false;
+  }
+}
+
+/** List the poses folder, bind the controls, and honour ?pose=<name>. */
+async function bindHeldPose() {
+  let names = [];
+  try {
+    const response = await fetch(POSES_URL);
+    if (response.ok) names = poseFileNames(await response.text());
+  } catch {
+    // No poses folder: the controls stay disabled.
+  }
+  heldPoseSelect.replaceChildren(...names.map((name) => new Option(name, name)));
+  heldPoseSelect.disabled = heldPoseToggle.disabled = names.length === 0;
+  heldPoseStatus.textContent = names.length ? "" : `No poses in ${POSES_URL}`;
+  if (!names.length) return;
+  heldPoseSelect.addEventListener("change", async () => {
+    if (await loadHeldPose(heldPoseSelect.value)) heldPose.hold(heldPoseToggle.checked);
+  });
+  heldPoseToggle.addEventListener("change", async () => {
+    if (heldPoseToggle.checked && heldPose.name !== heldPoseSelect.value
+      && !(await loadHeldPose(heldPoseSelect.value))) return;
+    heldPose.hold(heldPoseToggle.checked);
+  });
+  const wanted = new URLSearchParams(location.search).get("pose");
+  if (wanted && names.includes(wanted)) {
+    heldPoseSelect.value = wanted;
+    heldPoseToggle.checked = true;
+    if (await loadHeldPose(wanted)) heldPose.hold(true);
+  } else if (wanted) {
+    heldPoseStatus.textContent = `${wanted}: no such pose in ${POSES_URL}`;
+  }
+}
+
 function onModelLoaded(loaded, data) {
   mesh = loaded;
+  // Before restArms(): VPD rotations are measured from the bind pose (#49).
+  heldPose = new HeldPose(mesh);
+  bindHeldPose();
   scene.add(mesh);
   frameModel(mesh);
 
@@ -2277,11 +2340,14 @@ function animate() {
   applySway(now / 1000, delta);
   applyIdleMotion();
   applyArmDrift();
+  heldPose?.update(delta);
+  heldPose?.apply();
   takeTentacleWaveOff();
   applyPhysics(delta);
   applyTentacleWave(delta);
   audition?.update(delta);
   audition?.apply();
+  heldPose?.applyMorphs();
   // A held preview wins the frame so a visual check is not overwritten by the mood loop.
   if (globalThis.__yidhariHold && mesh) {
     mesh.morphTargetInfluences.fill(0);

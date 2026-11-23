@@ -9,12 +9,15 @@ the first slice of #49: static VPD poses. Timed VMD motion comes later.
 1. Save poses as `assets/private/poses/<name>.vpd`, for example with the
    Yidhari Poses add-on (#261). The folder is gitignored; `serve.py` already
    serves it on localhost.
-2. In the panel, under **Held pose · ポーズ**, pick a pose and tick **Hold**.
-   She eases into it over 0.4 s, and eases out when it is unticked.
-3. `?pose=<name>` in the page URL picks and holds a pose on load, for example
+2. In the panel, under **Animation actions ▸ Blender poses · ポーズ**, each
+   VPD has a button (`🎞️ wink-v-sign`). A click plays the pose like an action:
+   she eases into it over 0.4 s, keeps it for 4 s, then eases out. Clicking the
+   playing button stops it early; clicking another pose switches to it.
+3. `?pose=<name>` in the page URL holds a pose from page load until its button
+   is clicked, for example
    `http://127.0.0.1:8770/renderer/?pose=wink-v-sign`.
 
-The status line under the list names bones and morphs in the file that the
+The status line under the buttons names bones and morphs in the file that the
 model does not have. A file that is missing or is not a VPD shows an error
 there, and nothing is held.
 

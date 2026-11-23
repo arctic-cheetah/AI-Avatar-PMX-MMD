@@ -191,11 +191,8 @@
       <p class="note">Play one action now; click again to stop. Needs Idle behaviours on, and never wakes her.</p>
       <div id="action-play-controls" class="button-grid" role="group" aria-label="Play an animation action"></div>
       <p id="action-play-status" class="note" role="status">Waiting for the model</p>
-      <p class="note"><strong id="held-pose-heading">Held pose · ポーズ</strong>: hold a pose saved from Blender as VPD in <code>assets/private/poses/</code>. Only the bones it names are held.</p>
-      <div class="toolbar" role="group" aria-labelledby="held-pose-heading">
-        <select id="held-pose-select" aria-label="Pose" disabled></select>
-        <label class="check"><input id="held-pose-toggle" type="checkbox" disabled>Hold</label>
-      </div>
+      <p class="note"><strong id="held-pose-heading">Blender poses · ポーズ</strong>: one button per VPD in <code>assets/private/poses/</code>. A click plays the pose for a few seconds; click again to stop. Only the bones it names move.</p>
+      <div id="held-pose-controls" class="button-grid" role="group" aria-labelledby="held-pose-heading"></div>
       <p id="held-pose-status" class="note" role="status">Waiting for the model</p>
       <p class="note"><strong id="rest-pose-heading">Idle pose · 待機ポーズ</strong>: how she rests between actions. Idle motion plays on top; the choice is saved in this browser.</p>
       <div id="rest-pose-controls" class="button-grid" role="group" aria-labelledby="rest-pose-heading"></div>

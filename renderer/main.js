@@ -1769,15 +1769,17 @@ function bindGameShaders(target, data) {
  * @param {{ morphs: { name: string, englishName: string, panel: number }[] }} data Parsed PMX.
  * @returns {void}
  */
-// Held VPD poses from Blender (#49). See docs/held-poses.md.
+// Blender poses (#49): one play button per VPD. See docs/held-poses.md.
 const POSES_URL = "/assets/private/poses/";
-const heldPoseSelect = document.querySelector("#held-pose-select");
-const heldPoseToggle = document.querySelector("#held-pose-toggle");
+const POSE_HOLD_SECONDS = 4;
+const heldPoseControls = document.querySelector("#held-pose-controls");
 const heldPoseStatus = document.querySelector("#held-pose-status");
+const heldPoseButtons = new Map();
 let heldPose = null;
+let shownHeldPose = null;
 
 /**
- * Fetch and load the chosen pose into the held-pose layer.
+ * Fetch a pose and make it the one the held-pose layer plays.
  * @param {string} name
  * @returns {Promise<boolean>} Whether it loaded.
  */
@@ -1791,41 +1793,57 @@ async function loadHeldPose(name) {
     return true;
   } catch (error) {
     heldPoseStatus.textContent = `${name}: ${error.message}`;
-    heldPose.hold(false);
-    heldPoseToggle.checked = false;
     return false;
   }
 }
 
-/** List the poses folder, bind the controls, and honour ?pose=<name>. */
+/**
+ * Play a pose once, or stop it if it is the one playing.
+ * @param {string} name
+ * @param {number} [seconds] How long to keep it; Infinity holds until clicked.
+ * @returns {Promise<void>}
+ */
+async function toggleHeldPose(name, seconds = POSE_HOLD_SECONDS) {
+  if (heldPose.playing && heldPose.name === name) {
+    heldPose.stop();
+    return;
+  }
+  if (heldPose.name !== name && !(await loadHeldPose(name))) return;
+  heldPose.play(seconds);
+}
+
+/** Show which pose button is playing. Cheap enough to call every frame. */
+function refreshHeldPoseButtons() {
+  const playing = heldPose?.playing ? heldPose.name : null;
+  if (playing === shownHeldPose) return;
+  shownHeldPose = playing;
+  for (const [name, button] of heldPoseButtons) button.setAttribute("aria-pressed", String(name === playing));
+}
+
+/** List the poses folder, add a button per pose, and honour ?pose=<name>. */
 async function bindHeldPose() {
   let names = [];
   try {
     const response = await fetch(POSES_URL);
     if (response.ok) names = poseFileNames(await response.text());
   } catch {
-    // No poses folder: the controls stay disabled.
+    // No poses folder: no buttons.
   }
-  heldPoseSelect.replaceChildren(...names.map((name) => new Option(name, name)));
-  heldPoseSelect.disabled = heldPoseToggle.disabled = names.length === 0;
-  heldPoseStatus.textContent = names.length ? "" : `No poses in ${POSES_URL}`;
-  if (!names.length) return;
-  heldPoseSelect.addEventListener("change", async () => {
-    if (await loadHeldPose(heldPoseSelect.value)) heldPose.hold(heldPoseToggle.checked);
-  });
-  heldPoseToggle.addEventListener("change", async () => {
-    if (heldPoseToggle.checked && heldPose.name !== heldPoseSelect.value
-      && !(await loadHeldPose(heldPoseSelect.value))) return;
-    heldPose.hold(heldPoseToggle.checked);
-  });
+  heldPoseButtons.clear();
+  heldPoseControls.replaceChildren(...names.map((name) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.heldPose = name;
+    button.textContent = `🎞️ ${name}`;
+    button.setAttribute("aria-pressed", "false");
+    button.addEventListener("click", () => toggleHeldPose(name));
+    heldPoseButtons.set(name, button);
+    return button;
+  }));
+  heldPoseStatus.textContent = names.length ? "Ready: click a pose to play it" : `No poses in ${POSES_URL}`;
   const wanted = new URLSearchParams(location.search).get("pose");
-  if (wanted && names.includes(wanted)) {
-    heldPoseSelect.value = wanted;
-    heldPoseToggle.checked = true;
-    if (await loadHeldPose(wanted)) heldPose.hold(true);
-  } else if (wanted) {
-    heldPoseStatus.textContent = `${wanted}: no such pose in ${POSES_URL}`;
-  }
+  if (wanted && names.includes(wanted)) await toggleHeldPose(wanted, Infinity);
+  else if (wanted) heldPoseStatus.textContent = `${wanted}: no such pose in ${POSES_URL}`;
 }
 
 function onModelLoaded(loaded, data) {
@@ -2342,6 +2360,7 @@ function animate() {
   applyArmDrift();
   heldPose?.update(delta);
   heldPose?.apply();
+  refreshHeldPoseButtons();
   takeTentacleWaveOff();
   applyPhysics(delta);
   applyTentacleWave(delta);

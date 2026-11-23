@@ -58,6 +58,7 @@ export class HeldPose {
     this.name = null;
     this.holding = false;
     this.progress = 0;
+    this.remaining = Infinity;
   }
 
   /**
@@ -98,9 +99,30 @@ export class HeldPose {
     return { bones: targets.length, missing };
   }
 
-  /** @param {boolean} on Ease toward the pose (true) or away from it. */
+  /** @param {boolean} on Ease toward the pose and keep it (true), or ease away. */
   hold(on) {
     this.holding = on;
+    this.remaining = Infinity;
+  }
+
+  /**
+   * Play the pose once, like an animation action: ease in, keep it for
+   * `holdSeconds`, then ease out on its own.
+   * @param {number} holdSeconds
+   */
+  play(holdSeconds) {
+    this.holding = true;
+    this.remaining = holdSeconds;
+  }
+
+  /** Ease out now. */
+  stop() {
+    this.holding = false;
+  }
+
+  /** @returns {boolean} Whether the pose is held or still easing. */
+  get playing() {
+    return this.holding || this.progress > 0;
   }
 
   /** @returns {number} 0 (free) to 1 (fully held), eased. */
@@ -111,8 +133,20 @@ export class HeldPose {
 
   /** @param {number} delta Seconds since the last frame. */
   update(delta) {
-    const step = this.easeSeconds > 0 ? delta / this.easeSeconds : 1;
-    this.progress = Math.min(1, Math.max(0, this.progress + (this.holding ? step : -step)));
+    let rest = delta;
+    if (this.holding) {
+      const easing = Math.min(rest, (1 - this.progress) * this.easeSeconds);
+      this.progress = this.easeSeconds > 0 ? Math.min(1, this.progress + easing / this.easeSeconds) : 1;
+      rest -= easing;
+      if (this.progress < 1) return;
+      const kept = Math.min(rest, this.remaining);
+      this.remaining -= kept;
+      rest -= kept;
+      if (this.remaining > 0) return;
+      this.holding = false;
+    }
+    const step = this.easeSeconds > 0 ? rest / this.easeSeconds : 1;
+    this.progress = Math.max(0, this.progress - step);
   }
 
   /**

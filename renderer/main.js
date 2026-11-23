@@ -38,7 +38,7 @@ import { VoiceVolume, bindVoiceVolume } from "./voice-volume.js";
 import { LiveSpeechSession } from "./speech-session.js";
 import { LastSpeechReplay, dropQueuedReplay, replayQueueItems } from "./speech-replay.js";
 import { FillerSession } from "./filler-session.js";
-import { HeldPose, poseFileNames, readVpd } from "./held-pose.js";
+import { HeldPose, poseActionTicks, poseFileNames, readVpd, savePoseActionTick } from "./held-pose.js";
 import { ThinkingPose, THINKING_POSE, headGazeScale } from "./thinking-pose.js";
 import { buildThinkingRig } from "./thinking-rig.js";
 import { handAngles, thinkingFidgetAngles } from "./thinking-fidget.js";
@@ -1820,16 +1820,44 @@ function refreshHeldPoseButtons() {
   for (const [name, button] of heldPoseButtons) button.setAttribute("aria-pressed", String(name === playing));
 }
 
-/** List the poses folder, add a button per pose, and honour ?pose=<name>. */
-async function bindHeldPose() {
+const poseActionBoxes = document.createElement("div");
+poseActionBoxes.className = "pose-action-ticks";
+document.querySelector("#actions").append(poseActionBoxes);
+const poseUploadFile = document.querySelector("#pose-upload-file");
+const poseUploadName = document.querySelector("#pose-upload-name");
+const poseUploadButton = document.querySelector("#pose-upload-button");
+/** How long an idle pick of a pose lasts: ease in, hold, ease out. */
+const POSE_ACTION_SECONDS = POSE_HOLD_SECONDS + 2 * 0.4;
+let idlePoseAction = null;
+
+/** Tell IdleMotion which poses it may pick, from the ticks. */
+function syncPoseActions() {
+  const ticked = [...poseActionBoxes.querySelectorAll("input")].filter((box) => box.checked);
+  idleMotion.setExternalActions(Object.fromEntries(ticked.map((box) => [box.dataset.heldPose, { share: 1, duration: POSE_ACTION_SECONDS }])));
+}
+
+/** Play a pose when idle picks it (#49). Cheap enough to call every frame. */
+function followIdlePoseAction() {
+  const picked = idleMotion.externalPlaying;
+  if (picked === idlePoseAction) return;
+  idlePoseAction = picked;
+  if (picked && !(heldPose?.playing && heldPose.name === picked)) toggleHeldPose(picked);
+}
+
+/**
+ * List the poses folder and rebuild a button and an idle tick per pose.
+ * @returns {Promise<string[]>} The pose names.
+ */
+async function refreshPoseList() {
   let names = [];
   try {
-    const response = await fetch(POSES_URL);
+    const response = await fetch(POSES_URL, { cache: "no-store" });
     if (response.ok) names = poseFileNames(await response.text());
   } catch {
     // No poses folder: no buttons.
   }
   heldPoseButtons.clear();
+  shownHeldPose = undefined;
   heldPoseControls.replaceChildren(...names.map((name) => {
     const button = document.createElement("button");
     button.type = "button";
@@ -1840,7 +1868,63 @@ async function bindHeldPose() {
     heldPoseButtons.set(name, button);
     return button;
   }));
-  heldPoseStatus.textContent = names.length ? "Ready: click a pose to play it" : `No poses in ${POSES_URL}`;
+  const ticks = poseActionTicks(names);
+  poseActionBoxes.replaceChildren(...names.map((name) => {
+    const row = document.createElement("label");
+    row.className = "check";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.dataset.heldPose = name;
+    box.checked = ticks[name];
+    box.addEventListener("change", () => {
+      savePoseActionTick(name, box.checked);
+      syncPoseActions();
+    });
+    row.append(box, `🎞️ ${name}`);
+    return row;
+  }));
+  syncPoseActions();
+  return names;
+}
+
+/** Send the chosen VPD to serve.py, asking before replacing a pose of that name. */
+async function uploadPose() {
+  const file = poseUploadFile.files?.[0];
+  const name = (poseUploadName.value || file?.name.replace(/\.vpd$/i, "") || "").trim();
+  if (!file || !name) return;
+  const send = (overwrite) => fetch(`/poses/${encodeURIComponent(name)}${overwrite ? "?overwrite=1" : ""}`, {
+    method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file,
+  });
+  poseUploadButton.disabled = true;
+  try {
+    let response = await send(false);
+    if (response.status === 409 && confirm(`Replace the pose "${name}"?`)) response = await send(true);
+    if (response.status === 409) {
+      heldPoseStatus.textContent = `${name}: kept the existing pose`;
+      return;
+    }
+    if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error ?? `HTTP ${response.status}`);
+    await refreshPoseList();
+    if (heldPose.name === name) heldPose.name = null; // reload the new file on its next play
+    heldPoseStatus.textContent = `${name}: uploaded · click its button to play it`;
+    poseUploadFile.value = "";
+    poseUploadName.value = "";
+  } catch (error) {
+    heldPoseStatus.textContent = `${name}: upload failed (${error.message})`;
+  } finally {
+    poseUploadButton.disabled = !poseUploadFile.files?.length;
+  }
+}
+
+/** Build the pose buttons and ticks, bind the upload, and honour ?pose=<name>. */
+async function bindHeldPose() {
+  poseUploadFile.addEventListener("change", () => {
+    poseUploadButton.disabled = !poseUploadFile.files?.length;
+    if (!poseUploadName.value && poseUploadFile.files?.[0]) poseUploadName.placeholder = poseUploadFile.files[0].name.replace(/\.vpd$/i, "");
+  });
+  poseUploadButton.addEventListener("click", uploadPose);
+  const names = await refreshPoseList();
+  heldPoseStatus.textContent = names.length ? "Ready: click a pose to play it" : `No poses in ${POSES_URL} yet: upload one`;
   const wanted = new URLSearchParams(location.search).get("pose");
   if (wanted && names.includes(wanted)) await toggleHeldPose(wanted, Infinity);
   else if (wanted) heldPoseStatus.textContent = `${wanted}: no such pose in ${POSES_URL}`;
@@ -2361,6 +2445,7 @@ function animate() {
   heldPose?.update(delta);
   heldPose?.apply();
   refreshHeldPoseButtons();
+  followIdlePoseAction();
   takeTentacleWaveOff();
   applyPhysics(delta);
   applyTentacleWave(delta);

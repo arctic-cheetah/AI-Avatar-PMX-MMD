@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { MMDParser } from "three/examples/jsm/libs/mmdparser.module.js";
-import { HeldPose, poseFileNames, readVpd } from "../../renderer/held-pose.js";
+import { HeldPose, poseActionTicks, poseFileNames, readVpd, savePoseActionTick } from "../../renderer/held-pose.js";
 import { fixture } from "./arm-fixture.mjs";
 
 const VPD = [
@@ -231,4 +231,15 @@ test("loading another pose while held swaps the targets without dropping the wei
   assert.equal(held.name, "b");
   held.apply();
   assert.ok(close(get("右人指１").quaternion, bind));
+});
+
+test("pose action ticks default to on and remember what was unticked", () => {
+  const store = new Map();
+  const local = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+  assert.deepEqual(poseActionTicks(["wink-v-sign", "考え中"], { local }), { "wink-v-sign": true, "考え中": true });
+  savePoseActionTick("考え中", false, { local });
+  assert.deepEqual(poseActionTicks(["wink-v-sign", "考え中", "new"], { local }), { "wink-v-sign": true, "考え中": false, new: true });
+  const blocked = { getItem: () => { throw new Error("blocked"); }, setItem: () => { throw new Error("blocked"); } };
+  assert.deepEqual(poseActionTicks(["a"], { local: blocked }), { a: true });
+  savePoseActionTick("a", false, { local: blocked });
 });

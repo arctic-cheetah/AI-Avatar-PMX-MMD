@@ -1,4 +1,4 @@
-"""Endearments get their own, higher lift (#83): at 4 st "sweetheart!" still sounded a bit down;
+😊"""Endearments get their own, higher lift (#83): at 4 st "sweetheart!" still sounded a bit down;
 of 4 / 6 / 8 st, 8 sounded best (listened 9 Nov 2026); raised to 9 st on 15 Nov 2026 (#183)."""
 from pathlib import Path
 import sys
@@ -75,8 +75,8 @@ class EndearmentSettingsTests(unittest.TestCase):
                 ApplioSettings(applio_dir=Path('/nonexistent'), endearment_bend=value).check()
         settings = speech_settings(build_parser().parse_args(['--speech', '--endearment-bend', '7']))
         self.assertEqual(settings.endearment_bend, 7.0)
-        self.assertEqual(speech_settings(build_parser().parse_args(['--speech'])).endearment_bend, 9.0)  # the bridge default too
-
+        # The bridge's CLI default must match, or it silently overrides the settings default.
+        self.assertEqual(speech_settings(build_parser().parse_args(['--speech'])).endearment_bend, 9.0)
 
 
 if __name__ == '__main__':

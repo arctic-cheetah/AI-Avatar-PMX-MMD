@@ -120,6 +120,28 @@ def _check_name(name: str) -> None:
         raise VpdError(f"cannot be written in Shift-JIS: {name}") from None
 
 
+def _writable(name: str) -> bool:
+    try:
+        name.encode(ENCODING)
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
+def split_unwritable(pose: VpdPose) -> tuple[VpdPose, list[str]]:
+    """Set aside bones and morphs whose names Shift-JIS cannot hold.
+
+    PMX names are UTF-16, so a model can use characters VPD cannot store,
+    such as the simplified 齿 in 齿上. Returns the writable pose and the
+    names left out, in file order.
+    """
+    bones = tuple(b for b in pose.bones if _writable(b.name))
+    morphs = tuple(m for m in pose.morphs if _writable(m.name))
+    skipped = [b.name for b in pose.bones if not _writable(b.name)]
+    skipped += [m.name for m in pose.morphs if not _writable(m.name)]
+    return VpdPose(pose.model, bones, morphs), skipped
+
+
 def _num(value: float) -> str:
     """Six decimals, as MMD writes them. three.js only reads `-?digits.digits`."""
     return f"{float(value):.6f}"

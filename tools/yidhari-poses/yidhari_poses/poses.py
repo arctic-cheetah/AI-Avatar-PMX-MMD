@@ -18,7 +18,7 @@ from mathutils import Matrix, Quaternion, Vector
 
 from .vpd_lib import (
     VpdBone, VpdMorph, VpdPose, decode_morphs, encode_morphs, format_vpd, missing_names, parse_vpd,
-    pose_name,
+    pose_name, split_unwritable,
 )
 
 POSE_PROP = "yidhari_pose"
@@ -27,6 +27,12 @@ APPLIED_PROP = "yidhari_applied_morphs"
 IMPORT_SCALE = 0.08  # MMD Tools' default PMX import scale
 EXPORT_SCALE = 1.0 / IMPORT_SCALE
 FRAME = 1
+
+
+@dataclass
+class PoseSave:
+    pose: VpdPose
+    skipped: list[str]
 
 
 @dataclass
@@ -209,9 +215,10 @@ def capture_pose(arm: bpy.types.Object, selected_only: bool, scale: float = EXPO
     return VpdPose(_model_name(arm), tuple(bones), tuple(VpdMorph(n, w) for n, w in morphs.items()))
 
 
-def save_vpd(arm: bpy.types.Object, path: str | Path, selected_only: bool) -> VpdPose:
-    pose = capture_pose(arm, selected_only)
+def save_vpd(arm: bpy.types.Object, path: str | Path, selected_only: bool) -> PoseSave:
+    """Write the current pose. Names Shift-JIS cannot hold are left out and listed."""
+    pose, skipped = split_unwritable(capture_pose(arm, selected_only))
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(format_vpd(pose))
-    return pose
+    return PoseSave(pose, skipped)

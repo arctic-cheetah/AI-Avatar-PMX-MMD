@@ -137,11 +137,13 @@ class YIDHARI_OT_save_vpd(_NeedsArmature, ExportHelper, bpy.types.Operator):
 
     def execute(self, context):
         try:
-            pose = poses.save_vpd(find_armature(context), self.filepath, self.selected_only)
+            saved = poses.save_vpd(find_armature(context), self.filepath, self.selected_only)
         except (VpdError, OSError) as error:
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
-        self.report({"INFO"}, f"Saved {len(pose.bones)} bones and {len(pose.morphs)} morphs")
+        if saved.skipped:
+            self.report({"WARNING"}, f"Left out (Shift-JIS cannot name them): {', '.join(saved.skipped)}")
+        self.report({"INFO"}, f"Saved {len(saved.pose.bones)} bones and {len(saved.pose.morphs)} morphs")
         return {"FINISHED"}
 
 

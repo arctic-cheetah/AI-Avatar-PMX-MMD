@@ -78,7 +78,7 @@ test("a fully held bone is bind ⊗ vpd, whatever the rest pose did to it", () =
   held.hold(true);
   held.update(10);
   held.apply();
-  const vpd = new THREE.Quaternion().fromArray(readVpd(VPD).bones.find((b) => b.name === "右腕").quaternion);
+  const vpd = new THREE.Quaternion().fromArray(readVpd(VPD).bones.find((b) => b.name === "右腕").quaternion).normalize();
   assert.ok(close(get("右腕").quaternion, bind.clone().multiply(vpd)));
 });
 

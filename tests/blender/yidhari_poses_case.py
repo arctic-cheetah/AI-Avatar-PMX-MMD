@@ -34,6 +34,7 @@ BONES = (
     ("腕.R", "右腕", (-0.2, 0.0, 1.4), (-0.5, 0.05, 1.2), 0.4, "センター"),
     ("人指１.R", "右人指１", (-0.5, 0.05, 1.2), (-0.56, 0.08, 1.17), -0.7, "腕.R"),
     ("人指２.R", "右人指２", (-0.56, 0.08, 1.17), (-0.6, 0.1, 1.15), -0.7, "人指１.R"),
+    ("齿上", "齿上", (0, -0.05, 1.6), (0, -0.08, 1.6), 0.0, "センター"),
 )
 MORPHS = ("ウィンク右", "あ")
 
@@ -183,7 +184,7 @@ class PosesTest(unittest.TestCase):
     def test_save_round_trips_bones_and_morphs(self) -> None:
         poses.apply_pose(self.arm, poses.import_pose(self.arm, write(self.dir, "p", FIXTURE)).action)
         out = self.dir / "out.vpd"
-        poses.save_vpd(self.arm, out, selected_only=False)
+        self.assertEqual(poses.save_vpd(self.arm, out, selected_only=False).skipped, [])
         saved = parse_vpd(out.read_bytes())
         want = {b.name: b for b in FIXTURE.bones}
         self.assertEqual({b.name for b in saved.bones}, set(want))
@@ -194,6 +195,16 @@ class PosesTest(unittest.TestCase):
             exp = Quaternion((want[bone.name].rotation[3], *want[bone.name].rotation[:3])).normalized()
             self.assertAlmostEqual(abs(got.dot(exp)), 1.0, places=5, msg=bone.name)
         self.assertEqual(saved.morphs, (VpdMorph("ウィンク右", 1.0),))
+
+    def test_save_skips_bones_shift_jis_cannot_name_and_says_so(self) -> None:
+        poses.apply_pose(self.arm, poses.import_pose(self.arm, write(self.dir, "p", FIXTURE)).action)
+        self.arm.pose.bones["齿上"].location = (0.0, 0.0, -0.001)
+        out = self.dir / "out.vpd"
+        result = poses.save_vpd(self.arm, out, selected_only=False)
+        self.assertEqual(result.skipped, ["齿上"])
+        names = [b.name for b in parse_vpd(out.read_bytes()).bones]
+        self.assertNotIn("齿上", names)
+        self.assertIn("右腕", names)
 
     def test_save_selected_only_writes_just_those_bones(self) -> None:
         poses.apply_pose(self.arm, poses.import_pose(self.arm, write(self.dir, "p", FIXTURE)).action)

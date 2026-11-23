@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools" / "yidhari-
 
 from vpd_lib import (  # noqa: E402
     VpdBone, VpdError, VpdMorph, VpdPose, decode_morphs, encode_morphs, format_vpd,
-    missing_names, parse_vpd, pose_name,
+    missing_names, parse_vpd, pose_name, split_unwritable,
 )
 
 SAMPLE = (
@@ -113,6 +113,25 @@ class FormatTest(unittest.TestCase):
         pose = VpdPose("m.osm", (), (VpdMorph("wink😉", 1.0),))
         with self.assertRaisesRegex(VpdError, "cannot be written in Shift-JIS: wink😉"):
             format_vpd(pose)
+
+
+class UnwritableNamesTest(unittest.TestCase):
+    def test_sets_aside_names_shift_jis_cannot_hold(self) -> None:
+        # The PMX is UTF-16; this model names its teeth 齿上/齿下 (simplified 齿).
+        pose = VpdPose(
+            "m.osm",
+            (VpdBone("首", (0, 0, 0), (0, 0, 0, 1)), VpdBone("齿上", (0, 0, 0), (0, 0, 0, 1))),
+            (VpdMorph("ワ", 0.2), VpdMorph("wink😉", 1.0)),
+        )
+        kept, skipped = split_unwritable(pose)
+        self.assertEqual([b.name for b in kept.bones], ["首"])
+        self.assertEqual([m.name for m in kept.morphs], ["ワ"])
+        self.assertEqual(skipped, ["齿上", "wink😉"])
+        format_vpd(kept)
+
+    def test_keeps_a_pose_that_is_all_writable(self) -> None:
+        pose = VpdPose("m.osm", (VpdBone("首", (0, 0, 0), (0, 0, 0, 1)),), ())
+        self.assertEqual(split_unwritable(pose), (pose, []))
 
 
 class MorphPropertyTest(unittest.TestCase):

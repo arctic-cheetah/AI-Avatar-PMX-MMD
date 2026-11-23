@@ -21,6 +21,37 @@ The status line under the buttons names bones and morphs in the file that the
 model does not have. A file that is missing or is not a VPD shows an error
 there, and nothing is held.
 
+## As idle actions
+
+Each pose also gets a tick under **Actions · 仕草** (`🎞️ wink-v-sign`). While
+she idles or sleeps, a ticked pose can be picked at random like any other
+action, with the chance of a share-1 action such as the glance. It plays for
+4 s, the same as its button. Pose ticks are on by default for new poses and
+are saved per browser (`yidhari.poseActions`), apart from the built-in
+actions. `IdleMotion.setExternalActions()` registers them; IdleMotion only
+decides when, and main.js plays the pose through `HeldPose`.
+
+## Uploading a pose from the page
+
+Under the pose buttons, **Upload VPD** sends a `.vpd` file to `serve.py`, which
+saves it as `assets/private/poses/<name>.vpd` and adds its button and tick.
+The name defaults to the file name. If a pose of that name exists, the page
+asks before replacing it, which is how to update a pose after editing it in
+Blender.
+
+`POST /poses/<name>` (`controller/pose_store.py`):
+
+- is accepted only from the renderer page itself (the `Origin` header must
+  be the server's own), so other web pages cannot write files;
+- takes names of 1–64 letters, digits, `_` or `-` (Japanese included), so a
+  name cannot leave the folder;
+- takes `application/octet-stream` up to 1 MB that starts with
+  `Vocaloid Pose Data file`;
+- answers 409 when the pose exists, unless `?overwrite=1`, and writes
+  through a temporary file so a failed upload leaves the old pose intact.
+
+`serve.py --poses-dir` points it at another folder (the tests use one).
+
 ## How it works (`renderer/held-pose.js`)
 
 - **Reading.** three.js r170's `MMDParser.parseVpd` rejects any `Morph`

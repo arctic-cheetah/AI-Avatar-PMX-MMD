@@ -79,14 +79,18 @@ Each frame clears every morph, then writes channels in this order:
    (`□`, `ワ`, `ワ２`) by `1 − envelope`. Between words and after the clip, the
    envelope returns them to the mood. Mouth corners such as `口角上げ` and
    `口角下げ` stay, so the emotion still shows while talking.
-3. **Winks:** spring-eased `ウィンク` and `ウィンク右`.
-4. **Blink:** combines with the mood's own `まばたき` as
-   `1 − (1 − mood) · (1 − blink · (1 − closure))`. The closure is the
-   strongest eye-closing morph already on the face (`笑い`, `ウィンク`,
-   `ウィンク右`; the table is `EYE_CLOSURE` in
-   [facial-layers.js](../renderer/facial-layers.js)). A closed-eye smile or
-   a wink therefore does not blink on top of itself, and a partial closure blinks
-   only the rest of the way.
+3. **Winks:** spring-eased `ウィンク` and `ウィンク右`, combined with the mood's
+   own wink as `1 − (1 − mood) · (1 − wink)`, so a mood such as `playful` keeps
+   its wink while the wink buttons are off.
+4. **Blink:** worked out per eye. Each eye's closure is the strongest morph
+   already closing it: `笑い` closes both, `ウィンク` the left and `ウィンク右`
+   the right (`EYE_CLOSURE_BY_SIDE` in
+   [facial-layers.js](../renderer/facial-layers.js)). The both-eyes blink
+   `まばたき` gets `blink · (1 − max(left, right))`, combined with the mood's
+   own `まばたき` as `1 − (1 − mood) · (1 − blink)`. Whatever an eye still needs
+   to close fully goes on that eye's wink morph. So a closed-eye smile does not
+   blink on top of itself, a partial closure blinks only the rest of the way,
+   and while one eye winks, the open eye still blinks.
 5. **Audition:** manual sliders add on top for previews.
 
 Bones do not share writers: the thinking pose owns the arms and fingers, gaze

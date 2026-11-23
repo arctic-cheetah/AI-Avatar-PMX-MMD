@@ -47,3 +47,53 @@ export function composeBlink(moodWeight, blinkWeight, closure = 0) {
   const blink = clamp01(blinkWeight) * (1 - clamp01(closure));
   return 1 - (1 - mood) * (1 - blink);
 }
+
+/**
+ * Eye-closing morphs per eye (#99). `笑い` closes both eyes; each wink closes
+ * one. Left and right are the model's own sides, as in the wink buttons.
+ */
+export const EYE_CLOSURE_BY_SIDE = Object.freeze({
+  left: Object.freeze({ "笑い": 1, "ウィンク": 1 }),
+  right: Object.freeze({ "笑い": 1, "ウィンク右": 1 }),
+});
+
+/**
+ * How closed each eye already is this frame.
+ * @param {Parameters<typeof eyeClosure>[0]} mesh Face mesh.
+ * @returns {{ left: number, right: number }} Closure from 0 (open) to 1 (closed).
+ */
+export function eyeClosures(mesh) {
+  return {
+    left: eyeClosure(mesh, EYE_CLOSURE_BY_SIDE.left),
+    right: eyeClosure(mesh, EYE_CLOSURE_BY_SIDE.right),
+  };
+}
+
+/**
+ * Split an idle blink between the both-eyes blink morph and each eye's wink
+ * morph. `まばたき` takes what both eyes still need; each wink morph takes what
+ * its own eye needs beyond that. So equal closures blink exactly as before,
+ * and while one eye winks, the open eye still blinks.
+ * @param {number} blinkWeight Idle blink from 0 (open) to 1 (closed).
+ * @param {number} left Left eye closure.
+ * @param {number} right Right eye closure.
+ * @returns {{ both: number, left: number, right: number }} Weights to combine in.
+ */
+export function splitBlink(blinkWeight, left, right) {
+  const blink = clamp01(blinkWeight);
+  const needLeft = blink * (1 - clamp01(left));
+  const needRight = blink * (1 - clamp01(right));
+  const both = Math.min(needLeft, needRight);
+  return { both, left: needLeft - both, right: needRight - both };
+}
+
+/**
+ * Combine the wink channel with a mood's own wink on the same morph, so a mood
+ * such as `playful` keeps its wink while the wink buttons are off.
+ * @param {number} moodWeight Wink morph weight written by the mood.
+ * @param {number} winkWeight Wink channel from 0 (open) to 1 (closed).
+ * @returns {number} Final wink morph weight.
+ */
+export function composeWink(moodWeight, winkWeight) {
+  return 1 - (1 - clamp01(moodWeight)) * (1 - clamp01(winkWeight));
+}

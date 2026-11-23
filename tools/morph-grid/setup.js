@@ -7,10 +7,13 @@ async (page) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('http://127.0.0.1:8770/renderer/');
   await page.waitForFunction(() => globalThis.__yidhariPreview, null, { timeout: 60000 });
-  // A still head keeps every cell framed the same.
-  for (const id of ['sway-toggle', 'cursor-gaze-toggle']) {
+  // A still head keeps every cell framed the same; idle behaviours (#149) glance and shrug.
+  for (const id of ['sway-toggle', 'cursor-gaze-toggle', 'idle-toggle']) {
     if (await page.isChecked('#' + id)) await page.click('#' + id, { force: true });
   }
+  // Hold a neutral idle pose too, so a glance that was under way when idle was
+  // switched off does not stay frozen on the head and eyes.
+  await page.evaluate(() => { globalThis.__yidhariIdlePose = {}; });
   await page.mouse.move(440, 400);
   await page.waitForTimeout(1500);
   return page.evaluate(() => document.querySelector('#status, .status')?.textContent);

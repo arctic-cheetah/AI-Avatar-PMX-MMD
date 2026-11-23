@@ -61,13 +61,14 @@ SKEPTICAL_MOODS = frozenset({
 })
 QUOTE_PEAK = 0.5  # a quotation's pitch dip is deepest in its middle
 SURPRISE_WORDS = frozenset({"what", "really", "seriously", "wow", "whoa"})
-SURPRISED_MOODS = frozenset({"surprised", "shocked", "gasp", "excited", "wtf-dude"})
+SURPRISED_MOODS = frozenset({"surprised", "shocked", "gasp", "excited", "exasperated", "awed"})
 # Fond words said warmly and drawn out ("sooo cute"); endearments such as "sweetie" keep their own lift.
 AFFECTION_WORDS = frozenset({"cute", "adorable", "sweet", "lovely", "beautiful", "gorgeous", "wonderful"})
 AFFECTION_INTENSIFIERS = frozenset({"so", "too"})  # only right before an affection word
 HESITATION_WORDS = frozenset({"hmm", "hm", "umm", "um", "uh", "er", "erm"})  # in any mood; "mmm" is pleasure
 AFFECTIONATE_MOODS = frozenset({
     "tender", "happy", "joyful", "soft-smile", "lovestruck", "shy", "excited", "grin", "serene",
+    "amused",
 })
 # Elongated spellings (#83): espeak reads "whaaat" letter by letter (wˈæææt, heard as "whyat").
 # Each run of one letter is tried as 1-3 letters and checked against a lexicon (#121 review).

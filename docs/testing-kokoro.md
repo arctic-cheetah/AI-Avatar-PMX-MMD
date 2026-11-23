@@ -131,9 +131,9 @@ the tag's weight (0–1) and clamped so back-to-back clips do not sound stitched
 
 | Group | Moods | Kokoro speed | Clause pause | RVC pitch |
 | --- | --- | ---: | ---: | ---: |
-| Energetic | excited, joyful, happy, grin, cocky, smug, mischievous, hopeful | ×1.05 | ×0.7 | +1 |
+| Energetic | excited, joyful, happy, grin, cocky, smug, mischievous, hopeful, playful, amused, proud | ×1.05 | ×0.7 | +1 |
 | Reflective | thinking, skeptical, confused, suspicious, serious, worried, nervous, troubled | ×0.95 | ×1.4 | 0 |
-| Low | sad, sorrowful, rueful, sleepy, disappointed, cry, sulky | ×0.92 | ×1.4 | −1 |
+| Low | sad, sorrowful, rueful, sleepy, disappointed, cry, sulky, wistful | ×0.92 | ×1.4 | −1 |
 | Unchanged | every other mood (neutral, soft-smile, tender, angry, surprised, …) | ×1 | ×1 | 0 |
 
 - Speed and clause pause multiply `--kokoro-speed` and `--kokoro-clause-pause`;
@@ -392,12 +392,12 @@ drawls: a fond "So cute!" is warm, while "So, what now?" is still a drawl.
 
 | Family | Words | Moods | Delivery |
 | --- | --- | --- | --- |
-| affection | so, too, right before an affection word ("so cute", "too sweet") | tender, happy, joyful, soft-smile, lovestruck, shy, excited, grin, serene | a higher warm rise-fall (`--affection-intensifier-bend`, default 7 st, ±12), drawn out |
+| affection | so, too, right before an affection word ("so cute", "too sweet") | tender, happy, joyful, soft-smile, lovestruck, shy, excited, grin, serene, amused | a higher warm rise-fall (`--affection-intensifier-bend`, default 7 st, ±12), drawn out |
 | affection | cute, adorable, sweet, lovely, beautiful, gorgeous, wonderful | the same | warm rise-fall (`--affection-bend`, default 5 st, ±12), drawn out |
 | drawl | but, well, so, now, okay (first word) | any | `--drawl-bend` dip (default −2 st), drawn out |
 | drawl | sure, really, right, totally, obviously | skeptical moods | `--drawl-bend` dip (default −2 st), drawn out |
 | hesitation | hmm, hm, umm, um, uh, er, erm | any | slight dip (`--hesitation-bend`, default −1 st, ±12), drawn out; ending a question, said like "Umm" with a rise to the end (`--hesitation-question-bend`, default 10 st) |
-| surprise | what, really, seriously, wow, whoa, said on their own | surprised, shocked, gasp, excited, wtf-dude | rise peaking at 70 % (`--surprise-bend`, default 5 st, ±12), drawn out |
+| surprise | what, really, seriously, wow, whoa, said on their own | surprised, shocked, gasp, excited, exasperated, awed | rise peaking at 70 % (`--surprise-bend`, default 5 st, ±12), drawn out |
 
 A surprised word that ends a question keeps the question's own rise
 (`--question-rise-bend`) and is only drawn out, so "Really?" is not given two

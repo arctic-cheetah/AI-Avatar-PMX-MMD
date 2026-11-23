@@ -32,9 +32,12 @@ there, and nothing is held.
   the live model.
 - **Ownership.** Only the bones the VPD names are touched. The pose layer runs
   after the thinking pose, gaze, sway, idle motion and arm drift, and before
-  physics, so the held bones win and the hair and tails still follow. Each of
-  those layers rewrites its bones from its own rest every frame, so releasing
-  the pose leaves nothing behind.
+  physics, so the held bones win and the hair and tails still follow.
+- **Release.** Each held bone eases from its *base*: what a layer wrote this
+  frame, or, for a bone no layer rewrites (the mouth-corner bones `口左`/`口右`,
+  the fingers), where it was before the pose took it. When the weight reaches
+  0 the base is put back, so releasing leaves nothing behind. Swapping to
+  another pose puts back the bones the new pose does not hold.
 - **Blending.** Held bones slerp from what the layers wrote this frame toward
   the target by the pose weight. The weight follows smoothstep over
   `easeSeconds` (0.4 s), driven by elapsed time, so it is the same at any

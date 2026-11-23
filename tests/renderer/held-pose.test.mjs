@@ -139,6 +139,38 @@ test("at weight 0 apply leaves every bone as the layers wrote it", () => {
   assert.ok(close(get("右腕").quaternion, arm, 1e-12));
 });
 
+test("a bone no layer rewrites goes back to where it was after release", () => {
+  // 口左/口右 (mouth corners) are written by no other layer, so nothing else
+  // would put them back: the pose must restore them itself.
+  const { mesh, get } = rig();
+  const finger = get("右人指１");
+  const before = finger.quaternion.clone();
+  const held = new HeldPose(mesh, { easeSeconds: 0.4 });
+  held.load("p", readVpd(VPD));
+  held.hold(true);
+  for (let i = 0; i < 30; i += 1) { held.update(1 / 30); held.apply(); }
+  assert.ok(!close(finger.quaternion, before));
+  held.hold(false);
+  held.update(0.2);
+  held.apply();
+  assert.ok(!close(finger.quaternion, before), "still easing out halfway");
+  for (let i = 0; i < 30; i += 1) { held.update(1 / 30); held.apply(); }
+  assert.ok(close(finger.quaternion, before, 1e-12));
+});
+
+test("a bone a layer rewrites every frame still eases from what the layer wrote", () => {
+  const { mesh, get } = rig();
+  const arm = get("右腕");
+  const rest = arm.quaternion.clone();
+  const held = new HeldPose(mesh, { easeSeconds: 0.4 });
+  held.load("p", readVpd(VPD));
+  held.hold(true);
+  for (let i = 0; i < 30; i += 1) { arm.quaternion.copy(rest); held.update(1 / 30); held.apply(); }
+  held.hold(false);
+  for (let i = 0; i < 30; i += 1) { arm.quaternion.copy(rest); held.update(1 / 30); held.apply(); }
+  assert.ok(close(arm.quaternion, rest, 1e-12));
+});
+
 test("the pose's morphs rise with the pose and never lower a stronger morph", () => {
   const { mesh } = rig();
   const held = new HeldPose(mesh, { easeSeconds: 0.4 });

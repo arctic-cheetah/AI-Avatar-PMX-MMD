@@ -171,6 +171,36 @@ test("a bone a layer rewrites every frame still eases from what the layer wrote"
   assert.ok(close(arm.quaternion, rest, 1e-12));
 });
 
+test("play() eases in, holds for its seconds, then eases out on its own", () => {
+  const { mesh } = rig();
+  const held = new HeldPose(mesh, { easeSeconds: 0.4 });
+  held.play(2);
+  assert.equal(held.playing, true);
+  held.update(0.4);
+  assert.equal(held.weight, 1);
+  held.update(1.9);
+  assert.equal(held.weight, 1, "still holding before its 2 s are up");
+  held.update(0.2);
+  assert.ok(held.weight < 1, "easing out once the hold is over");
+  held.update(0.4);
+  assert.equal(held.weight, 0);
+  assert.equal(held.playing, false);
+});
+
+test("stop() ends a playing pose early, and hold(true) keeps it until stopped", () => {
+  const { mesh } = rig();
+  const held = new HeldPose(mesh, { easeSeconds: 0.4 });
+  held.play(5);
+  held.update(1);
+  held.stop();
+  held.update(0.4);
+  assert.equal(held.playing, false);
+  held.hold(true);
+  held.update(60);
+  assert.equal(held.weight, 1);
+  assert.equal(held.playing, true);
+});
+
 test("the pose's morphs rise with the pose and never lower a stronger morph", () => {
   const { mesh } = rig();
   const held = new HeldPose(mesh, { easeSeconds: 0.4 });

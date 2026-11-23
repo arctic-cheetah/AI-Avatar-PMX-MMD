@@ -67,6 +67,7 @@ export class HeldPose {
    * @returns {{ bones: number, missing: string[] }}
    */
   load(name, vpd) {
+    this.restore();
     const missing = [];
     const targets = [];
     for (const { name: boneName, quaternion, translation } of vpd.bones) {
@@ -78,6 +79,8 @@ export class HeldPose {
       }
       targets.push({
         bone,
+        base: null,
+        written: null,
         quaternion: bind.quaternion.clone().multiply(new THREE.Quaternion().fromArray(quaternion).normalize()),
         position: bind.position.clone().add(new THREE.Vector3().fromArray(translation)),
       });
@@ -112,14 +115,44 @@ export class HeldPose {
     this.progress = Math.min(1, Math.max(0, this.progress + (this.holding ? step : -step)));
   }
 
-  /** Turn the held bones toward the pose. Run after the other bone layers. */
+  /**
+   * Turn the held bones toward the pose. Run after the other bone layers.
+   * Each bone eases from its base: what a layer wrote this frame, or, for a
+   * bone no layer rewrites (口左, fingers), what it was before the pose took
+   * it. At weight 0 the base is put back and the bone is let go.
+   */
   apply() {
     const weight = this.weight;
-    if (weight === 0) return;
-    for (const { bone, quaternion, position } of this.targets) {
-      bone.quaternion.slerp(quaternion, weight);
-      bone.position.lerp(position, weight);
+    for (const target of this.targets) {
+      const { bone } = target;
+      const untouched = target.written
+        && bone.quaternion.equals(target.written.quaternion) && bone.position.equals(target.written.position);
+      if (!untouched) target.base = { quaternion: bone.quaternion.clone(), position: bone.position.clone() };
+      if (weight === 0) {
+        if (target.written) this.release(target);
+        continue;
+      }
+      bone.quaternion.copy(target.base.quaternion).slerp(target.quaternion, weight);
+      bone.position.copy(target.base.position).lerp(target.position, weight);
+      target.written = { quaternion: bone.quaternion.clone(), position: bone.position.clone() };
     }
+  }
+
+  /** Put every bone the pose still holds back to its base. */
+  restore() {
+    for (const target of this.targets) {
+      const { bone, written } = target;
+      if (written && bone.quaternion.equals(written.quaternion) && bone.position.equals(written.position)) {
+        this.release(target);
+      }
+    }
+  }
+
+  /** @param {{ bone: THREE.Bone, base: { quaternion: THREE.Quaternion, position: THREE.Vector3 } }} target */
+  release(target) {
+    target.bone.quaternion.copy(target.base.quaternion);
+    target.bone.position.copy(target.base.position);
+    target.written = null;
   }
 
   /** Raise the pose's morphs. Run after the expression, speech and blink layers. */

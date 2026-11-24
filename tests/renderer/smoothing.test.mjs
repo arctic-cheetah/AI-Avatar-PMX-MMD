@@ -1,7 +1,7 @@
 // Run with: node --test tests/renderer/smoothing.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MAX_FRAME_DELTA, Spring, TIMING, exponentialBlend, frameDelta, springStep } from "../../renderer/smoothing.js";
+import { MAX_FRAME_DELTA, PoseEase, Spring, TIMING, exponentialBlend, frameDelta, springStep } from "../../renderer/smoothing.js";
 
 test("frame delta is in seconds, never negative, and capped", () => {
   assert.equal(frameDelta(1016, 1000), 0.016);
@@ -62,4 +62,67 @@ test("springStep works on a plain state and ignores negative time", () => {
   assert.equal(springStep(state, 1, -1, 14), 0.5);
   assert.equal(state.velocity, 0);
   assert.equal(springStep(state, 1, 10, 14), 1);
+});
+
+// Pose ease (#49): the transition the user asked for on the Blender poses and
+// the thinking pose. From rest it is a smootherstep over its duration; turned
+// back midway it keeps its speed and curves round instead of snapping.
+const smootherstep = (p) => p * p * p * (p * (6 * p - 15) + 10);
+
+test("from rest a pose ease is a smootherstep over its seconds", () => {
+  const ease = new PoseEase(1.5);
+  ease.setTarget(1);
+  for (const t of [0.15, 0.5, 0.75, 1.2]) {
+    const fresh = new PoseEase(1.5);
+    fresh.setTarget(1);
+    fresh.update(t);
+    assert.ok(Math.abs(fresh.value - smootherstep(t / 1.5)) < 1e-12, `t=${t}`);
+  }
+  ease.update(1.5);
+  assert.equal(ease.value, 1);
+  assert.equal(ease.velocity, 0);
+});
+
+test("a pose ease is the same at any frame rate", () => {
+  const coarse = new PoseEase(1);
+  const fine = new PoseEase(1);
+  coarse.setTarget(1);
+  fine.setTarget(1);
+  coarse.update(0.3);
+  for (let i = 0; i < 30; i += 1) fine.update(0.01);
+  assert.ok(Math.abs(coarse.value - fine.value) < 1e-12);
+});
+
+test("turned back midway it keeps moving a moment, then returns without a jump", () => {
+  const ease = new PoseEase(1);
+  ease.setTarget(1);
+  ease.update(0.3);
+  const rising = ease.value;
+  ease.setTarget(0);
+  ease.update(1 / 60);
+  assert.ok(ease.value > rising, "decelerates before it turns back");
+  assert.ok(ease.value - rising < 0.02, "no jump");
+  let lowest = 1;
+  for (let i = 0; i < 120; i += 1) {
+    ease.update(1 / 60);
+    lowest = Math.min(lowest, ease.value);
+  }
+  assert.equal(ease.value, 0);
+  assert.ok(lowest >= 0, "never below 0");
+});
+
+test("a new duration applies from the next change", () => {
+  const ease = new PoseEase(1);
+  ease.duration = 2;
+  ease.setTarget(1);
+  ease.update(1);
+  assert.ok(Math.abs(ease.value - 0.5) < 1e-12);
+});
+
+test("negative or broken deltas do not move a pose ease", () => {
+  const ease = new PoseEase(1);
+  ease.setTarget(1);
+  ease.update(-1);
+  ease.update(Number.NaN);
+  assert.equal(ease.value, 0);
 });

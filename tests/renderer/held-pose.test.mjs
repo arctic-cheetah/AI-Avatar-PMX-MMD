@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { MMDParser } from "three/examples/jsm/libs/mmdparser.module.js";
-import { HeldPose, poseActionTicks, poseFileNames, readVpd, savePoseActionTick } from "../../renderer/held-pose.js";
+import { HeldPose, POSE_EASE_KEY, bindPoseEase, poseActionTicks, poseFileNames, readVpd, savePoseActionTick } from "../../renderer/held-pose.js";
 import { fixture } from "./arm-fixture.mjs";
 
 const VPD = [
@@ -118,7 +118,7 @@ test("the pose eases in and out at the same speed whatever the frame rate", () =
   assert.equal(coarse.weight, 0);
 });
 
-test("releasing halfway reverses from where it is, without a jump", () => {
+test("releasing halfway curves back without a jump", () => {
   const { mesh } = rig();
   const held = new HeldPose(mesh, { easeSeconds: 0.4 });
   held.hold(true);
@@ -127,7 +127,35 @@ test("releasing halfway reverses from where it is, without a jump", () => {
   held.hold(false);
   held.update(0.001);
   assert.ok(Math.abs(held.weight - before) < 0.02);
-  assert.ok(held.weight < before);
+  held.update(1);
+  assert.equal(held.weight, 0);
+});
+
+test("the ease time can change, and the next transition uses it", () => {
+  const { mesh } = rig();
+  const held = new HeldPose(mesh, { easeSeconds: 1 });
+  held.easeSeconds = 1.5;
+  held.hold(true);
+  held.update(0.75);
+  assert.ok(Math.abs(held.weight - 0.5) < 1e-9);
+});
+
+test("bindPoseEase starts at 1 s, restores a saved time and keeps it in range", () => {
+  const store = new Map();
+  const local = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+  const input = { value: "", min: "0.3", max: "3", listeners: [], addEventListener(type, fn) { this.listeners.push(fn); } };
+  const output = { textContent: "" };
+  const seen = [];
+  bindPoseEase(input, output, (seconds) => seen.push(seconds), { local });
+  assert.deepEqual(seen, [1]);
+  assert.equal(output.textContent, "1.0 s");
+  input.value = "1.5";
+  input.listeners.forEach((fn) => fn());
+  assert.deepEqual(seen, [1, 1.5]);
+  assert.equal(store.get(POSE_EASE_KEY), "1.5");
+  store.set(POSE_EASE_KEY, "9");
+  bindPoseEase(input, output, (seconds) => seen.push(seconds), { local });
+  assert.equal(seen.at(-1), 3, "a saved time out of range is clamped");
 });
 
 test("at weight 0 apply leaves every bone as the layers wrote it", () => {

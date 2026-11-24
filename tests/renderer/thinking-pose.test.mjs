@@ -37,3 +37,13 @@ test("an interrupted release keeps moving smoothly instead of reversing at once"
   pose.setActive(false);
   assert.ok(pose.update(1 / 60) > rising, "the arm decelerates before it turns back");
 });
+
+test("the thinking pose uses the pose ease: a smootherstep over its seconds from rest", () => {
+  const pose = new ThinkingPose();
+  pose.easeSeconds = 1.5;
+  pose.setActive(true);
+  pose.update(0.75);
+  assert.ok(Math.abs(pose.weight - 0.5) < 1e-9);
+  pose.update(0.75);
+  assert.equal(pose.weight, 1);
+});

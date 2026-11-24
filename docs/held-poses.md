@@ -79,7 +79,13 @@ Blender.
 - **Morphs.** The pose's morph weights (for example `ウィンク右` in
   `wink-v-sign`) are raised to `weight × pose weight` after the expression,
   speech and blink layers. They never lower a morph another layer set higher.
-- **Eye budget.** The last morph pass, `capEyeClosure()` in
+- **Every morph ≤ 1.** The last morph pass first runs `clampMorphs()` in
+  `facial-layers.js`: every morph ends within 0 to 1, however many layers
+  added to it (pose, mood, speech, audition sliders). Sums across different
+  morphs are left alone, because most do not overlap: `上左` + `上右` lift
+  different brows. Capping whole panels instead was measured and rejected:
+  it would have changed 23 of the 50 tuned mood presets.
+- **Eye budget.** Then `capEyeClosure()` in
   `facial-layers.js`, keeps each eye's closing morphs at or under 1 in total
   (left: `笑い`, `まばたき`, `ウィンク`, `ウィンク２`; right: `笑い`, `まばたき`,
   `ウィンク右`, `ウィンク２右`). An eye over budget has its closers scaled down by

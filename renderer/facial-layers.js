@@ -78,3 +78,17 @@ export function capEyeClosure(mesh, groups = EYE_GROUPS) {
     for (const index of indices) influences[index] = Math.max(0, influences[index]) / sum;
   }
 }
+
+/**
+ * Keep every morph within 0 to 1 after every layer has written the face
+ * (#49). Layers add up (a held pose, the mood, speech, audition sliders), and
+ * a morph pushed past 1 over-deforms the mesh. Sums across different morphs
+ * are left alone: 上左 + 上右 move different brows. Run before capEyeClosure().
+ * @param {{ morphTargetInfluences?: number[] } | null} mesh
+ * @returns {void}
+ */
+export function clampMorphs(mesh) {
+  const influences = mesh?.morphTargetInfluences;
+  if (!influences) return;
+  for (let i = 0; i < influences.length; i += 1) influences[i] = clamp01(influences[i]);
+}

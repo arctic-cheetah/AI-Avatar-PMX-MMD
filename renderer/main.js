@@ -38,7 +38,7 @@ import { VoiceVolume, bindVoiceVolume } from "./voice-volume.js";
 import { LiveSpeechSession } from "./speech-session.js";
 import { LastSpeechReplay, dropQueuedReplay, replayQueueItems } from "./speech-replay.js";
 import { FillerSession } from "./filler-session.js";
-import { HeldPose, poseActionTicks, poseFileNames, readVpd, savePoseActionTick } from "./held-pose.js";
+import { HeldPose, bindPoseEase, poseActionTicks, poseFileNames, readVpd, savePoseActionTick } from "./held-pose.js";
 import { ThinkingPose, THINKING_POSE, headGazeScale } from "./thinking-pose.js";
 import { buildThinkingRig } from "./thinking-rig.js";
 import { handAngles, thinkingFidgetAngles } from "./thinking-fidget.js";
@@ -1826,14 +1826,16 @@ document.querySelector("#actions").append(poseActionBoxes);
 const poseUploadFile = document.querySelector("#pose-upload-file");
 const poseUploadName = document.querySelector("#pose-upload-name");
 const poseUploadButton = document.querySelector("#pose-upload-button");
-/** How long an idle pick of a pose lasts: ease in, hold, ease out. */
-const POSE_ACTION_SECONDS = POSE_HOLD_SECONDS + 2 * 1; // HeldPose eases 1 s each way
 let idlePoseAction = null;
+/** Seconds for poses and the thinking pose to ease in or out: the Pose ease slider. */
+let poseEaseSeconds = 1;
+/** @returns {number} How long an idle pick of a pose lasts: ease in, hold, ease out. */
+const poseActionSeconds = () => POSE_HOLD_SECONDS + 2 * poseEaseSeconds;
 
 /** Tell IdleMotion which poses it may pick, from the ticks. */
 function syncPoseActions() {
   const ticked = [...poseActionBoxes.querySelectorAll("input")].filter((box) => box.checked);
-  idleMotion.setExternalActions(Object.fromEntries(ticked.map((box) => [box.dataset.heldPose, { share: 1, duration: POSE_ACTION_SECONDS }])));
+  idleMotion.setExternalActions(Object.fromEntries(ticked.map((box) => [box.dataset.heldPose, { share: 1, duration: poseActionSeconds() }])));
 }
 
 /** Play a pose when idle picks it (#49). Cheap enough to call every frame. */
@@ -1916,6 +1918,13 @@ async function uploadPose() {
   }
 }
 
+bindPoseEase(document.querySelector("#pose-ease"), document.querySelector("#pose-ease-value"), (seconds) => {
+  poseEaseSeconds = seconds;
+  thinkingPose.easeSeconds = seconds;
+  if (heldPose) heldPose.easeSeconds = seconds;
+  syncPoseActions();
+});
+
 /** Build the pose buttons and ticks, bind the upload, and honour ?pose=<name>. */
 async function bindHeldPose() {
   poseUploadFile.addEventListener("change", () => {
@@ -1933,7 +1942,7 @@ async function bindHeldPose() {
 function onModelLoaded(loaded, data) {
   mesh = loaded;
   // Before restArms(): VPD rotations are measured from the bind pose (#49).
-  heldPose = new HeldPose(mesh);
+  heldPose = new HeldPose(mesh, { easeSeconds: poseEaseSeconds });
   bindHeldPose();
   scene.add(mesh);
   frameModel(mesh);

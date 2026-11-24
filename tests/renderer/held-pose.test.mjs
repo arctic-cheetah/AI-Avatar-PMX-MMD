@@ -243,3 +243,20 @@ test("pose action ticks default to on and remember what was unticked", () => {
   assert.deepEqual(poseActionTicks(["a"], { local: blocked }), { a: true });
   savePoseActionTick("a", false, { local: blocked });
 });
+
+// Fluid transition (#49): the user found 0.4 s smoothstep too quick. The
+// default is a 1 s smootherstep, which also starts and stops with no jolt.
+test("by default the pose eases over 1 s and starts and lands gently", () => {
+  const { mesh } = rig();
+  const held = new HeldPose(mesh);
+  assert.equal(held.easeSeconds, 1);
+  held.hold(true);
+  held.update(0.1);
+  assert.ok(held.weight < 0.01, `gentle start, got ${held.weight}`);
+  held.update(0.4);
+  assert.ok(Math.abs(held.weight - 0.5) < 1e-9);
+  held.update(0.4);
+  assert.ok(held.weight > 0.99, `gentle landing, got ${held.weight}`);
+  held.update(0.1);
+  assert.equal(held.weight, 1);
+});

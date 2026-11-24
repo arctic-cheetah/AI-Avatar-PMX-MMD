@@ -79,6 +79,14 @@ Blender.
 - **Morphs.** The pose's morph weights (for example `ウィンク右` in
   `wink-v-sign`) are raised to `weight × pose weight` after the expression,
   speech and blink layers. They never lower a morph another layer set higher.
+- **Eye budget.** The last morph pass, `capEyeClosure()` in
+  `facial-layers.js`, keeps each eye's closing morphs at or under 1 in total
+  (left: `笑い`, `まばたき`, `ウィンク`, `ウィンク２`; right: `笑い`, `まばたき`,
+  `ウィンク右`, `ウィンク２右`). An eye over budget has its closers scaled down by
+  the same factor. So `wink-v-sign` (`ウィンク右` 1) during `happy` (`笑い` 1)
+  shows each at 0.5: the right eye closes once instead of the lid clipping
+  through, and the left eye keeps half the smile. None of the 50 mood presets
+  exceeds the budget on its own, so moods alone are unchanged.
 - **No IK or grant solving.** The renderer runs no IK or grant solver, and
   poses from the add-on hold the deform bones directly, so none is needed.
 

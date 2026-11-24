@@ -1,7 +1,7 @@
 // Run with: node --test tests/renderer/facial-layers.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { EYE_CLOSURE, EYE_GROUPS, capEyeClosure, composeBlink, eyeClosure } from "../../renderer/facial-layers.js";
+import { EYE_CLOSURE, EYE_GROUPS, capEyeClosure, clampMorphs, composeBlink, eyeClosure } from "../../renderer/facial-layers.js";
 
 const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-12, `${actual} ≠ ${expected}`);
 
@@ -76,4 +76,15 @@ test("a face within budget and other morphs are left alone", () => {
   assert.deepEqual(mesh.morphTargetInfluences, before);
   capEyeClosure({});
   capEyeClosure({ morphTargetDictionary: { "笑い": 0 }, morphTargetInfluences: [2] });
+});
+
+// Each morph ≤ 1 (#49, the user's pick): layers add up (pose, mood, speech,
+// audition sliders), so the last pass keeps every influence within 0–1. Sums
+// across different morphs are left alone: 上左 + 上右 move different brows.
+test("every morph ends within 0 to 1, and sums across morphs are kept", () => {
+  const mesh = { morphTargetDictionary: { "あ": 0, "ワ": 1, "上左": 2, "上右": 3, "x": 4 },
+    morphTargetInfluences: [1.4, -0.2, 0.8, 0.9, Number.NaN] };
+  clampMorphs(mesh);
+  assert.deepEqual(mesh.morphTargetInfluences, [1, 0, 0.8, 0.9, 0]);
+  clampMorphs({});
 });

@@ -50,7 +50,7 @@ import { CameraGaze } from "./camera-gaze.js";
 import { CameraControls } from "./camera-controls.js";
 import { SWAY, SwayController, swayAnglesAt } from "./body-sway.js";
 import { Spring, TIMING, frameDelta } from "./smoothing.js";
-import { composeBlink, eyeClosure } from "./facial-layers.js";
+import { capEyeClosure, composeBlink, eyeClosure } from "./facial-layers.js";
 import { GreetingGate, bindGreetingToggle } from "./greeting.js";
 import { bindRestingFaceToggle } from "./resting-face.js";
 import { addSeeThroughBrows, bindSeeThroughBrowsToggle } from "./see-through-brows.js";
@@ -2458,6 +2458,8 @@ function animate() {
     audition.setWeights(globalThis.__yidhariHold);
     audition.apply();
   }
+  // Last morph pass: each eye's closing morphs stay at or under 1 (#49).
+  capEyeClosure(mesh);
   updateExpressionButtons();
   updateLoopButton();
   auditionPanel?.refresh();

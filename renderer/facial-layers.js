@@ -47,3 +47,34 @@ export function composeBlink(moodWeight, blinkWeight, closure = 0) {
   const blink = clamp01(blinkWeight) * (1 - clamp01(closure));
   return 1 - (1 - mood) * (1 - blink);
 }
+
+/**
+ * The morphs that close each eye (#49). 笑い and まばたき close both; the winks
+ * one each. Names match Yidhari's PMX (docs/pmx-morph-catalog.md).
+ */
+export const EYE_GROUPS = Object.freeze({
+  left: Object.freeze(["笑い", "まばたき", "ウィンク", "ウィンク２"]),
+  right: Object.freeze(["笑い", "まばたき", "ウィンク右", "ウィンク２右"]),
+});
+
+/**
+ * Keep each eye's closing morphs at or under 1 in total, after every layer
+ * has written the face. An eye over budget has all its closers scaled down
+ * by the same factor, so a wink on top of a closed-eye smile closes the eye
+ * once instead of pushing the lid through. Scaling a shared closer only
+ * lowers the other eye, so one pass per eye is enough.
+ * @param {{ morphTargetDictionary?: Record<string, number>, morphTargetInfluences?: number[] } | null} mesh
+ * @param {Record<string, readonly string[]>} [groups=EYE_GROUPS]
+ * @returns {void}
+ */
+export function capEyeClosure(mesh, groups = EYE_GROUPS) {
+  const dictionary = mesh?.morphTargetDictionary;
+  const influences = mesh?.morphTargetInfluences;
+  if (!dictionary || !influences) return;
+  for (const names of Object.values(groups)) {
+    const indices = names.map((name) => dictionary[name]).filter((index) => index != null);
+    const sum = indices.reduce((total, index) => total + Math.max(0, influences[index]), 0);
+    if (sum <= 1) continue;
+    for (const index of indices) influences[index] = Math.max(0, influences[index]) / sum;
+  }
+}

@@ -11,7 +11,7 @@ the first slice of #49: static VPD poses. Timed VMD motion comes later.
    serves it on localhost.
 2. In the panel, under **Animation actions ▸ Blender poses · ポーズ**, each
    VPD has a button (`🎞️ wink-v-sign`). A click plays the pose like an action:
-   she eases into it over 0.4 s, keeps it for 4 s, then eases out. Clicking the
+   she eases into it over 1 s, keeps it for 4 s, then eases out over 1 s. Clicking the
    playing button stops it early; clicking another pose switches to it.
 3. `?pose=<name>` in the page URL holds a pose from page load until its button
    is clicked, for example
@@ -73,9 +73,12 @@ Blender.
   0 the base is put back, so releasing leaves nothing behind. Swapping to
   another pose puts back the bones the new pose does not hold.
 - **Blending.** Held bones slerp from what the layers wrote this frame toward
-  the target by the pose weight. The weight follows smoothstep over
-  `easeSeconds` (0.4 s), driven by elapsed time, so it is the same at any
-  frame rate. Releasing halfway reverses from the current weight.
+  the target by the pose weight. The weight follows smootherstep
+  (6p⁵ − 15p⁴ + 10p³) over `easeSeconds` (1 s), driven by elapsed time, so it is
+  the same at any frame rate. Smootherstep starts and lands with no speed and
+  no jolt, so the arm glides in and settles; the first version used 0.4 s
+  smoothstep, which the user found too quick. Releasing halfway reverses from
+  the current weight.
 - **Morphs.** The pose's morph weights (for example `ウィンク右` in
   `wink-v-sign`) are raised to `weight × pose weight` after the expression,
   speech and blink layers. They never lower a morph another layer set higher.

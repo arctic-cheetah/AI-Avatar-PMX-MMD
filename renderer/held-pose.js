@@ -81,7 +81,7 @@ export class HeldPose {
    *   morphTargetInfluences?: number[] }} mesh
    * @param {{ easeSeconds?: number }} [options]
    */
-  constructor(mesh, { easeSeconds = 0.4 } = {}) {
+  constructor(mesh, { easeSeconds = 1 } = {}) {
     this.mesh = mesh;
     this.easeSeconds = easeSeconds;
     this.bind = new Map(mesh.skeleton.bones.map((bone) => [bone, {
@@ -160,10 +160,15 @@ export class HeldPose {
     return this.holding || this.progress > 0;
   }
 
-  /** @returns {number} 0 (free) to 1 (fully held), eased. */
+  /**
+   * Smootherstep of the progress: it starts and lands with no speed and no
+   * jolt, so the arm glides in and settles (the user found 0.4 s smoothstep
+   * too quick).
+   * @returns {number} 0 (free) to 1 (fully held), eased.
+   */
   get weight() {
     const p = this.progress;
-    return p * p * (3 - 2 * p);
+    return p * p * p * (p * (6 * p - 15) + 10);
   }
 
   /** @param {number} delta Seconds since the last frame. */

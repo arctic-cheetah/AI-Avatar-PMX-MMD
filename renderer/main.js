@@ -1827,7 +1827,7 @@ const poseUploadFile = document.querySelector("#pose-upload-file");
 const poseUploadName = document.querySelector("#pose-upload-name");
 const poseUploadButton = document.querySelector("#pose-upload-button");
 /** How long an idle pick of a pose lasts: ease in, hold, ease out. */
-const POSE_ACTION_SECONDS = POSE_HOLD_SECONDS + 2 * 0.4;
+const POSE_ACTION_SECONDS = POSE_HOLD_SECONDS + 2 * 1; // HeldPose eases 1 s each way
 let idlePoseAction = null;
 
 /** Tell IdleMotion which poses it may pick, from the ticks. */

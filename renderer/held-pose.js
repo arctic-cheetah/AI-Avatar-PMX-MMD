@@ -2,6 +2,7 @@
 // other bone layers. See docs/held-poses.md.
 import * as THREE from "three";
 import { MMDParser } from "three/addons/libs/mmdparser.module.js";
+import { PoseEase } from "./smoothing.js";
 
 const MAGIC = "Vocaloid Pose Data file";
 const MORPH_BLOCK = /Morph\d+\{([^\r\n]*)\r?\n([^}]*)\}[^\r\n]*(?:\r?\n)?/g;
@@ -39,6 +40,44 @@ export function poseFileNames(html) {
 }
 
 export const POSE_ACTIONS_KEY = "yidhari.poseActions";
+export const POSE_EASE_KEY = "yidhari.poseEase";
+export const POSE_EASE_DEFAULT = 1;
+
+/**
+ * Bind the pose ease slider: seconds for the Blender poses and the thinking
+ * pose to ease in or out, saved per browser.
+ * @param {{ value: string, min: string, max: string, addEventListener(type: string, fn: () => void): void }} input
+ * @param {{ textContent: string } | null} output
+ * @param {(seconds: number) => void} apply
+ * @param {{ local?: Storage }} [options]
+ * @returns {void}
+ */
+export function bindPoseEase(input, output, apply, { local } = {}) {
+  const clamp = (value) => {
+    const seconds = Number.parseFloat(value);
+    if (!Number.isFinite(seconds)) return POSE_EASE_DEFAULT;
+    return Math.min(Number(input.max) || 3, Math.max(Number(input.min) || 0.3, seconds));
+  };
+  let seconds = POSE_EASE_DEFAULT;
+  try {
+    local ??= globalThis.localStorage;
+    const saved = local?.getItem(POSE_EASE_KEY);
+    if (saved != null) seconds = clamp(saved);
+  } catch { /* Blocked: the default. */ }
+  const show = () => {
+    input.value = String(seconds);
+    if (output) output.textContent = `${seconds.toFixed(1)} s`;
+    apply(seconds);
+  };
+  show();
+  input.addEventListener("input", () => {
+    seconds = clamp(input.value);
+    try {
+      local?.setItem(POSE_EASE_KEY, String(seconds));
+    } catch { /* Session-only. */ }
+    show();
+  });
+}
 
 /**
  * Which poses may be picked as idle actions. New poses default to on; the
@@ -83,7 +122,7 @@ export class HeldPose {
    */
   constructor(mesh, { easeSeconds = 1 } = {}) {
     this.mesh = mesh;
-    this.easeSeconds = easeSeconds;
+    this.ease = new PoseEase(easeSeconds);
     this.bind = new Map(mesh.skeleton.bones.map((bone) => [bone, {
       quaternion: bone.quaternion.clone(),
       position: bone.position.clone(),
@@ -92,7 +131,6 @@ export class HeldPose {
     this.morphs = [];
     this.name = null;
     this.holding = false;
-    this.progress = 0;
     this.remaining = Infinity;
   }
 
@@ -134,10 +172,21 @@ export class HeldPose {
     return { bones: targets.length, missing };
   }
 
+  /** @returns {number} Seconds for a full ease in or out. */
+  get easeSeconds() {
+    return this.ease.duration;
+  }
+
+  /** @param {number} seconds Used from the next transition. */
+  set easeSeconds(seconds) {
+    this.ease.duration = seconds;
+  }
+
   /** @param {boolean} on Ease toward the pose and keep it (true), or ease away. */
   hold(on) {
     this.holding = on;
     this.remaining = Infinity;
+    this.ease.setTarget(on ? 1 : 0);
   }
 
   /**
@@ -148,45 +197,44 @@ export class HeldPose {
   play(holdSeconds) {
     this.holding = true;
     this.remaining = holdSeconds;
+    this.ease.setTarget(1);
   }
 
   /** Ease out now. */
   stop() {
     this.holding = false;
+    this.ease.setTarget(0);
   }
 
   /** @returns {boolean} Whether the pose is held or still easing. */
   get playing() {
-    return this.holding || this.progress > 0;
+    return this.holding || this.ease.value > 0;
   }
 
   /**
-   * Smootherstep of the progress: it starts and lands with no speed and no
-   * jolt, so the arm glides in and settles (the user found 0.4 s smoothstep
-   * too quick).
-   * @returns {number} 0 (free) to 1 (fully held), eased.
+   * The shared pose ease (smoothing.js PoseEase): smootherstep from rest, and
+   * a smooth turn when interrupted (the user found 0.4 s smoothstep too quick).
+   * @returns {number} 0 (free) to 1 (fully held).
    */
   get weight() {
-    const p = this.progress;
-    return p * p * p * (p * (6 * p - 15) + 10);
+    return this.ease.value;
   }
 
   /** @param {number} delta Seconds since the last frame. */
   update(delta) {
-    let rest = delta;
-    if (this.holding) {
-      const easing = Math.min(rest, (1 - this.progress) * this.easeSeconds);
-      this.progress = this.easeSeconds > 0 ? Math.min(1, this.progress + easing / this.easeSeconds) : 1;
+    let rest = Number.isFinite(delta) && delta > 0 ? delta : 0;
+    if (this.holding && this.remaining !== Infinity) {
+      const easing = Math.min(rest, this.ease.timeLeft);
+      this.ease.update(easing);
       rest -= easing;
-      if (this.progress < 1) return;
+      if (this.ease.timeLeft > 0) return;
       const kept = Math.min(rest, this.remaining);
       this.remaining -= kept;
       rest -= kept;
       if (this.remaining > 0) return;
-      this.holding = false;
+      this.stop();
     }
-    const step = this.easeSeconds > 0 ? rest / this.easeSeconds : 1;
-    this.progress = Math.max(0, this.progress - step);
+    this.ease.update(rest);
   }
 
   /**

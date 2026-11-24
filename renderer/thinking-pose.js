@@ -1,4 +1,4 @@
-import { Spring, TIMING } from "./smoothing.js";
+import { PoseEase, TIMING } from "./smoothing.js";
 import { thinkingFidgetAngles } from "./thinking-fidget.js";
 
 /** Pure timing and angle rules for the optional thinking gesture. */
@@ -20,18 +20,32 @@ export function headGazeScale(weight) {
   return 1 - amount * (1 - THINKING_POSE.headGaze);
 }
 
-/** Smoothly enter/leave the gesture without retaining stale mood state. */
+/**
+ * Smoothly enter/leave the gesture without retaining stale mood state. It
+ * uses the shared pose ease (#49): smootherstep from rest over `easeSeconds`,
+ * and a smooth turn when interrupted.
+ */
 export class ThinkingPose {
   constructor() {
     this.active = false;
-    this.spring = new Spring(0);
+    this.ease = new PoseEase(1);
     /** Seconds the pose has had weight, for the fidget (#218); 0 once fully released. */
     this.clock = 0;
   }
 
+  /** @returns {number} Seconds for a full ease in or out. */
+  get easeSeconds() {
+    return this.ease.duration;
+  }
+
+  /** @param {number} seconds Used from the next transition. */
+  set easeSeconds(seconds) {
+    this.ease.duration = seconds;
+  }
+
   /** @returns {number} Displayed pose weight from 0 to 1. */
   get weight() {
-    return this.spring.value;
+    return this.ease.value;
   }
 
   setActive(active) {
@@ -39,12 +53,10 @@ export class ThinkingPose {
   }
 
   update(delta) {
-    const target = this.active ? 1 : 0;
-    this.spring.step(target, delta, THINKING_POSE.easeRate);
-    this.spring.clamp(0, 1);
-    if (!this.active) this.spring.settle(0, 1e-3);
-    this.clock = this.spring.value > 0 ? this.clock + Math.max(0, Number(delta) || 0) : 0;
-    return this.spring.value;
+    this.ease.setTarget(this.active ? 1 : 0);
+    this.ease.update(delta);
+    this.clock = this.ease.value > 0 ? this.clock + Math.max(0, Number(delta) || 0) : 0;
+    return this.ease.value;
   }
 
   /**

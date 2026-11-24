@@ -117,3 +117,63 @@ export class Spring {
     return this.value;
   }
 }
+
+/**
+ * A 0-1 transition for whole poses (#49): the Blender poses and the thinking
+ * pose. From rest it follows smootherstep (6p⁵ − 15p⁴ + 10p³) over `duration`
+ * seconds, so it starts and lands with no speed and no jolt. Given a new
+ * target midway, it plans a quintic from where it is at its current speed,
+ * so it keeps moving a moment and curves round instead of snapping back.
+ * Each segment is evaluated from elapsed time, so any frame rate gives the
+ * same motion.
+ */
+export class PoseEase {
+  /** @param {number} [duration=1] Seconds for a full 0 → 1 transition. */
+  constructor(duration = 1) {
+    this.duration = duration;
+    this.value = 0;
+    this.velocity = 0;
+    this.target = 0;
+    this.segment = null;
+  }
+
+  /** @returns {number} Seconds until the current transition lands; 0 at rest. */
+  get timeLeft() {
+    return this.segment ? this.segment.T - this.segment.t : 0;
+  }
+
+  /** @param {number} target 0 or 1 (or anything between). */
+  setTarget(target) {
+    if (target === this.target) return;
+    this.target = target;
+    const distance = Math.abs(target - this.value);
+    const scale = Math.min(1, Math.max(0.35, distance + Math.abs(this.velocity) * this.duration / 4));
+    const T = Math.max(1e-6, this.duration * scale);
+    const V0 = this.velocity * T;
+    const D = target - this.value - V0;
+    const E = -V0;
+    this.segment = { t: 0, T, p0: this.value, V0, c3: 10 * D - 4 * E, c4: 7 * E - 15 * D, c5: 6 * D - 3 * E };
+  }
+
+  /**
+   * @param {number} delta Seconds elapsed; negative or broken values count as 0.
+   * @returns {number} The new value.
+   */
+  update(delta) {
+    const dt = Number.isFinite(delta) && delta > 0 ? delta : 0;
+    const segment = this.segment;
+    if (!segment || dt === 0) return this.value;
+    segment.t += dt;
+    if (segment.t >= segment.T) {
+      this.value = this.target;
+      this.velocity = 0;
+      this.segment = null;
+      return this.value;
+    }
+    const s = segment.t / segment.T;
+    const { p0, V0, c3, c4, c5, T } = segment;
+    this.value = Math.min(1, Math.max(0, p0 + V0 * s + c3 * s ** 3 + c4 * s ** 4 + c5 * s ** 5));
+    this.velocity = (V0 + 3 * c3 * s ** 2 + 4 * c4 * s ** 3 + 5 * c5 * s ** 4) / T;
+    return this.value;
+  }
+}

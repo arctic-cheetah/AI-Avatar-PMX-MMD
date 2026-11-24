@@ -72,13 +72,20 @@ Blender.
   the fingers), where it was before the pose took it. When the weight reaches
   0 the base is put back, so releasing leaves nothing behind. Swapping to
   another pose puts back the bones the new pose does not hold.
-- **Blending.** Held bones slerp from what the layers wrote this frame toward
-  the target by the pose weight. The weight follows smootherstep
-  (6p⁵ − 15p⁴ + 10p³) over `easeSeconds` (1 s), driven by elapsed time, so it is
-  the same at any frame rate. Smootherstep starts and lands with no speed and
-  no jolt, so the arm glides in and settles; the first version used 0.4 s
-  smoothstep, which the user found too quick. Releasing halfway reverses from
-  the current weight.
+- **Blending.** Held bones slerp from their base toward the target by the
+  pose weight. The weight comes from `PoseEase` in `smoothing.js`, shared
+  with the thinking pose. From rest it follows smootherstep
+  (6p⁵ − 15p⁴ + 10p³) over the ease time, so it starts and lands with no
+  speed and no jolt. Turned back midway, it plans a quintic from its current
+  speed, so it keeps moving a moment and curves round instead of snapping
+  back. Each transition is computed from elapsed time, so it is the same at
+  any frame rate. The first version used 0.4 s smoothstep, which the user
+  found too quick.
+- **Ease time.** The **Pose ease (s)** slider under the pose buttons sets the
+  ease time from 0.3 to 3 s (default 1 s), for the Blender poses and the
+  thinking pose together, and is saved per browser (`yidhari.poseEase`). A
+  new time applies from the next transition. An idle pick of a pose lasts
+  4 s plus two ease times.
 - **Morphs.** The pose's morph weights (for example `ウィンク右` in
   `wink-v-sign`) are raised to `weight × pose weight` after the expression,
   speech and blink layers. They never lower a morph another layer set higher.

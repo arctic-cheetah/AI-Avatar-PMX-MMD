@@ -2,8 +2,6 @@
 
 A local virtual avatar for **Yidhari**: a PMX model in the browser that talks with a local LLM, shows moods on her face, and speaks in her own voice with lip sync. Built for Ubuntu 24.04 on an AMD Ryzen AI MAX+ 395 (Strix Halo).
 
-This is a companion project, kept outside `my_code_pc` so it does not compete for workspace space.
-
 ![Yidhari in the renderer: winking with a V-sign (a Blender pose) beside the chat panel](docs/images/yidhari-demo.webp)
 
 *Yidhari demo: the renderer in VS Code's browser, holding the `wink-v-sign` pose authored in Blender, with the chat panel showing agent reports.*

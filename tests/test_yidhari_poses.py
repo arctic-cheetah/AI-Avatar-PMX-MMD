@@ -16,7 +16,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools" / "yidhari-
 
 from vpd_lib import (  # noqa: E402
     VpdBone, VpdError, VpdMorph, VpdPose, decode_morphs, encode_morphs, format_vpd,
-    arm_chain_fill, missing_names, parse_vpd, pose_name, split_unwritable,
+    arm_chain_fill, from_vpd_name, keep_morph, missing_names, parse_vpd, pose_name, split_unwritable,
+    to_vpd_name,
 )
 
 SAMPLE = (
@@ -116,18 +117,48 @@ class FormatTest(unittest.TestCase):
 
 
 class UnwritableNamesTest(unittest.TestCase):
-    def test_sets_aside_names_shift_jis_cannot_hold(self) -> None:
-        # The PMX is UTF-16; this model names its teeth 齿上/齿下 (simplified 齿).
+    # The PMX is UTF-16; this model names its teeth 齿上/齿下 and its knots 结…
+    # with simplified-Chinese characters Shift-JIS has no code for. They are
+    # written with the Japanese forms 歯 and 結, and read back to the model's.
+    def test_writes_simplified_teeth_and_knots_with_japanese_forms(self) -> None:
+        self.assertEqual(to_vpd_name("齿下"), "歯下")
+        self.assertEqual(to_vpd_name("右结1_2"), "右結1_2")
+        self.assertEqual(to_vpd_name("右腕"), "右腕")
+
+    def test_reads_them_back_to_the_model_names(self) -> None:
+        model = {"齿下", "右结1_2", "あ"}
+        self.assertEqual(from_vpd_name("歯下", model), "齿下")
+        self.assertEqual(from_vpd_name("右結1_2", model), "右结1_2")
+        self.assertEqual(from_vpd_name("あ", model), "あ")
+        self.assertEqual(from_vpd_name("歯下", {"歯下"}), "歯下", "a model that uses 歯 keeps it")
+        self.assertEqual(from_vpd_name("ない", model), "ない")
+
+    def test_aliases_what_it_can_and_sets_aside_the_rest(self) -> None:
         pose = VpdPose(
             "m.osm",
             (VpdBone("首", (0, 0, 0), (0, 0, 0, 1)), VpdBone("齿上", (0, 0, 0), (0, 0, 0, 1))),
-            (VpdMorph("ワ", 0.2), VpdMorph("wink😉", 1.0)),
+            (VpdMorph("齿下", -0.31), VpdMorph("wink😉", 1.0)),
         )
         kept, skipped = split_unwritable(pose)
-        self.assertEqual([b.name for b in kept.bones], ["首"])
-        self.assertEqual([m.name for m in kept.morphs], ["ワ"])
-        self.assertEqual(skipped, ["齿上", "wink😉"])
-        format_vpd(kept)
+        self.assertEqual([b.name for b in kept.bones], ["首", "歯上"])
+        self.assertEqual([m.name for m in kept.morphs], ["歯下"])
+        self.assertEqual(skipped, ["wink😉"])
+        self.assertEqual(parse_vpd(format_vpd(kept)).morphs, (VpdMorph("歯下", -0.31),))
+
+
+class KeepMorphTest(unittest.TestCase):
+    # Only the teeth may go below 0 (the user, 25 Nov 2026): 齿下 −0.32 shows
+    # them in the clap smile. Every other morph is saved above 0 only.
+    def test_teeth_are_saved_when_negative(self) -> None:
+        self.assertTrue(keep_morph("齿下", -0.31))
+        self.assertTrue(keep_morph("齿上", -1.0))
+        self.assertTrue(keep_morph("齿下", 0.5))
+        self.assertFalse(keep_morph("齿下", 0.0))
+
+    def test_other_morphs_are_saved_above_zero_only(self) -> None:
+        self.assertTrue(keep_morph("あ", 0.2))
+        self.assertFalse(keep_morph("あ", -0.2))
+        self.assertFalse(keep_morph("あ", 0.0))
 
     def test_keeps_a_pose_that_is_all_writable(self) -> None:
         pose = VpdPose("m.osm", (VpdBone("首", (0, 0, 0), (0, 0, 0, 1)),), ())

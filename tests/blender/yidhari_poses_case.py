@@ -36,7 +36,7 @@ BONES = (
     ("人指２.R", "右人指２", (-0.56, 0.08, 1.17), (-0.6, 0.1, 1.15), -0.7, "人指１.R"),
     ("齿上", "齿上", (0, -0.05, 1.6), (0, -0.08, 1.6), 0.0, "センター"),
 )
-MORPHS = ("ウィンク右", "あ")
+MORPHS = ("ウィンク右", "あ", "齿下")
 
 FIXTURE = VpdPose(
     model="test.osm",
@@ -198,15 +198,26 @@ class PosesTest(unittest.TestCase):
             self.assertAlmostEqual(abs(got.dot(exp)), 1.0, places=5, msg=bone.name)
         self.assertEqual(saved.morphs, (VpdMorph("ウィンク右", 1.0),))
 
-    def test_save_skips_bones_shift_jis_cannot_name_and_says_so(self) -> None:
+    def test_save_writes_teeth_names_shift_jis_lacks_and_reads_them_back(self) -> None:
         poses.apply_pose(self.arm, poses.import_pose(self.arm, write(self.dir, "p", FIXTURE)).action)
         self.arm.pose.bones["齿上"].location = (0.0, 0.0, -0.001)
-        out = self.dir / "out.vpd"
+        teeth = self.body.data.shape_keys.key_blocks["齿下"]
+        teeth.slider_min = -1.0
+        teeth.value = -0.31
+        self.body.data.shape_keys.key_blocks["あ"].value = 0.0
+        out = self.dir / "teeth.vpd"
         result = poses.save_vpd(self.arm, out, selected_only=False)
-        self.assertEqual(result.skipped, ["齿上"])
-        names = [b.name for b in parse_vpd(out.read_bytes()).bones]
-        self.assertNotIn("齿上", names)
-        self.assertIn("右腕", names)
+        self.assertEqual(result.skipped, [])
+        saved = parse_vpd(out.read_bytes())
+        self.assertIn("歯上", [b.name for b in saved.bones])
+        self.assertIn(("歯下", -0.31), [(m.name, round(m.weight, 6)) for m in saved.morphs])
+        poses.reset_pose(self.arm)
+        teeth.value = 0.0
+        imported = poses.import_pose(self.arm, out)
+        self.assertEqual((imported.missing_bones, imported.missing_morphs), ([], []))
+        poses.apply_pose(self.arm, imported.action)
+        self.assertAlmostEqual(teeth.value, -0.31, places=5)
+        self.assertAlmostEqual(self.arm.pose.bones["齿上"].location.z, -0.001, places=6)
 
     def test_save_leaves_a_lowered_arm_out_when_only_a_finger_is_posed(self) -> None:
         only_finger = VpdPose("t.osm", FIXTURE.bones[2:], ())

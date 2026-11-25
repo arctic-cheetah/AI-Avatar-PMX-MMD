@@ -1294,7 +1294,8 @@ function updateWinks(delta) {
       continue;
     }
     wink.spring.step(wink.target, delta, TIMING.wink);
-    mesh.morphTargetInfluences[wink.index] = wink.spring.clamp(0, 1);
+    // Raise, never lower: a held pose's wink (#49) is written before this channel.
+    mesh.morphTargetInfluences[wink.index] = Math.max(mesh.morphTargetInfluences[wink.index], wink.spring.clamp(0, 1));
   }
 }
 

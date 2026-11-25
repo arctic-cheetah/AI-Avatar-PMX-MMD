@@ -350,3 +350,20 @@ test("switching poses while held crossfades from what was shown", () => {
     .multiply(new THREE.Quaternion().fromArray(readVpd(VPD).bones[0].quaternion).normalize());
   assert.ok(close(get("左腕").quaternion, leftTarget, 1e-9), "左腕 reached pose b");
 });
+
+// The buttons play poses (play(seconds)), not hold(): the crossfade stalled
+// there, so wink-clap → wink-v-sign never moved (#49).
+test("switching poses while one plays from its button crossfades too", () => {
+  const { mesh, get } = rig();
+  const held = new HeldPose(mesh, { easeSeconds: 1 });
+  held.load("a", readVpd(VPD));
+  held.play(4);
+  for (let i = 0; i < 60; i += 1) { held.update(1 / 30); held.apply(); }
+  held.load("b", readVpd(BONES_ONLY.replace("Bone0{右腕", "Bone0{左腕")));
+  held.play(4);
+  for (let i = 0; i < 90; i += 1) { held.update(1 / 60); held.apply(); }
+  const leftTarget = held.bind.get(get("左腕")).quaternion.clone()
+    .multiply(new THREE.Quaternion().fromArray(readVpd(VPD).bones[0].quaternion).normalize());
+  assert.ok(close(get("左腕").quaternion, leftTarget, 1e-9), "左腕 reached pose b");
+  assert.equal(held.fade, null, "the crossfade finished");
+});

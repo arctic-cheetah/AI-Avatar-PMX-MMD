@@ -251,6 +251,8 @@ export class HeldPose {
   /** @param {number} delta Seconds since the last frame. */
   update(delta) {
     let rest = Number.isFinite(delta) && delta > 0 ? delta : 0;
+    // First: the hold timing below returns early while the pose plays.
+    if (this.fade) this.fade.ease.update(rest);
     if (this.holding && this.remaining !== Infinity) {
       const easing = Math.min(rest, this.ease.timeLeft);
       this.ease.update(easing);
@@ -263,7 +265,6 @@ export class HeldPose {
       this.stop();
     }
     this.ease.update(rest);
-    if (this.fade) this.fade.ease.update(Number.isFinite(delta) && delta > 0 ? delta : 0);
   }
 
   /**

@@ -38,7 +38,7 @@ import { VoiceVolume, bindVoiceVolume } from "./voice-volume.js";
 import { LiveSpeechSession } from "./speech-session.js";
 import { LastSpeechReplay, dropQueuedReplay, replayQueueItems } from "./speech-replay.js";
 import { FillerSession } from "./filler-session.js";
-import { HeldPose, bindPoseEase, poseActionTicks, poseFileNames, readVpd, savePoseActionTick } from "./held-pose.js";
+import { HeldPose, bindPoseEase, idleMayPlay, poseActionTicks, poseFileNames, readVpd, savePoseActionTick } from "./held-pose.js";
 import { ThinkingPose, THINKING_POSE, headGazeScale } from "./thinking-pose.js";
 import { buildThinkingRig } from "./thinking-rig.js";
 import { handAngles, thinkingFidgetAngles } from "./thinking-fidget.js";
@@ -1777,6 +1777,8 @@ const heldPoseControls = document.querySelector("#held-pose-controls");
 const heldPoseStatus = document.querySelector("#held-pose-status");
 const heldPoseButtons = new Map();
 let heldPose = null;
+/** Who started the pose showing: "user" (a button), "url" (?pose=) or "idle". Idle never replaces the first two. */
+let heldPoseSource = null;
 let shownHeldPose = null;
 
 /**
@@ -1802,15 +1804,17 @@ async function loadHeldPose(name) {
  * Play a pose once, or stop it if it is the one playing.
  * @param {string} name
  * @param {number} [seconds] How long to keep it; Infinity holds until clicked.
+ * @param {"user" | "url" | "idle"} [source] Who started it.
  * @returns {Promise<void>}
  */
-async function toggleHeldPose(name, seconds = POSE_HOLD_SECONDS) {
+async function toggleHeldPose(name, seconds = POSE_HOLD_SECONDS, source = "user") {
   if (heldPose.playing && heldPose.name === name) {
     heldPose.stop();
     return;
   }
   if (heldPose.name !== name && !(await loadHeldPose(name))) return;
   heldPose.play(seconds);
+  heldPoseSource = source;
 }
 
 /** Show which pose button is playing. Cheap enough to call every frame. */
@@ -1844,7 +1848,9 @@ function followIdlePoseAction() {
   const picked = idleMotion.externalPlaying;
   if (picked === idlePoseAction) return;
   idlePoseAction = picked;
-  if (picked && !(heldPose?.playing && heldPose.name === picked)) toggleHeldPose(picked);
+  if (heldPose && idleMayPlay({ picked, playing: heldPose.playing, name: heldPose.name, startedBy: heldPoseSource })) {
+    toggleHeldPose(picked, POSE_HOLD_SECONDS, "idle");
+  }
 }
 
 /**
@@ -1936,7 +1942,7 @@ async function bindHeldPose() {
   const names = await refreshPoseList();
   heldPoseStatus.textContent = names.length ? "Ready: click a pose to play it" : `No poses in ${POSES_URL} yet: upload one`;
   const wanted = new URLSearchParams(location.search).get("pose");
-  if (wanted && names.includes(wanted)) await toggleHeldPose(wanted, Infinity);
+  if (wanted && names.includes(wanted)) await toggleHeldPose(wanted, Infinity, "url");
   else if (wanted) heldPoseStatus.textContent = `${wanted}: no such pose in ${POSES_URL}`;
 }
 

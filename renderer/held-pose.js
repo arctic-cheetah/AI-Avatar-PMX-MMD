@@ -127,6 +127,19 @@ export function savePoseActionTick(name, ticked, { local } = {}) {
   } catch { /* Session-only. */ }
 }
 
+/**
+ * Whether an idle pick may start a pose now (review on #263): never over a
+ * pose the user started (a button play or a ?pose= hold), and never the pose
+ * already showing, where a toggle would stop it.
+ * @param {{ picked: string | null, playing: boolean, name?: string | null, startedBy?: "user" | "url" | "idle" | null }} state
+ * @returns {boolean}
+ */
+export function idleMayPlay({ picked, playing, name = null, startedBy = null }) {
+  if (!picked) return false;
+  if (!playing) return true;
+  return startedBy === "idle" && name !== picked;
+}
+
 /** Holds one VPD pose and eases it in and out. */
 export class HeldPose {
   /**

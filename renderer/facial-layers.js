@@ -61,8 +61,8 @@ export const EYE_GROUPS = Object.freeze({
  * Keep each eye's closing morphs at or under 1 in total, after every layer
  * has written the face. An eye over budget has all its closers scaled down
  * by the same factor, so a wink on top of a closed-eye smile closes the eye
- * once instead of pushing the lid through. Scaling a shared closer only
- * lowers the other eye, so one pass per eye is enough.
+ * once instead of pushing the lid through. When both eyes are over, all their
+ * closers share one factor from the fullest eye, so both close exactly once.
  * @param {{ morphTargetDictionary?: Record<string, number>, morphTargetInfluences?: number[] } | null} mesh
  * @param {Record<string, readonly string[]>} [groups=EYE_GROUPS]
  * @returns {void}
@@ -71,12 +71,19 @@ export function capEyeClosure(mesh, groups = EYE_GROUPS) {
   const dictionary = mesh?.morphTargetDictionary;
   const influences = mesh?.morphTargetInfluences;
   if (!dictionary || !influences) return;
+  // One shared factor for every closer of the eyes over budget, from the
+  // fullest eye: with both over (笑い + both winks), both end at exactly 1
+  // instead of the second eye's pass shrinking the first (review on #263).
+  let worst = 1;
+  const over = new Set();
   for (const names of Object.values(groups)) {
     const indices = names.map((name) => dictionary[name]).filter((index) => index != null);
     const sum = indices.reduce((total, index) => total + Math.max(0, influences[index]), 0);
     if (sum <= 1) continue;
-    for (const index of indices) influences[index] = Math.max(0, influences[index]) / sum;
+    worst = Math.max(worst, sum);
+    for (const index of indices) over.add(index);
   }
+  for (const index of over) influences[index] = Math.max(0, influences[index]) / worst;
 }
 
 /**

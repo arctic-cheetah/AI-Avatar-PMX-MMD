@@ -6,9 +6,12 @@ the first slice of #49: static VPD poses. Timed VMD motion comes later.
 
 ## Use
 
-1. Save poses as `assets/private/poses/<name>.vpd`, for example with the
-   Yidhari Poses add-on (#261). The folder is gitignored; `serve.py` already
-   serves it on localhost.
+1. Save poses as `assets/poses/<name>.vpd`, for example with the Yidhari
+   Poses add-on (#261). The folder is **tracked in git** (the user's choice,
+   25 Nov 2026), so a `git pull` brings the poses to another PC. A VPD holds
+   only bone rotations and morph weights, not the model, so it is safe to
+   commit while the model itself stays out of git. `serve.py` serves it on
+   localhost.
 2. In the panel, under **Animation actions ▸ Blender poses · ポーズ**, each
    VPD has a button (`🎞️ wink-v-sign`). A click plays the pose like an action:
    she eases into it over 1 s, keeps it for 4 s, then eases out over 1 s. Clicking the
@@ -34,7 +37,8 @@ decides when, and main.js plays the pose through `HeldPose`.
 ## Uploading a pose from the page
 
 Under the pose buttons, **Upload VPD** sends a `.vpd` file to `serve.py`, which
-saves it as `assets/private/poses/<name>.vpd` and adds its button and tick.
+saves it as `assets/poses/<name>.vpd` and adds its button and tick. Commit
+the new file (`git add assets/poses/<name>.vpd`) to take it to another PC.
 The name defaults to the file name. If a pose of that name exists, the page
 asks before replacing it, which is how to update a pose after editing it in
 Blender.

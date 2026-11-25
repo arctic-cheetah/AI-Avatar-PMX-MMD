@@ -178,7 +178,7 @@ Select the model's armature (`伊德海莉_arm`). The **Yidhari Poses** tab in t
 
 | Button | What it does |
 | --- | --- |
-| **Import Folder** | Reads every `*.vpd` in a folder (default `assets/private/poses/`). Each file becomes a pose named after the file, replacing a pose of the same name. Bones and morphs the model lacks are listed in a warning. The current pose is not changed. |
+| **Import Folder** | Reads every `*.vpd` in a folder (default `assets/poses/`). Each file becomes a pose named after the file, replacing a pose of the same name. Bones and morphs the model lacks are listed in a warning. The current pose is not changed. |
 | Pose list → **Apply** | Sets the pose's bones and morphs in one click. Bones the pose does not include return to the bind pose, so poses do not mix. Morphs set by the previously applied pose are cleared, and other morphs are left alone. |
 | **Save as VPD** | Writes the current pose to a VPD file: every bone that is not in its bind pose, plus the at-rest bones below a posed arm (see below), or only the selected bones; and every morph above zero. |
 | **Reset** | Puts every bone back in the bind pose and clears the morphs the last applied pose set. |
@@ -225,7 +225,10 @@ the hand alone does not pull her lowered arm back to the T-pose. A posed
 finger brings the rest of that hand's fingers. **Selected Bones Only** still
 saves exactly the selection.
 
-Poses and VPDs of the private model stay in the gitignored `assets/private/`.
+Poses are saved in `assets/poses/`, which is **tracked in git** (the user's
+choice, 25 Nov 2026), so a `git pull` brings them to another PC. A VPD holds
+only bone rotations and morph weights. The model, its `.blend` files and the
+preview grids stay in the gitignored `assets/private/`.
 
 ### Reading these VPDs in the renderer (#49)
 
@@ -243,7 +246,7 @@ stricter than MMD:
 
 ### First pose: wink + V-sign
 
-`assets/private/poses/wink-v-sign.vpd` holds `ウィンク右` = 1 and 18 right-arm
+`assets/poses/wink-v-sign.vpd` holds `ウィンク右` = 1 and 18 right-arm
 bones: `右腕`, `右ひじ`, `右手首`, and the finger joints. The right hand is raised
 beside the face with the palm toward the viewer. Index and middle fingers are
 straight and spread; the ring and little fingers and the thumb are curled.

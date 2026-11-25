@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools" / "yidhari-
 
 from vpd_lib import (  # noqa: E402
     VpdBone, VpdError, VpdMorph, VpdPose, decode_morphs, encode_morphs, format_vpd,
-    missing_names, parse_vpd, pose_name, split_unwritable,
+    arm_chain_fill, missing_names, parse_vpd, pose_name, split_unwritable,
 )
 
 SAMPLE = (
@@ -132,6 +132,41 @@ class UnwritableNamesTest(unittest.TestCase):
     def test_keeps_a_pose_that_is_all_writable(self) -> None:
         pose = VpdPose("m.osm", (VpdBone("首", (0, 0, 0), (0, 0, 0, 1)),), ())
         self.assertEqual(split_unwritable(pose), (pose, []))
+
+
+class ArmChainFillTest(unittest.TestCase):
+    """A posed arm also saves the bones below it that are still at rest.
+
+    The renderer does not keep those at rest: its relaxed pose curls every
+    finger and its hand drift turns 手捩, so straight fingers left out of a
+    clap curled through the other hand (#261).
+    """
+
+    SIDE = ["肩", "腕", "腕捩", "ひじ", "手捩", "手首", "親指０", "親指１", "親指２", "人指１", "人指２", "人指３"]
+    MODEL = {f"{side}{name}" for side in "左右" for name in SIDE} | {"首", "頭"}
+
+    def test_a_posed_upper_arm_brings_everything_below_it(self) -> None:
+        self.assertEqual(
+            arm_chain_fill({"右腕", "首"}, self.MODEL),
+            ["右腕捩", "右ひじ", "右手捩", "右手首", "右親指０", "右親指１", "右親指２", "右人指１", "右人指２", "右人指３"],
+        )
+
+    def test_bones_above_the_highest_posed_one_stay_out(self) -> None:
+        # Saving 右腕 at rest would lift her lowered arm back to the T-pose.
+        fill = arm_chain_fill({"右手首"}, self.MODEL)
+        self.assertNotIn("右腕", fill)
+        self.assertNotIn("右手捩", fill)
+        self.assertEqual(fill[0], "右親指０")
+
+    def test_one_posed_finger_brings_the_rest_of_that_hand(self) -> None:
+        self.assertEqual(arm_chain_fill({"左人指２"}, self.MODEL),
+                         ["左親指０", "左親指１", "左親指２", "左人指１", "左人指３"])
+
+    def test_no_posed_arm_adds_nothing(self) -> None:
+        self.assertEqual(arm_chain_fill({"首", "頭"}, self.MODEL), [])
+
+    def test_only_bones_the_model_has_are_added(self) -> None:
+        self.assertEqual(arm_chain_fill({"右手首"}, {"右手首", "右人指１"}), ["右人指１"])
 
 
 class MorphPropertyTest(unittest.TestCase):

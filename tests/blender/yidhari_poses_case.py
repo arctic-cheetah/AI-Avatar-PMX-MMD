@@ -187,6 +187,8 @@ class PosesTest(unittest.TestCase):
         self.assertEqual(poses.save_vpd(self.arm, out, selected_only=False).skipped, [])
         saved = parse_vpd(out.read_bytes())
         want = {b.name: b for b in FIXTURE.bones}
+        # 右人指２ is at rest but below the posed 右腕, so it is saved too.
+        want["右人指２"] = VpdBone("右人指２", (0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0))
         self.assertEqual({b.name for b in saved.bones}, set(want))
         for bone in saved.bones:
             for a, b in zip(bone.location, want[bone.name].location):
@@ -205,6 +207,13 @@ class PosesTest(unittest.TestCase):
         names = [b.name for b in parse_vpd(out.read_bytes()).bones]
         self.assertNotIn("齿上", names)
         self.assertIn("右腕", names)
+
+    def test_save_leaves_a_lowered_arm_out_when_only_a_finger_is_posed(self) -> None:
+        only_finger = VpdPose("t.osm", FIXTURE.bones[2:], ())
+        poses.apply_pose(self.arm, poses.import_pose(self.arm, write(self.dir, "f", only_finger)).action)
+        out = self.dir / "out.vpd"
+        poses.save_vpd(self.arm, out, selected_only=False)
+        self.assertEqual(sorted(b.name for b in parse_vpd(out.read_bytes()).bones), ["右人指１", "右人指２"])
 
     def test_save_selected_only_writes_just_those_bones(self) -> None:
         poses.apply_pose(self.arm, poses.import_pose(self.arm, write(self.dir, "p", FIXTURE)).action)

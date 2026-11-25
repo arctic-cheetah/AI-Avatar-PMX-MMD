@@ -16,8 +16,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools" / "yidhari-
 
 from vpd_lib import (  # noqa: E402
     VpdBone, VpdError, VpdMorph, VpdPose, decode_morphs, encode_morphs, format_vpd,
-    arm_chain_fill, from_vpd_name, keep_morph, missing_names, parse_vpd, pose_name, split_unwritable,
-    to_vpd_name,
+    arm_chain_fill, from_vpd_name, keep_morph, missing_names, parse_vpd, pose_name, poses_folder,
+    split_unwritable, to_vpd_name,
 )
 
 SAMPLE = (
@@ -155,6 +155,12 @@ class KeepMorphTest(unittest.TestCase):
         self.assertTrue(keep_morph("齿下", 0.5))
         self.assertFalse(keep_morph("齿下", 0.0))
 
+    def test_the_japanese_teeth_forms_are_signed_too(self) -> None:
+        # Review on #262: a model whose keys are already 歯下 (the form the
+        # writer emits) would drop a negative teeth value.
+        self.assertTrue(keep_morph("歯下", -0.31))
+        self.assertTrue(keep_morph("歯上", -0.31))
+
     def test_other_morphs_are_saved_above_zero_only(self) -> None:
         self.assertTrue(keep_morph("あ", 0.2))
         self.assertFalse(keep_morph("あ", -0.2))
@@ -198,6 +204,44 @@ class ArmChainFillTest(unittest.TestCase):
 
     def test_only_bones_the_model_has_are_added(self) -> None:
         self.assertEqual(arm_chain_fill({"右手首"}, {"右手首", "右人指１"}), ["右人指１"])
+
+
+class PosesFolderTest(unittest.TestCase):
+    """Import Folder and Save as VPD default to the repository's assets/poses/.
+
+    Review on #262: it was only used when the folder already existed, so a
+    fresh checkout fell back to the .blend's own folder.
+    """
+
+    def setUp(self) -> None:
+        import tempfile
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def test_creates_assets_poses_next_to_the_nearest_assets_folder(self) -> None:
+        (self.root / "assets" / "private" / "blender").mkdir(parents=True)
+        blend = self.root / "assets" / "private" / "blender" / "pose.blend"
+        folder = poses_folder(blend)
+        self.assertEqual(folder, self.root / "assets" / "poses")
+        self.assertTrue(folder.is_dir())
+
+    def test_uses_an_existing_folder_as_is(self) -> None:
+        (self.root / "assets" / "poses").mkdir(parents=True)
+        (self.root / "assets" / "poses" / "a.vpd").write_bytes(b"x")
+        self.assertEqual(poses_folder(self.root / "assets" / "Blender" / "V1.blend"), self.root / "assets" / "poses")
+        self.assertTrue((self.root / "assets" / "poses" / "a.vpd").exists())
+
+    def test_without_an_assets_folder_it_is_the_blend_folder(self) -> None:
+        blend = self.root / "elsewhere" / "pose.blend"
+        blend.parent.mkdir()
+        self.assertEqual(poses_folder(blend), blend.parent)
+        self.assertFalse((self.root / "assets").exists())
+
+    def test_an_unsaved_file_has_no_folder(self) -> None:
+        self.assertIsNone(poses_folder(None))
 
 
 class MorphPropertyTest(unittest.TestCase):

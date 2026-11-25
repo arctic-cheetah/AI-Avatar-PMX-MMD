@@ -200,11 +200,15 @@ wink.
 - **Names:** bones are matched by their MMD name (`mmd_bone.name_j`, such as
   `右人指１`), not the Blender name (`人指１.R`), so VPDs from other tools load.
 - **Files:** VPDs are Shift-JIS with CRLF line ends, as MMD writes them.
-  PMX names are UTF-16, and this model uses 14 bone names Shift-JIS cannot
-  hold: the teeth `齿上`/`齿下` (simplified 齿) and the `左结…`/`右结…` knot bones.
-  Save as VPD leaves such bones and morphs out and names them in a warning,
-  rather than writing a replacement character or failing. Pose with other
-  bones, such as `口左`/`口右` and the mouth morphs, to change her mouth.
+  PMX names are UTF-16, and this model uses 14 names with simplified-Chinese
+  characters Shift-JIS cannot hold: the teeth `齿上`/`齿下` (chǐ shàng / chǐ xià)
+  and the `左结…`/`右结…` (jié) knot bones. Save as VPD writes them with the
+  Japanese forms, `歯上`/`歯下` and `結`, and Import Folder reads them back to
+  the model's own names. A name that still cannot be written is left out and
+  named in a warning.
+- **Negative teeth.** Only `齿上` and `齿下` may be saved below 0 (down to −1).
+  Pulling `齿下` back (for example −0.32) shows the teeth in a smile. Every
+  other morph is saved only when it is above 0.
 
 ### Bones at rest in a posed arm
 

@@ -142,8 +142,8 @@ class ArmChainFillTest(unittest.TestCase):
     clap curled through the other hand (#261).
     """
 
-    SIDE = ["肩", "腕", "腕捩", "ひじ", "手捩", "手首", "親指０", "親指１", "親指２", "人指１", "人指２", "人指３"]
-    MODEL = {f"{side}{name}" for side in "左右" for name in SIDE} | {"首", "頭"}
+    MODEL = {f"{side}{name}" for side in "左右" for name in (
+        "肩", "腕", "腕捩", "ひじ", "手捩", "手首", "親指０", "親指１", "親指２", "人指１", "人指２", "人指３")} | {"首", "頭"}
 
     def test_a_posed_upper_arm_brings_everything_below_it(self) -> None:
         self.assertEqual(

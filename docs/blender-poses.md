@@ -180,7 +180,7 @@ Select the model's armature (`伊德海莉_arm`). The **Yidhari Poses** tab in t
 | --- | --- |
 | **Import Folder** | Reads every `*.vpd` in a folder (default `assets/private/poses/`). Each file becomes a pose named after the file, replacing a pose of the same name. Bones and morphs the model lacks are listed in a warning. The current pose is not changed. |
 | Pose list → **Apply** | Sets the pose's bones and morphs in one click. Bones the pose does not include return to the bind pose, so poses do not mix. Morphs set by the previously applied pose are cleared, and other morphs are left alone. |
-| **Save as VPD** | Writes the current pose to a VPD file: every bone that is not in its bind pose, or only the selected bones, plus every morph above zero. |
+| **Save as VPD** | Writes the current pose to a VPD file: every bone that is not in its bind pose, plus the at-rest bones below a posed arm (see below), or only the selected bones; and every morph above zero. |
 | **Reset** | Puts every bone back in the bind pose and clears the morphs the last applied pose set. |
 
 Each pose is an action marked as an asset, so it also appears in the Pose
@@ -205,6 +205,21 @@ wink.
   Save as VPD leaves such bones and morphs out and names them in a warning,
   rather than writing a replacement character or failing. Pose with other
   bones, such as `口左`/`口右` and the mouth morphs, to change her mouth.
+
+### Bones at rest in a posed arm
+
+The renderer does not keep arm bones at rest: its relaxed pose curls every
+finger about 15° (`relaxArms()`), and the hand drift turns `手捩` and the
+fingers. A VPD only takes over the bones it names, so a clap with straight
+(at-rest) fingers was saved without them, and in the renderer the curled
+fingers went through the other hand.
+
+So **Save as VPD** also saves, in each arm, every bone **below the highest
+posed bone**, in the order `肩` → `腕` → `腕捩` → `ひじ` → `手捩` → `手首` →
+fingers, even when it is at rest. Bones **above** it stay out, so a pose of
+the hand alone does not pull her lowered arm back to the T-pose. A posed
+finger brings the rest of that hand's fingers. **Selected Bones Only** still
+saves exactly the selection.
 
 Poses and VPDs of the private model stay in the gitignored `assets/private/`.
 

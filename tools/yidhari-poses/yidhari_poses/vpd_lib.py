@@ -193,6 +193,35 @@ def missing_names(pose: VpdPose, bone_names: set[str], morph_names: set[str]) ->
     )
 
 
+# Each arm from the shoulder down, parents first, then the fingers.
+ARM_CHAIN = ("肩", "腕", "腕捩", "ひじ", "手捩", "手首")
+FINGERS = tuple(f"{digit}{joint}" for digit in ("親指", "人指", "中指", "薬指", "小指") for joint in "０１２３")
+
+
+def arm_chain_fill(posed: set[str], model: set[str]) -> list[str]:
+    """Bones to save at rest because a bone above them in the arm is posed.
+
+    The renderer does not keep arm bones at rest: its relaxed pose curls the
+    fingers and its hand drift turns 手捩. So when an arm is posed, every bone
+    below its highest posed bone is saved too, even if it is at rest. Bones
+    above it stay out, so a pose of the hand alone does not pull a lowered
+    arm back to the T-pose. A posed finger brings the rest of that hand.
+    Returns names the model has and `posed` does not, side by side, in chain
+    order.
+    """
+    fill: list[str] = []
+    for side in "左右":
+        chain = [f"{side}{name}" for name in ARM_CHAIN] + [f"{side}{name}" for name in FINGERS]
+        first_finger = len(ARM_CHAIN)
+        top = next((i for i, name in enumerate(chain) if name in posed), None)
+        if top is None:
+            continue
+        # A posed finger means the hand: start from its first finger.
+        start = first_finger if top >= first_finger else top
+        fill += [name for name in chain[start:] if name in model and name not in posed]
+    return fill
+
+
 def pose_name(path: str | PurePath) -> str:
     """A pose is named after its file."""
     return PurePath(path).stem

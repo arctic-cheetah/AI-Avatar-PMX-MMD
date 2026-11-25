@@ -18,7 +18,7 @@ from mathutils import Matrix, Quaternion, Vector
 
 from .vpd_lib import (
     VpdBone, VpdMorph, VpdPose, decode_morphs, encode_morphs, format_vpd, missing_names, parse_vpd,
-    pose_name, split_unwritable,
+    arm_chain_fill, pose_name, split_unwritable,
 )
 
 POSE_PROP = "yidhari_pose"
@@ -191,15 +191,23 @@ def _model_name(arm: bpy.types.Object) -> str:
 
 
 def capture_pose(arm: bpy.types.Object, selected_only: bool, scale: float = EXPORT_SCALE) -> VpdPose:
-    """The current pose as VPD values: posed (or selected) bones and morphs above zero."""
+    """The current pose as VPD values and morphs above zero.
+
+    Saves the selected bones, or the posed ones plus the at-rest bones below
+    a posed arm (vpd_lib.arm_chain_fill), so straight fingers stay straight
+    in the renderer.
+    """
     converter = _bone_converter()
     identity = Matrix.Identity(4)
+    by_name = mmd_bones(arm)
+    if selected_only:
+        keep = {name for name, pose_bone in by_name.items() if pose_bone.bone.select}
+    else:
+        keep = {name for name, pose_bone in by_name.items() if pose_bone.matrix_basis != identity}
+        keep |= set(arm_chain_fill(keep, set(by_name)))
     bones = []
-    for name, pose_bone in mmd_bones(arm).items():
-        if selected_only:
-            if not pose_bone.bone.select:
-                continue
-        elif pose_bone.matrix_basis == identity:
+    for name, pose_bone in by_name.items():
+        if name not in keep:
             continue
         convert = converter(pose_bone, scale, invert=True)
         location = tuple(convert.convert_location(pose_bone.matrix_basis.to_translation()))

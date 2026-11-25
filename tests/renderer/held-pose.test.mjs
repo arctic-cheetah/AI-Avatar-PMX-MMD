@@ -367,3 +367,22 @@ test("switching poses while one plays from its button crossfades too", () => {
   assert.ok(close(get("左腕").quaternion, leftTarget, 1e-9), "左腕 reached pose b");
   assert.equal(held.fade, null, "the crossfade finished");
 });
+
+// Teeth (#49): the add-on writes 齿下 as 歯下 (Shift-JIS has no 齿), and 齿下 may
+// be negative: −0.32 pulls the lower teeth back to show them in a smile.
+test("a pose reads 歯/結 names back to the model's 齿/结, and sets a negative 齿下", () => {
+  const { mesh, panels, set, get } = faceRig();
+  mesh.morphTargetDictionary["齿下"] = 7;
+  mesh.morphTargetInfluences.push(0);
+  panels["齿下"] = 3;
+  const held = new HeldPose(mesh, { easeSeconds: 1, morphPanels: panels });
+  const text = SMILE.replace("Morph1{にやり\r\n  0.800000;", "Morph1{歯下\r\n  -0.320000;");
+  const { missing } = held.load("teeth", readVpd(text));
+  assert.deepEqual(missing, []);
+  held.hold(true);
+  held.update(2);
+  set({});
+  mesh.morphTargetInfluences[7] = 0;
+  held.applyMorphs();
+  assert.ok(Math.abs(mesh.morphTargetInfluences[7] + 0.32) < 1e-9);
+});

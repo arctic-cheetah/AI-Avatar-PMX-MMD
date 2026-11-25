@@ -88,3 +88,9 @@ test("every morph ends within 0 to 1, and sums across morphs are kept", () => {
   assert.deepEqual(mesh.morphTargetInfluences, [1, 0, 0.8, 0.9, 0]);
   clampMorphs({});
 });
+
+test("only the teeth may go below 0, down to −1", () => {
+  const mesh = { morphTargetDictionary: { "齿下": 0, "齿上": 1, "あ": 2 }, morphTargetInfluences: [-0.32, -1.5, -0.2] };
+  clampMorphs(mesh);
+  assert.deepEqual(mesh.morphTargetInfluences, [-0.32, -1, 0]);
+});

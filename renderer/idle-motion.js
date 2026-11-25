@@ -604,6 +604,8 @@ export class IdleMotion {
     this.sleepCycle = null;
     /** Actions that may be picked, in ACTIONS order. */
     this.actions = Object.keys(ACTIONS);
+    /** @type {Map<string, { share: number, duration: number }>} Picked like actions; main.js plays them (#49). */
+    this.external = new Map();
     /** @type {null | { kind: string, t: number, duration: number }} The action played from a panel button (#164). */
     this.manual = null;
     this.springs = Object.fromEntries(ANGLES.map((key) => [key, new Spring(0)]));
@@ -654,7 +656,7 @@ export class IdleMotion {
           if (!this.current) this.gapLeft = this.#gap(); // nothing ticked: stay still
         }
       }
-      if (this.current) glance = ACTIONS[this.current.kind].apply(this.current, target);
+      if (this.current && !this.current.external) glance = ACTIONS[this.current.kind].apply(this.current, target);
     } else {
       this.current = null;
       this.gapLeft = null;
@@ -670,7 +672,7 @@ export class IdleMotion {
         const motion = this.sleepMotion;
         if (motion) {
           motion.t = stateTime - cycle * sleepActionEvery;
-          if (motion.t < motion.duration) glance = ACTIONS[motion.kind].apply(motion, target);
+          if (motion.t < motion.duration && !motion.external) glance = ACTIONS[motion.kind].apply(motion, target);
         }
       } else if (state !== "sleepy") {
         this.sleepMotion = null;
@@ -718,6 +720,35 @@ export class IdleMotion {
     this.actions = Object.keys(ACTIONS).filter((name) => chosen.has(name));
   }
 
+  /**
+   * Actions played outside IdleMotion, such as Blender poses (#49): picked by
+   * weight with the ticked actions, but they move nothing here.
+   * @param {Record<string, { share?: number, duration: number }>} actions Replaces the previous set.
+   * @returns {void}
+   */
+  setExternalActions(actions) {
+    this.external = new Map(Object.entries(actions)
+      .filter(([name]) => !Object.hasOwn(ACTIONS, name))
+      .map(([name, { share = 1, duration }]) => [name, { share, duration }]));
+  }
+
+  /**
+   * @param {string} name An external action.
+   * @returns {number} Its chance on the same scale as ACTIONS weights.
+   */
+  externalWeight(name) {
+    const action = this.external.get(name);
+    return action ? (1 - SIGH_SHARE) * (action.share / SHARED) : 0;
+  }
+
+  /** The external action playing now, idle or asleep, or null. */
+  get externalPlaying() {
+    for (const motion of [this.current, this.sleepMotion]) {
+      if (motion?.external && motion.t < motion.duration) return motion.kind;
+    }
+    return null;
+  }
+
   /** The name of the action playing from a button, or null. */
   get playing() {
     return this.manual?.kind ?? null;
@@ -761,20 +792,23 @@ export class IdleMotion {
 
   /** A new instance of a ticked action, by weight; null when nothing is ticked. */
   #pick() {
-    const names = this.actions;
+    const names = [...this.actions, ...this.external.keys()];
     if (names.length === 0) return null;
     // Ticked actions keep their relative chances.
-    const total = names.reduce((sum, name) => sum + ACTIONS[name].weight, 0);
+    const weight = (name) => ACTIONS[name]?.weight ?? this.externalWeight(name);
+    const total = names.reduce((sum, name) => sum + weight(name), 0);
     const roll = this.random() * total;
     let kind = names.at(-1);
     let reach = 0;
     for (const name of names) {
-      reach += ACTIONS[name].weight;
+      reach += weight(name);
       if (roll < reach) {
         kind = name;
         break;
       }
     }
+    const external = this.external.get(kind);
+    if (external) return { kind, t: 0, duration: external.duration, external: true };
     return { kind, t: 0, ...ACTIONS[kind].create(this.random) };
   }
 }

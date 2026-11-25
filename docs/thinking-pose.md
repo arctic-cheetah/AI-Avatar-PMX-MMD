@@ -234,3 +234,11 @@ speed around each finger's held angle, the tap order and rests, the held
 pinky, the mix with the drift, the clock, and, on the posed synthetic rig,
 that the elbows, wrists and forearm bust clearance never change while the
 fingertips move.
+
+## Smoother ease (#49)
+
+The pose used to ease with a critically damped spring (`TIMING.thinkingPose`,
+rate 10, about 0.5 s). It now shares `PoseEase` (`renderer/smoothing.js`) with
+the Blender poses: a smootherstep over the **Pose ease (s)** time (default
+1 s) from rest, and a smooth turn when it is released halfway, so the arm
+still decelerates before it turns back. See [Held poses](held-poses.md).

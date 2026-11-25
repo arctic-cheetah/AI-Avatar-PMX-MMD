@@ -913,3 +913,38 @@ test("the deep breath breathes in, then out through an open mouth", () => {
   assert.ok(breathOut > 0.3 && breathOut <= 0.4, `opens more breathing out (${breathOut.toFixed(2)})`);
   assert.ok(poses.at(-1).exhale < 0.01, "closes again");
 });
+
+// Blender poses as idle actions (#49): a VPD pose can be picked like any other
+// action. IdleMotion only decides when; main.js plays it through HeldPose.
+test("an external action is picked like a share-1 action and named while it plays", () => {
+  const glance = ACTIONS.glance.weight;
+  // glance (share 1) and the pose (share 1) split the roll evenly.
+  const motion = new IdleMotion({ random: scripted(0, 0.75) });
+  motion.setActions(["glance"]);
+  motion.setExternalActions({ "wink-v-sign": { share: 1, duration: 4.8 } });
+  assert.equal(motion.externalPlaying, null);
+  play(motion, "idle", IDLE_MOTION.gap[0] + 0.1);
+  assert.equal(motion.externalPlaying, "wink-v-sign");
+  assert.ok(Math.abs(motion.externalWeight("wink-v-sign") - glance) < 1e-12);
+  const poses = play(motion, "idle", 4);
+  for (const pose of poses) for (const key of ANGLES) assert.equal(Math.abs(pose[key]), 0, `${key} stays still`);
+  play(motion, "idle", 1);
+  assert.equal(motion.externalPlaying, null, "over after its duration");
+});
+
+test("an external action can be picked while asleep too", () => {
+  const motion = new IdleMotion({ random: scripted(0.5) });
+  motion.setActions([]);
+  motion.setExternalActions({ "wink-v-sign": { share: 1, duration: 4.8 } });
+  play(motion, "sleepy", 61, { every: 60 });
+  assert.equal(motion.externalPlaying, "wink-v-sign");
+});
+
+test("clearing the external actions stops them being picked", () => {
+  const motion = new IdleMotion({ random: scripted(0.5) });
+  motion.setActions([]);
+  motion.setExternalActions({ "wink-v-sign": { share: 1, duration: 4.8 } });
+  motion.setExternalActions({});
+  play(motion, "idle", IDLE_MOTION.gap[1] + 1);
+  assert.equal(motion.externalPlaying, null);
+});

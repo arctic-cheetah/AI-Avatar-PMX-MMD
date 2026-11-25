@@ -16,11 +16,13 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
 import sys
+import urllib.parse
 
 ROOT = Path(__file__).resolve().parents[1]
 RENDERER = ROOT / "renderer"
 sys.path.insert(0, str(ROOT))
 from controller.stt import SttWorker, UploadError, check_upload  # noqa: E402
+from controller.pose_store import PoseUploadError, check_pose_upload, save_pose  # noqa: E402
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -45,6 +47,9 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_POST(self) -> None:
+        if self.path.startswith("/poses/"):
+            self.upload_pose()
+            return
         if self.path != "/stt":
             self.send_json(404, {"error": "Not found."})
             return
@@ -73,6 +78,26 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_json(200, {key: reply[key] for key in ("text", "audioSeconds", "sttSeconds") if key in reply})
 
 
+    def upload_pose(self) -> None:
+        """POST /poses/<name>[?overwrite=1]: save a Blender pose (#49)."""
+        url = urllib.parse.urlsplit(self.path)
+        name = urllib.parse.unquote(url.path[len("/poses/"):])
+        overwrite = urllib.parse.parse_qs(url.query).get("overwrite") == ["1"]
+        try:
+            length = check_pose_upload(self.headers, self.server.origin, name)
+        except PoseUploadError as error:
+            self.close_connection = True  # the unread body must not be parsed as a request
+            self.send_json(error.status, {"error": str(error)})
+            return
+        data = self.rfile.read(length)
+        try:
+            save_pose(self.server.poses_dir, name, data, overwrite)
+        except PoseUploadError as error:
+            self.send_json(error.status, {"error": str(error)})
+            return
+        self.send_json(201, {"name": name})
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Serve the Yidhari renderer.")
     parser.add_argument("--host", default="127.0.0.1")
@@ -82,6 +107,8 @@ def main() -> None:
     parser.add_argument("--stt-threads", type=int, default=4)
     parser.add_argument("--stt-prompt", default=None,
                         help="Vocabulary hint for Whisper (default mentions Yidhari); \"\" disables it.")
+    parser.add_argument("--poses-dir", type=Path, default=ROOT / "assets" / "poses",
+                        help="Where uploaded Blender poses (VPD) are saved.")
     parser.add_argument("--no-bridge", action="store_true",
                         help="Print a ?bridge=off test-page URL that never connects to the bridge, "
                              "so the live avatar keeps her voice. Use a free --port, such as 8772.")
@@ -98,6 +125,7 @@ def main() -> None:
     port = server.server_address[1]
     server.origin = f"http://{args.host}:{port}"
     server.stt = None
+    server.poses_dir = args.poses_dir
     if args.stt:
         server.stt = SttWorker(args.stt_model, args.stt_threads, prompt=args.stt_prompt)
         ready = server.stt.start()

@@ -153,3 +153,122 @@ Finger joints are `１–３` for 人指, 中指, 薬指 and 小指, and `０–
 thumb (親指). The finger patterns in `thinking-rig.js` and `hand-drift-rig.js`
 also allow `親指３` and `０` on the other fingers. Those bones do not exist in
 this model, so those patterns simply do not match them.
+
+## Yidhari Poses add-on (#261)
+
+A small Blender add-on that keeps VPD poses as one-click poses, with their
+morphs, and saves poses back to VPD. It lives in
+`tools/yidhari-poses/yidhari_poses/` and needs MMD Tools.
+
+### Install
+
+Copy the package into the shared 4.4 add-on folder and enable it:
+
+```bash
+cp -r tools/yidhari-poses/yidhari_poses ~/.config/blender/4.4/scripts/addons/
+```
+
+Then in Blender (stock or Goo Engine 4.4.3): Edit ▸ Preferences ▸ Add-ons,
+search "Yidhari Poses" and tick it. Re-copy after updating the code.
+
+### Use
+
+Select the model's armature (`伊德海莉_arm`). The **Yidhari Poses** tab in the
+3D viewport sidebar (N) has:
+
+| Button | What it does |
+| --- | --- |
+| **Import Folder** | Reads every `*.vpd` in a folder (default `assets/poses/`, created next to the repository's `assets/` folder if missing). Each file becomes a pose named after the file, replacing a pose of the same name. Bones and morphs the model lacks are listed in a warning. The current pose is not changed. |
+| Pose list → **Apply** | Sets the pose's bones and morphs in one click. Bones the pose does not include return to the bind pose, so poses do not mix. Morphs set by the previously applied pose are cleared, and other morphs are left alone. |
+| **Save as VPD** | Writes the current pose to a VPD file: every bone that is not in its bind pose, plus the at-rest bones below a posed arm (see below), or only the selected bones; and every morph above zero, plus the teeth (`齿上`/`齿下`) when negative. |
+| **Reset** | Puts every bone back in the bind pose and clears the morphs the last applied pose set. |
+
+Each pose is an action marked as an asset, so it also appears in the Pose
+Library and the Asset Browser. The Pose Library's own apply only sets bones,
+so use **Apply** in the Yidhari Poses tab when a pose has morphs, such as a
+wink.
+
+### How it stores a pose
+
+- **Bones:** one keyframe per bone (location and quaternion), on frame 1 of
+  an action named after the VPD. The VPD values are converted with MMD Tools'
+  `BoneConverter`, the same conversion `mmd_tools.import_vpd` uses, at scale
+  0.08 on import and 12.5 on save.
+- **Morphs:** a JSON object of weights in the action's `yidhari_morphs`
+  custom property, for example `{"ウィンク右": 1.0}`. Morphs are the model's
+  shape keys, which MMD Tools names after the PMX morphs.
+- **Names:** bones are matched by their MMD name (`mmd_bone.name_j`, such as
+  `右人指１`), not the Blender name (`人指１.R`), so VPDs from other tools load.
+- **Files:** VPDs are Shift-JIS with CRLF line ends, as MMD writes them.
+  PMX names are UTF-16, and this model uses 14 names with simplified-Chinese
+  characters Shift-JIS cannot hold: the teeth `齿上`/`齿下` (chǐ shàng / chǐ xià)
+  and the `左结…`/`右结…` (jié) knot bones. Save as VPD writes them with the
+  Japanese forms, `歯上`/`歯下` and `結`, and Import Folder reads them back to
+  the model's own names. A name that still cannot be written is left out and
+  named in a warning.
+- **Negative teeth.** Only `齿上` and `齿下` may be saved below 0 (down to −1).
+  Pulling `齿下` back (for example −0.32) shows the teeth in a smile. Every
+  other morph is saved only when it is above 0.
+
+### Bones at rest in a posed arm
+
+The renderer does not keep arm bones at rest: its relaxed pose curls every
+finger about 15° (`relaxArms()`), and the hand drift turns `手捩` and the
+fingers. A VPD only takes over the bones it names, so a clap with straight
+(at-rest) fingers was saved without them, and in the renderer the curled
+fingers went through the other hand.
+
+So **Save as VPD** also saves, in each arm, every bone **below the highest
+posed bone**, in the order `肩` → `腕` → `腕捩` → `ひじ` → `手捩` → `手首` →
+fingers, even when it is at rest. Bones **above** it stay out, so a pose of
+the hand alone does not pull her lowered arm back to the T-pose. A posed
+finger brings the rest of that hand's fingers. **Selected Bones Only** still
+saves exactly the selection.
+
+Poses are saved in `assets/poses/`, which is **tracked in git** (the user's
+choice, 25 Nov 2026), so a `git pull` brings them to another PC. A VPD holds
+only bone rotations and morph weights. The model, its `.blend` files and the
+preview grids stay in the gitignored `assets/private/`.
+
+### Reading these VPDs in the renderer (#49)
+
+three.js r170's `MMDParser.parseVpd` (used by `MMDLoader.loadVPD`) is
+stricter than MMD:
+
+- It only accepts numbers written as `-?digits.digits`. The add-on writes six
+  decimals, as MMD does, so values never appear as `1.5e-05`.
+- It **rejects any `Morph` block** with "the file seems not vpd file." A pose
+  with morphs, such as `wink-v-sign.vpd`, must have its `MorphN{…}` blocks
+  removed before parsing, for example with
+  `text.replace(/Morph\d+\{[^}]*\}\r?\n?/g, "")`. Its morph weights then go
+  through the renderer's expression and morph pipeline. With the blocks
+  removed, `wink-v-sign.vpd` parses to its 18 bones.
+
+### First pose: wink + V-sign
+
+`assets/poses/wink-v-sign.vpd` holds `ウィンク右` = 1 and 18 right-arm
+bones: `右腕`, `右ひじ`, `右手首`, and the finger joints. The right hand is raised
+beside the face with the palm toward the viewer. Index and middle fingers are
+straight and spread; the ring and little fingers and the thumb are curled.
+Head and neck are untouched. It was posed from a script on
+`yidhari-pose.blend`: each bone was aimed in armature space and the result was
+saved with the add-on. Checks:
+
+- Importing, applying and saving it again gives the same 18 bones, with the
+  largest difference 4.2e-07, and the same morph.
+- three.js parses its bones once the morph block is removed (see above).
+- A labelled grid (neutral vs pose; front, three-quarter and side) is at
+  `assets/private/poses/grids/wink-v-sign.png`.
+
+### Tests
+
+```bash
+.venv/bin/python -m unittest tests.test_yidhari_poses tests.test_yidhari_poses_blender -v
+```
+
+`test_yidhari_poses` checks the VPD format without Blender.
+`test_yidhari_poses_blender` runs `tests/blender/yidhari_poses_case.py` inside
+Blender on a synthetic rig. Applied poses must match MMD Tools' own VPD
+import, and saving must write the same VPD back. It uses `YIDHARI_BLENDER`,
+the stock 4.4.3 tarball or `blender` on the PATH, and is skipped when none is
+found.

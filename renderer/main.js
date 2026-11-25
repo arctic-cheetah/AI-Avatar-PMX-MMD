@@ -38,6 +38,7 @@ import { VoiceVolume, bindVoiceVolume } from "./voice-volume.js";
 import { LiveSpeechSession } from "./speech-session.js";
 import { LastSpeechReplay, dropQueuedReplay, replayQueueItems } from "./speech-replay.js";
 import { FillerSession } from "./filler-session.js";
+import { HeldPose, bindPoseEase, idleMayPlay, poseActionTicks, poseFileNames, readVpd, savePoseActionTick } from "./held-pose.js";
 import { ThinkingPose, THINKING_POSE, headGazeScale } from "./thinking-pose.js";
 import { buildThinkingRig } from "./thinking-rig.js";
 import { handAngles, thinkingFidgetAngles } from "./thinking-fidget.js";
@@ -49,7 +50,7 @@ import { CameraGaze } from "./camera-gaze.js";
 import { CameraControls } from "./camera-controls.js";
 import { SWAY, SwayController, swayAnglesAt } from "./body-sway.js";
 import { Spring, TIMING, frameDelta } from "./smoothing.js";
-import { composeBlink, eyeClosure } from "./facial-layers.js";
+import { capEyeClosure, clampMorphs, composeBlink, eyeClosure } from "./facial-layers.js";
 import { GreetingGate, bindGreetingToggle } from "./greeting.js";
 import { bindRestingFaceToggle } from "./resting-face.js";
 import { addSeeThroughBrows, bindSeeThroughBrowsToggle } from "./see-through-brows.js";
@@ -1293,7 +1294,8 @@ function updateWinks(delta) {
       continue;
     }
     wink.spring.step(wink.target, delta, TIMING.wink);
-    mesh.morphTargetInfluences[wink.index] = wink.spring.clamp(0, 1);
+    // Raise, never lower: a held pose's wink (#49) is written before this channel.
+    mesh.morphTargetInfluences[wink.index] = Math.max(mesh.morphTargetInfluences[wink.index], wink.spring.clamp(0, 1));
   }
 }
 
@@ -1768,8 +1770,190 @@ function bindGameShaders(target, data) {
  * @param {{ morphs: { name: string, englishName: string, panel: number }[] }} data Parsed PMX.
  * @returns {void}
  */
+// Blender poses (#49): one play button per VPD. See docs/held-poses.md.
+const POSES_URL = "/assets/poses/";
+const POSE_HOLD_SECONDS = 4;
+const heldPoseControls = document.querySelector("#held-pose-controls");
+const heldPoseStatus = document.querySelector("#held-pose-status");
+const heldPoseButtons = new Map();
+let heldPose = null;
+/** Who started the pose showing: "user" (a button), "url" (?pose=) or "idle". Idle never replaces the first two. */
+let heldPoseSource = null;
+let shownHeldPose = null;
+
+/**
+ * Fetch a pose and make it the one the held-pose layer plays.
+ * @param {string} name
+ * @returns {Promise<boolean>} Whether it loaded.
+ */
+async function loadHeldPose(name) {
+  try {
+    const response = await fetch(`${POSES_URL}${encodeURIComponent(name)}.vpd`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const text = new TextDecoder("shift_jis").decode(await response.arrayBuffer());
+    const { bones, missing } = heldPose.load(name, readVpd(text));
+    heldPoseStatus.textContent = `${name}: ${bones} bones` + (missing.length ? ` · not on this model: ${missing.join(", ")}` : "");
+    return true;
+  } catch (error) {
+    heldPoseStatus.textContent = `${name}: ${error.message}`;
+    return false;
+  }
+}
+
+/**
+ * Play a pose once, or stop it if it is the one playing.
+ * @param {string} name
+ * @param {number} [seconds] How long to keep it; Infinity holds until clicked.
+ * @param {"user" | "url" | "idle"} [source] Who started it.
+ * @returns {Promise<void>}
+ */
+async function toggleHeldPose(name, seconds = POSE_HOLD_SECONDS, source = "user") {
+  if (heldPose.playing && heldPose.name === name) {
+    heldPose.stop();
+    return;
+  }
+  if (heldPose.name !== name && !(await loadHeldPose(name))) return;
+  heldPose.play(seconds);
+  heldPoseSource = source;
+}
+
+/** Show which pose button is playing. Cheap enough to call every frame. */
+function refreshHeldPoseButtons() {
+  const playing = heldPose?.playing ? heldPose.name : null;
+  if (playing === shownHeldPose) return;
+  shownHeldPose = playing;
+  for (const [name, button] of heldPoseButtons) button.setAttribute("aria-pressed", String(name === playing));
+}
+
+const poseActionBoxes = document.createElement("div");
+poseActionBoxes.className = "pose-action-ticks";
+document.querySelector("#actions").append(poseActionBoxes);
+const poseUploadFile = document.querySelector("#pose-upload-file");
+const poseUploadName = document.querySelector("#pose-upload-name");
+const poseUploadButton = document.querySelector("#pose-upload-button");
+let idlePoseAction = null;
+/** Seconds for poses and the thinking pose to ease in or out: the Pose ease slider. */
+let poseEaseSeconds = 1;
+/** @returns {number} How long an idle pick of a pose lasts: ease in, hold, ease out. */
+const poseActionSeconds = () => POSE_HOLD_SECONDS + 2 * poseEaseSeconds;
+
+/** Tell IdleMotion which poses it may pick, from the ticks. */
+function syncPoseActions() {
+  const ticked = [...poseActionBoxes.querySelectorAll("input")].filter((box) => box.checked);
+  idleMotion.setExternalActions(Object.fromEntries(ticked.map((box) => [box.dataset.heldPose, { share: 1, duration: poseActionSeconds() }])));
+}
+
+/** Play a pose when idle picks it (#49). Cheap enough to call every frame. */
+function followIdlePoseAction() {
+  const picked = idleMotion.externalPlaying;
+  if (picked === idlePoseAction) return;
+  idlePoseAction = picked;
+  if (heldPose && idleMayPlay({ picked, playing: heldPose.playing, name: heldPose.name, startedBy: heldPoseSource })) {
+    toggleHeldPose(picked, POSE_HOLD_SECONDS, "idle");
+  }
+}
+
+/**
+ * List the poses folder and rebuild a button and an idle tick per pose.
+ * @returns {Promise<string[]>} The pose names.
+ */
+async function refreshPoseList() {
+  let names = [];
+  try {
+    const response = await fetch(POSES_URL, { cache: "no-store" });
+    if (response.ok) names = poseFileNames(await response.text());
+  } catch {
+    // No poses folder: no buttons.
+  }
+  heldPoseButtons.clear();
+  shownHeldPose = undefined;
+  heldPoseControls.replaceChildren(...names.map((name) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.heldPose = name;
+    button.textContent = `🎞️ ${name}`;
+    button.setAttribute("aria-pressed", "false");
+    button.addEventListener("click", () => toggleHeldPose(name));
+    heldPoseButtons.set(name, button);
+    return button;
+  }));
+  const ticks = poseActionTicks(names);
+  poseActionBoxes.replaceChildren(...names.map((name) => {
+    const row = document.createElement("label");
+    row.className = "check";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.dataset.heldPose = name;
+    box.checked = ticks[name];
+    box.addEventListener("change", () => {
+      savePoseActionTick(name, box.checked);
+      syncPoseActions();
+    });
+    row.append(box, `🎞️ ${name}`);
+    return row;
+  }));
+  syncPoseActions();
+  return names;
+}
+
+/** Send the chosen VPD to serve.py, asking before replacing a pose of that name. */
+async function uploadPose() {
+  const file = poseUploadFile.files?.[0];
+  const name = (poseUploadName.value || file?.name.replace(/\.vpd$/i, "") || "").trim();
+  if (!file || !name) return;
+  const send = (overwrite) => fetch(`/poses/${encodeURIComponent(name)}${overwrite ? "?overwrite=1" : ""}`, {
+    method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file,
+  });
+  poseUploadButton.disabled = true;
+  try {
+    let response = await send(false);
+    if (response.status === 409 && confirm(`Replace the pose "${name}"?`)) response = await send(true);
+    if (response.status === 409) {
+      heldPoseStatus.textContent = `${name}: kept the existing pose`;
+      return;
+    }
+    if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error ?? `HTTP ${response.status}`);
+    await refreshPoseList();
+    if (heldPose.name === name) heldPose.name = null; // reload the new file on its next play
+    heldPoseStatus.textContent = `${name}: uploaded · click its button to play it`;
+    poseUploadFile.value = "";
+    poseUploadName.value = "";
+  } catch (error) {
+    heldPoseStatus.textContent = `${name}: upload failed (${error.message})`;
+  } finally {
+    poseUploadButton.disabled = !poseUploadFile.files?.length;
+  }
+}
+
+bindPoseEase(document.querySelector("#pose-ease"), document.querySelector("#pose-ease-value"), (seconds) => {
+  poseEaseSeconds = seconds;
+  thinkingPose.easeSeconds = seconds;
+  if (heldPose) heldPose.easeSeconds = seconds;
+  syncPoseActions();
+});
+
+/** Build the pose buttons and ticks, bind the upload, and honour ?pose=<name>. */
+async function bindHeldPose() {
+  poseUploadFile.addEventListener("change", () => {
+    poseUploadButton.disabled = !poseUploadFile.files?.length;
+    if (!poseUploadName.value && poseUploadFile.files?.[0]) poseUploadName.placeholder = poseUploadFile.files[0].name.replace(/\.vpd$/i, "");
+  });
+  poseUploadButton.addEventListener("click", uploadPose);
+  const names = await refreshPoseList();
+  heldPoseStatus.textContent = names.length ? "Ready: click a pose to play it" : `No poses in ${POSES_URL} yet: upload one`;
+  const wanted = new URLSearchParams(location.search).get("pose");
+  if (wanted && names.includes(wanted)) await toggleHeldPose(wanted, Infinity, "url");
+  else if (wanted) heldPoseStatus.textContent = `${wanted}: no such pose in ${POSES_URL}`;
+}
+
 function onModelLoaded(loaded, data) {
   mesh = loaded;
+  // Before restArms(): VPD rotations are measured from the bind pose (#49).
+  heldPose = new HeldPose(mesh, {
+    easeSeconds: poseEaseSeconds,
+    morphPanels: Object.fromEntries(data.morphs.map((morph) => [morph.name, morph.panel])),
+  });
+  bindHeldPose();
   scene.add(mesh);
   frameModel(mesh);
 
@@ -2267,6 +2451,8 @@ function animate() {
   controls.update();
   mesh?.morphTargetInfluences?.fill(0);
   expressions?.update(delta);
+  // A held pose owns the face panels it sets, over the mood but under speech, winks and the blink (#49).
+  heldPose?.applyMorphs();
   syncThinkingState();
   speech?.update(delta);
   updateWinks(delta);
@@ -2277,6 +2463,10 @@ function animate() {
   applySway(now / 1000, delta);
   applyIdleMotion();
   applyArmDrift();
+  heldPose?.update(delta);
+  heldPose?.apply();
+  refreshHeldPoseButtons();
+  followIdlePoseAction();
   takeTentacleWaveOff();
   applyPhysics(delta);
   applyTentacleWave(delta);
@@ -2288,6 +2478,9 @@ function animate() {
     audition.setWeights(globalThis.__yidhariHold);
     audition.apply();
   }
+  // Last morph pass (#49): every morph within 0–1, then each eye's closers at or under 1 together.
+  clampMorphs(mesh);
+  capEyeClosure(mesh);
   updateExpressionButtons();
   updateLoopButton();
   auditionPanel?.refresh();

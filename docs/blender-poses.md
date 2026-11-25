@@ -178,9 +178,9 @@ Select the model's armature (`伊德海莉_arm`). The **Yidhari Poses** tab in t
 
 | Button | What it does |
 | --- | --- |
-| **Import Folder** | Reads every `*.vpd` in a folder (default `assets/poses/`). Each file becomes a pose named after the file, replacing a pose of the same name. Bones and morphs the model lacks are listed in a warning. The current pose is not changed. |
+| **Import Folder** | Reads every `*.vpd` in a folder (default `assets/poses/`, created next to the repository's `assets/` folder if missing). Each file becomes a pose named after the file, replacing a pose of the same name. Bones and morphs the model lacks are listed in a warning. The current pose is not changed. |
 | Pose list → **Apply** | Sets the pose's bones and morphs in one click. Bones the pose does not include return to the bind pose, so poses do not mix. Morphs set by the previously applied pose are cleared, and other morphs are left alone. |
-| **Save as VPD** | Writes the current pose to a VPD file: every bone that is not in its bind pose, plus the at-rest bones below a posed arm (see below), or only the selected bones; and every morph above zero. |
+| **Save as VPD** | Writes the current pose to a VPD file: every bone that is not in its bind pose, plus the at-rest bones below a posed arm (see below), or only the selected bones; and every morph above zero, plus the teeth (`齿上`/`齿下`) when negative. |
 | **Reset** | Puts every bone back in the bind pose and clears the morphs the last applied pose set. |
 
 Each pose is an action marked as an asset, so it also appears in the Pose

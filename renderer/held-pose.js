@@ -40,6 +40,21 @@ export function poseFileNames(html) {
 }
 
 export const POSE_ACTIONS_KEY = "yidhari.poseActions";
+
+/** Japanese forms the Blender add-on writes for characters Shift-JIS lacks (#261): 歯上 → 齿上, 右結1_2 → 右结1_2. */
+const SJIS_ALIASES = Object.freeze({ "歯": "齿", "結": "结" });
+
+/**
+ * The model's own name for a name read from a VPD.
+ * @param {string} name
+ * @param {(name: string) => boolean} has Whether the model has a name.
+ * @returns {string}
+ */
+export function modelName(name, has) {
+  if (has(name)) return name;
+  const aliased = [...name].map((ch) => SJIS_ALIASES[ch] ?? ch).join("");
+  return has(aliased) ? aliased : name;
+}
 export const POSE_EASE_KEY = "yidhari.poseEase";
 export const POSE_EASE_DEFAULT = 1;
 
@@ -152,8 +167,10 @@ export class HeldPose {
   load(name, vpd) {
     const missing = [];
     const targets = new Map();
-    for (const { name: boneName, quaternion, translation } of vpd.bones) {
-      const bone = this.mesh.skeleton.getBoneByName(boneName);
+    const skeleton = this.mesh.skeleton;
+    for (const { name: written, quaternion, translation } of vpd.bones) {
+      const boneName = modelName(written, (name) => Boolean(skeleton.getBoneByName(name)));
+      const bone = skeleton.getBoneByName(boneName);
       const bind = bone && this.bind.get(bone);
       if (!bind) {
         missing.push(boneName);
@@ -166,7 +183,8 @@ export class HeldPose {
     }
     const dictionary = this.mesh.morphTargetDictionary ?? {};
     const morphs = [];
-    for (const { name: morphName, weight } of vpd.morphs) {
+    for (const { name: written, weight } of vpd.morphs) {
+      const morphName = modelName(written, (name) => dictionary[name] !== undefined);
       const index = dictionary[morphName];
       if (index === undefined) missing.push(morphName);
       else morphs.push({ index, weight, name: morphName });

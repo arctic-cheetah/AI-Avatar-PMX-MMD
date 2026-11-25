@@ -83,12 +83,25 @@ export function capEyeClosure(mesh, groups = EYE_GROUPS) {
  * Keep every morph within 0 to 1 after every layer has written the face
  * (#49). Layers add up (a held pose, the mood, speech, audition sliders), and
  * a morph pushed past 1 over-deforms the mesh. Sums across different morphs
- * are left alone: 上左 + 上右 move different brows. Run before capEyeClosure().
- * @param {{ morphTargetInfluences?: number[] } | null} mesh
+ * are left alone: 上左 + 上右 move different brows. The teeth (SIGNED_MORPHS)
+ * may go down to −1. Run before capEyeClosure().
+ * @param {{ morphTargetDictionary?: Record<string, number>, morphTargetInfluences?: number[] } | null} mesh
+ * @param {readonly string[]} [signed]
  * @returns {void}
  */
-export function clampMorphs(mesh) {
+export function clampMorphs(mesh, signed = SIGNED_MORPHS) {
   const influences = mesh?.morphTargetInfluences;
   if (!influences) return;
-  for (let i = 0; i < influences.length; i += 1) influences[i] = clamp01(influences[i]);
+  const dictionary = mesh.morphTargetDictionary ?? {};
+  const negative = new Set(signed.map((name) => dictionary[name]).filter((index) => index != null));
+  for (let i = 0; i < influences.length; i += 1) {
+    const value = Number.isFinite(influences[i]) ? influences[i] : 0;
+    influences[i] = negative.has(i) ? Math.min(1, Math.max(-1, value)) : clamp01(value);
+  }
 }
+
+/**
+ * Morphs that may go below 0, down to −1 (the user, 25 Nov 2026): pulling the
+ * teeth back shows them in a smile. Every other morph stays within 0 to 1.
+ */
+export const SIGNED_MORPHS = Object.freeze(["齿上", "齿下"]);

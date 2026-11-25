@@ -4,6 +4,10 @@ A local virtual avatar for **Yidhari**: a PMX model in the browser that talks wi
 
 This is a companion project, kept outside `my_code_pc` so it does not compete for workspace space.
 
+![Yidhari in the renderer: winking with a V-sign (a Blender pose) beside the chat panel](docs/images/yidhari-demo.webp)
+
+*Yidhari demo: the renderer in VS Code's browser, holding the `wink-v-sign` pose authored in Blender, with the chat panel showing agent reports.*
+
 ## ✨ What she can do
 
 - 💬 **Chat:** type into the chat bar; replies stream from a local `llama-server`.

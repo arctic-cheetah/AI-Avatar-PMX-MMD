@@ -1942,7 +1942,10 @@ async function bindHeldPose() {
 function onModelLoaded(loaded, data) {
   mesh = loaded;
   // Before restArms(): VPD rotations are measured from the bind pose (#49).
-  heldPose = new HeldPose(mesh, { easeSeconds: poseEaseSeconds });
+  heldPose = new HeldPose(mesh, {
+    easeSeconds: poseEaseSeconds,
+    morphPanels: Object.fromEntries(data.morphs.map((morph) => [morph.name, morph.panel])),
+  });
   bindHeldPose();
   scene.add(mesh);
   frameModel(mesh);
@@ -2441,6 +2444,8 @@ function animate() {
   controls.update();
   mesh?.morphTargetInfluences?.fill(0);
   expressions?.update(delta);
+  // A held pose owns the face panels it sets, over the mood but under speech, winks and the blink (#49).
+  heldPose?.applyMorphs();
   syncThinkingState();
   speech?.update(delta);
   updateWinks(delta);
@@ -2460,7 +2465,6 @@ function animate() {
   applyTentacleWave(delta);
   audition?.update(delta);
   audition?.apply();
-  heldPose?.applyMorphs();
   // A held preview wins the frame so a visual check is not overwritten by the mood loop.
   if (globalThis.__yidhariHold && mesh) {
     mesh.morphTargetInfluences.fill(0);

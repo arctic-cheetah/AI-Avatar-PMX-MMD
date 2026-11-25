@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-from pathlib import PurePath
+from pathlib import Path, PurePath
 from typing import Iterable
 
 HEADER = "Vocaloid Pose Data file"
@@ -134,7 +134,7 @@ SJIS_ALIASES = {"齿": "歯", "结": "結"}
 
 # Morphs that may go below 0 (the user, 25 Nov 2026): pulling the teeth back
 # shows them in a smile. Every other morph stays within 0 to 1.
-SIGNED_MORPHS = frozenset({"齿上", "齿下"})
+SIGNED_MORPHS = frozenset({"齿上", "齿下", "歯上", "歯下"})
 
 
 def to_vpd_name(name: str) -> str:
@@ -252,6 +252,23 @@ def arm_chain_fill(posed: set[str], model: set[str]) -> list[str]:
         start = first_finger if top >= first_finger else top
         fill += [name for name in chain[start:] if name in model and name not in posed]
     return fill
+
+
+def poses_folder(blend: Path | None) -> Path | None:
+    """Where poses are imported from and saved to by default.
+
+    The repository's `assets/poses/` (tracked in git), found from the nearest
+    parent of the .blend that has an `assets` folder, and created if missing.
+    Without one, the .blend's own folder; an unsaved file has none.
+    """
+    if blend is None:
+        return None
+    for parent in Path(blend).parents:
+        if (parent / "assets").is_dir():
+            folder = parent / "assets" / "poses"
+            folder.mkdir(exist_ok=True)
+            return folder
+    return Path(blend).parent
 
 
 def pose_name(path: str | PurePath) -> str:

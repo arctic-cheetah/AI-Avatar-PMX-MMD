@@ -14,7 +14,7 @@ from bpy.props import BoolProperty, StringProperty
 from bpy_extras.io_utils import ExportHelper
 
 from . import poses
-from .vpd_lib import VpdError
+from .vpd_lib import VpdError, poses_folder
 
 bl_info = {
     "name": "Yidhari Poses",
@@ -40,13 +40,9 @@ def find_armature(context: bpy.types.Context) -> bpy.types.Object | None:
 
 
 def default_folder() -> str:
-    """The repository's `assets/poses/` (tracked in git) above the open .blend, if it can be found."""
-    blend = Path(bpy.data.filepath) if bpy.data.filepath else None
-    for parent in (blend.parents if blend else []):
-        candidate = parent / "assets" / "poses"
-        if candidate.is_dir():
-            return str(candidate) + "/"
-    return str(blend.parent) + "/" if blend else ""
+    """The repository's `assets/poses/` (tracked in git), created if missing (vpd_lib.poses_folder)."""
+    folder = poses_folder(Path(bpy.data.filepath) if bpy.data.filepath else None)
+    return f"{folder}/" if folder else ""
 
 
 class _NeedsArmature:
@@ -204,8 +200,9 @@ class VIEW3D_PT_yidhari_poses(bpy.types.Panel):
             box.label(text="No poses yet: Import Folder")
         for action in found:
             row = box.row(align=True)
-            morphs = poses.pose_morphs(action)
-            row.label(text=action.name, icon="SHAPEKEY_DATA" if morphs else "POSE_HLT")
+            # A flag is enough for the icon; no JSON decode on every redraw.
+            has_morphs = action.get(poses.MORPH_PROP, "{}") not in ("", "{}")
+            row.label(text=action.name, icon="SHAPEKEY_DATA" if has_morphs else "POSE_HLT")
             row.operator(YIDHARI_OT_apply_pose.bl_idname, text="Apply").pose = action.name
             row.operator(YIDHARI_OT_thumbnail.bl_idname, text="", icon="RESTRICT_RENDER_OFF").pose = action.name
 

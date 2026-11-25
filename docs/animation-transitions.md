@@ -3,7 +3,8 @@
 How the renderer keeps mood, pose, gaze, sway and speech changes smooth,
 including when a new change interrupts one still in progress. Items 1–6 of
 [#54](https://github.com/arctic-cheetah/AI-Avatar-PMX-MMD/issues/54) are here.
-Body-motion blending with VPD/VMD (item 7) belongs to #49 and #50.
+Body-motion blending with VPD/VMD (item 7) belongs to #49 and #50: static VPD
+poses are in [Held poses](held-poses.md); timed VMD motion is still to do.
 
 ## What was rough
 
@@ -30,7 +31,8 @@ units of 1/s (so a time constant τ is `1 / rate`).
 | Channel | Ease | Rate | Roughly settled (95 %) |
 | --- | --- | --- | --- |
 | Mood morphs | Critically damped spring | 14 | 0.34 s |
-| Thinking pose | Critically damped spring | 10 | 0.47 s |
+| Thinking pose (#49) | `PoseEase`: smootherstep from rest, quintic turn from the current speed when interrupted | Pose ease slider, default 1 s | 1 s (lands exactly) |
+| Blender poses (#49) | `PoseEase`, the same ease and slider; switching poses crossfades over it | default 1 s | 1 s |
 | Gaze (eyes, head follows) | Critically damped spring | 15 | 0.32 s |
 | Winks | Critically damped spring | 16 | 0.30 s |
 | Sway fade on toggle | Critically damped spring | 4 | 1.2 s |
@@ -64,8 +66,10 @@ moves the target. Nothing resets through a default pose:
 
 - Mood changes retarget the springs of the morphs already showing. A morph
   that is leaving decelerates and fades from wherever it is.
-- The thinking pose slerps rest → posed by its spring weight, so leaving
-  half-way returns from the half-raised arm.
+- The thinking pose slerps rest → posed by its `PoseEase` weight, so leaving
+  half-way decelerates and curves back from the half-raised arm.
+- A held Blender pose slerps each bone from its base toward the pose, and a
+  switch to another pose crossfades from what is shown (#49).
 - Turning sway off fades its gain to zero, and turning it back on fades the
   sine back in from the current phase.
 
@@ -74,26 +78,36 @@ moves the target. Nothing resets through a default pose:
 Each frame clears every morph, then writes channels in this order:
 
 1. **Mood:** the expression controller writes its springs.
-2. **Speech:** blends speech-owned morphs (`あ`, `い`, `う`, `え`, `お`) from the
+2. **Held pose (#49):** a pose's morphs. It owns each face panel it has
+   morphs in (brow, eye or mouth): the mood's other morphs there fade out as
+   the pose fades in. The blink is never taken over, and speech comes next,
+   so lip sync still works.
+3. **Speech:** blends speech-owned morphs (`あ`, `い`, `う`, `え`, `お`) from the
    mood's value toward the current viseme, and scales open-mouth mood shapes
    (`□`, `ワ`, `ワ２`) by `1 − envelope`. Between words and after the clip, the
    envelope returns them to the mood. Mouth corners such as `口角上げ` and
    `口角下げ` stay, so the emotion still shows while talking.
-3. **Winks:** spring-eased `ウィンク` and `ウィンク右`.
-4. **Blink:** combines with the mood's own `まばたき` as
+4. **Winks:** spring-eased `ウィンク` and `ウィンク右`, raised, never lowered,
+   so a held pose's wink stays.
+5. **Blink:** combines with the mood's own `まばたき` as
    `1 − (1 − mood) · (1 − blink · (1 − closure))`. The closure is the
    strongest eye-closing morph already on the face (`笑い`, `ウィンク`,
    `ウィンク右`; the table is `EYE_CLOSURE` in
    [facial-layers.js](../renderer/facial-layers.js)). A closed-eye smile or
    a wink therefore does not blink on top of itself, and a partial closure blinks
    only the rest of the way.
-5. **Audition:** manual sliders add on top for previews.
+6. **Audition:** manual sliders add on top for previews.
+7. **Last pass (#49):** `clampMorphs()` keeps every morph within 0 to 1 (the
+   teeth `齿上`/`齿下` within −1 to 1), then `capEyeClosure()` keeps each eye's
+   closers (`笑い`, `まばたき` and that eye's winks) at or under 1 together,
+   with one shared factor when both eyes are over.
 
 Bones do not share writers: the thinking pose owns the arms and fingers, gaze
 owns `左目`, `右目`, `首` and `頭`, and sway owns `上半身`, `上半身2` and
 `グルーブ`. While the chin rests on the hand, the head and neck follow gaze at
 `THINKING_POSE.headGaze` (35 %) of their usual range. The eyes keep their full
-range.
+range. A held Blender pose (#49) runs after arm drift and before physics, and
+takes over only the bones its VPD names while it is shown.
 
 ## Checking it
 
@@ -135,5 +149,5 @@ scenarios at 60, 30 and 15 fps. It asserts:
 - **The partial closure model is linear.** How `笑い` and `まばたき` really
   combine depends on the model geometry. Check the overlap by eye if a smile
   looks over- or under-closed.
-- **Authored motion is out of scope.** VPD/VMD pose and motion blending
-  is tracked in #49 and #50.
+- **Timed VMD motion is not built yet.** Static VPD poses are held and
+  blended (#49, [Held poses](held-poses.md)); VMD motion is still to do in #49.

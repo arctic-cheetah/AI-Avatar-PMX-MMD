@@ -29,7 +29,9 @@ there, and nothing is held.
 Each pose also gets a tick under **Actions · 仕草** (`🎞️ wink-v-sign`). While
 she idles or sleeps, a ticked pose can be picked at random like any other
 action, with the chance of a share-1 action such as the glance. It plays for
-4 s, the same as its button. Pose ticks are on by default for new poses and
+4 s, the same as its button. An idle pick never replaces a pose you started,
+from its button or with `?pose=`; it only follows on from another idle pick
+(`idleMayPlay()`). Pose ticks are on by default for new poses and
 are saved per browser (`yidhari.poseActions`), apart from the built-in
 actions. `IdleMotion.setExternalActions()` registers them; IdleMotion only
 decides when, and main.js plays the pose through `HeldPose`.

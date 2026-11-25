@@ -94,3 +94,13 @@ test("only the teeth may go below 0, down to −1", () => {
   clampMorphs(mesh);
   assert.deepEqual(mesh.morphTargetInfluences, [-0.32, -1, 0]);
 });
+
+// Review on #263: with both eyes over budget, one pass per eye left them
+// uneven (笑い ⅓, ウィンク ½, ウィンク右 ⅔: the left eye summed 0.83).
+test("both eyes over budget are scaled together and both close exactly once", () => {
+  const mesh = face({ "笑い": 1, "ウィンク": 1, "ウィンク右": 1 });
+  capEyeClosure(mesh);
+  assert.ok(Math.abs(eyeSum(mesh, "left") - 1) < 1e-12);
+  assert.ok(Math.abs(eyeSum(mesh, "right") - 1) < 1e-12);
+  assert.ok(Math.abs(weight(mesh, "笑い") - 0.5) < 1e-12);
+});

@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { MMDParser } from "three/examples/jsm/libs/mmdparser.module.js";
-import { HeldPose, POSE_EASE_KEY, bindPoseEase, poseActionTicks, poseFileNames, readVpd, savePoseActionTick } from "../../renderer/held-pose.js";
+import { HeldPose, POSE_EASE_KEY, bindPoseEase, idleMayPlay, poseActionTicks, poseFileNames, readVpd, savePoseActionTick } from "../../renderer/held-pose.js";
 import { fixture } from "./arm-fixture.mjs";
 
 const VPD = [
@@ -385,4 +385,16 @@ test("a pose reads 歯/結 names back to the model's 齿/结, and sets a negativ
   mesh.morphTargetInfluences[7] = 0;
   held.applyMorphs();
   assert.ok(Math.abs(mesh.morphTargetInfluences[7] + 0.32) < 1e-9);
+});
+
+// Review on #263: an idle pick must not take over a pose the user started
+// (a button play or a ?pose= hold); it may follow on from an idle-started one.
+test("idle may play a pose only when no user-started pose is showing", () => {
+  assert.equal(idleMayPlay({ picked: null, playing: false }), false, "nothing picked");
+  assert.equal(idleMayPlay({ picked: "wink-clap", playing: false }), true, "nothing showing");
+  assert.equal(idleMayPlay({ picked: "wink-clap", playing: true, name: "wink-v-sign", startedBy: "user" }), false);
+  assert.equal(idleMayPlay({ picked: "wink-clap", playing: true, name: "wink-v-sign", startedBy: "url" }), false);
+  assert.equal(idleMayPlay({ picked: "wink-clap", playing: true, name: "wink-v-sign", startedBy: "idle" }), true);
+  assert.equal(idleMayPlay({ picked: "wink-clap", playing: true, name: "wink-clap", startedBy: "idle" }), false,
+    "already showing: a toggle would stop it");
 });

@@ -86,9 +86,18 @@ Blender.
   thinking pose together, and is saved per browser (`yidhari.poseEase`). A
   new time applies from the next transition. An idle pick of a pose lasts
   4 s plus two ease times.
-- **Morphs.** The pose's morph weights (for example `ウィンク右` in
-  `wink-v-sign`) are raised to `weight × pose weight` after the expression,
-  speech and blink layers. They never lower a morph another layer set higher.
+- **Morphs.** A pose owns each face panel it has morphs in (brow, eye or
+  mouth, from the PMX panel data): in that panel the mood's other morphs fade
+  out as the pose fades in, and the pose's own morphs blend to their values.
+  Panels the pose leaves alone stay the mood's, and the blink (`まばたき`) is
+  never taken over. This runs right after the mood and before speech, winks
+  and the blink, so lip sync still moves the mouth while she talks. Before
+  this, `wink-clap`'s smile lost its teeth: the mood's own smirk (`にやり２`
+  0.98) stayed on top of the pose's `え` 0.3 + `にやり` 0.8.
+- **Switching poses.** Choosing another pose while one is held crossfades
+  over the ease time: bones and face blend from what was shown to the new
+  pose. Bones only the old pose held ease back to their base. Before this,
+  `wink-clap` → `wink-v-sign` snapped.
 - **Every morph ≤ 1.** The last morph pass first runs `clampMorphs()` in
   `facial-layers.js`: every morph ends within 0 to 1, however many layers
   added to it (pose, mood, speech, audition sliders). Sums across different

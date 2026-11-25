@@ -40,10 +40,10 @@ def find_armature(context: bpy.types.Context) -> bpy.types.Object | None:
 
 
 def default_folder() -> str:
-    """`assets/private/poses/` next to the open .blend, if it can be found."""
+    """The repository's `assets/poses/` (tracked in git) above the open .blend, if it can be found."""
     blend = Path(bpy.data.filepath) if bpy.data.filepath else None
     for parent in (blend.parents if blend else []):
-        candidate = parent / "assets" / "private" / "poses"
+        candidate = parent / "assets" / "poses"
         if candidate.is_dir():
             return str(candidate) + "/"
     return str(blend.parent) + "/" if blend else ""

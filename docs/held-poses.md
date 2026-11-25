@@ -104,6 +104,12 @@ Blender.
   morphs are left alone, because most do not overlap: `上左` + `上右` lift
   different brows. Capping whole panels instead was measured and rejected:
   it would have changed 23 of the 50 tuned mood presets.
+- **Negative teeth.** The one exception: `齿上`/`齿下` (chǐ shàng / chǐ xià)
+  may go down to −1, the user's choice, because pulling the lower teeth back
+  (`齿下` −0.32 in `wink-clap`) shows them in a smile (`SIGNED_MORPHS`).
+- **Names.** The Blender add-on writes the simplified 齿/结 (Shift-JIS lacks
+  them) as the Japanese 歯/結. `HeldPose.load()` maps them back to the model's
+  bones and morphs (`modelName()`).
 - **Eye budget.** Then `capEyeClosure()` in
   `facial-layers.js`, keeps each eye's closing morphs at or under 1 in total
   (left: `笑い`, `まばたき`, `ウィンク`, `ウィンク２`; right: `笑い`, `まばたき`,

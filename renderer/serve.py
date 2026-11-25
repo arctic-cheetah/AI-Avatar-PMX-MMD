@@ -107,7 +107,7 @@ def main() -> None:
     parser.add_argument("--stt-threads", type=int, default=4)
     parser.add_argument("--stt-prompt", default=None,
                         help="Vocabulary hint for Whisper (default mentions Yidhari); \"\" disables it.")
-    parser.add_argument("--poses-dir", type=Path, default=ROOT / "assets" / "private" / "poses",
+    parser.add_argument("--poses-dir", type=Path, default=ROOT / "assets" / "poses",
                         help="Where uploaded Blender poses (VPD) are saved.")
     parser.add_argument("--no-bridge", action="store_true",
                         help="Print a ?bridge=off test-page URL that never connects to the bridge, "

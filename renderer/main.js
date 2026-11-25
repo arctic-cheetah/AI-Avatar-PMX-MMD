@@ -1771,7 +1771,7 @@ function bindGameShaders(target, data) {
  * @returns {void}
  */
 // Blender poses (#49): one play button per VPD. See docs/held-poses.md.
-const POSES_URL = "/assets/private/poses/";
+const POSES_URL = "/assets/poses/";
 const POSE_HOLD_SECONDS = 4;
 const heldPoseControls = document.querySelector("#held-pose-controls");
 const heldPoseStatus = document.querySelector("#held-pose-status");

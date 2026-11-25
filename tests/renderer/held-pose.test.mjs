@@ -288,3 +288,65 @@ test("by default the pose eases over 1 s and starts and lands gently", () => {
   held.update(0.1);
   assert.equal(held.weight, 1);
 });
+
+// Face panels (#49): the wink-clap smile lost its teeth because the mood's own
+// smirk (にやり２) stayed on top of the pose's え + にやり. A pose with morphs in
+// a panel (brow 1, eye 2, mouth 3) owns that panel while it is held; the
+// independent blink (まばたき) is left alone.
+function faceRig() {
+  const built = rig();
+  const names = ["え", "にやり", "にやり２", "ウィンク", "笑い", "まばたき", "困る"];
+  built.mesh.morphTargetDictionary = Object.fromEntries(names.map((n, i) => [n, i]));
+  built.mesh.morphTargetInfluences = names.map(() => 0);
+  const panels = { "え": 3, "にやり": 3, "にやり２": 3, "ウィンク": 2, "笑い": 2, "まばたき": 2, "困る": 1 };
+  const set = (weights) => names.forEach((n, i) => { built.mesh.morphTargetInfluences[i] = weights[n] ?? 0; });
+  const get = (n) => built.mesh.morphTargetInfluences[built.mesh.morphTargetDictionary[n]];
+  return { ...built, panels, set, get };
+}
+const SMILE = VPD.replace("Morph0{ウィンク右\r\n  1.000000;", "Morph0{え\r\n  0.300000;\t\t\t\t// weight\r\n}\r\n\r\nMorph1{にやり\r\n  0.800000;");
+
+test("a pose with mouth morphs owns the mouth: the mood's mouth fades out as it fades in", () => {
+  const { mesh, panels, set, get } = faceRig();
+  const held = new HeldPose(mesh, { easeSeconds: 1, morphPanels: panels });
+  held.load("smile", readVpd(SMILE));
+  held.hold(true);
+  held.update(0.5);
+  set({ "にやり２": 1, "笑い": 0.4, "困る": 0.5, "まばたき": 0.3 });
+  held.applyMorphs();
+  assert.ok(Math.abs(get("にやり２") - 0.5) < 1e-9, "halfway: the mood smirk is halved");
+  assert.ok(Math.abs(get("え") - 0.15) < 1e-9);
+  held.update(1);
+  set({ "にやり２": 1, "笑い": 0.4, "困る": 0.5, "まばたき": 0.3 });
+  held.applyMorphs();
+  assert.equal(get("にやり２"), 0, "held: only the pose's mouth");
+  assert.ok(Math.abs(get("え") - 0.3) < 1e-9);
+  assert.ok(Math.abs(get("にやり") - 0.8) < 1e-9);
+  assert.equal(get("笑い"), 0.4, "no eye morph in the pose: the eyes stay the mood's");
+  assert.equal(get("困る"), 0.5, "brows untouched");
+  assert.equal(get("まばたき"), 0.3, "the blink is independent");
+});
+
+// Switching poses (#49): wink-clap → wink-v-sign snapped, because loading the
+// new pose put the old bones back at once while the weight stayed at 1.
+test("switching poses while held crossfades from what was shown", () => {
+  const { mesh, get } = rig();
+  const arm = get("右腕");
+  const finger = get("右人指１");
+  const held = new HeldPose(mesh, { easeSeconds: 1 });
+  held.load("a", readVpd(VPD));
+  held.hold(true);
+  for (let i = 0; i < 60; i += 1) { held.update(1 / 30); held.apply(); }
+  const shownArm = arm.quaternion.clone();
+  const shownFinger = finger.quaternion.clone();
+  held.load("b", readVpd(BONES_ONLY.replace("Bone0{右腕", "Bone0{左腕")));
+  held.update(1 / 60);
+  held.apply();
+  assert.ok(close(arm.quaternion, shownArm, 1e-3), "右腕 (only in a) does not jump back");
+  assert.ok(close(finger.quaternion, shownFinger, 1e-3), "右人指１ (in both) does not jump");
+  for (let i = 0; i < 90; i += 1) { held.update(1 / 60); held.apply(); }
+  const bindQ = held.bind.get(arm).quaternion;
+  assert.ok(close(arm.quaternion, bindQ, 1e-9), "右腕 has eased back to where it was before");
+  const leftTarget = held.bind.get(get("左腕")).quaternion.clone()
+    .multiply(new THREE.Quaternion().fromArray(readVpd(VPD).bones[0].quaternion).normalize());
+  assert.ok(close(get("左腕").quaternion, leftTarget, 1e-9), "左腕 reached pose b");
+});

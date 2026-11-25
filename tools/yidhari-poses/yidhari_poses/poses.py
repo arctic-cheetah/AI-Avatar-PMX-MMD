@@ -18,7 +18,7 @@ from mathutils import Matrix, Quaternion, Vector
 
 from .vpd_lib import (
     VpdBone, VpdMorph, VpdPose, decode_morphs, encode_morphs, format_vpd, missing_names, parse_vpd,
-    arm_chain_fill, pose_name, split_unwritable,
+    arm_chain_fill, from_vpd_name, keep_morph, pose_name, split_unwritable,
 )
 
 POSE_PROP = "yidhari_pose"
@@ -100,15 +100,23 @@ def _set_morphs(arm: bpy.types.Object, weights: dict[str, float]) -> None:
         blocks = mesh.data.shape_keys.key_blocks
         for name, weight in weights.items():
             if name in blocks:
+                if weight < blocks[name].slider_min:
+                    blocks[name].slider_min = max(-10.0, weight)
                 blocks[name].value = weight
 
 
 def import_pose(arm: bpy.types.Object, path: str | Path, scale: float = IMPORT_SCALE) -> PoseImport:
     """Store a VPD file as a pose action. The current pose is not changed."""
     path = Path(path)
-    pose = parse_vpd(path.read_bytes())
     bones = mmd_bones(arm)
     morphs_here = morph_names(arm)
+    read = parse_vpd(path.read_bytes())
+    # Names written with Japanese forms (歯上) back to the model's own (齿上).
+    pose = VpdPose(
+        read.model,
+        tuple(VpdBone(from_vpd_name(b.name, set(bones)), b.location, b.rotation) for b in read.bones),
+        tuple(VpdMorph(from_vpd_name(m.name, morphs_here), m.weight) for m in read.morphs),
+    )
     missing_bones, missing_morphs = missing_names(pose, set(bones), morphs_here)
     converter = _bone_converter()
 
@@ -218,7 +226,7 @@ def capture_pose(arm: bpy.types.Object, selected_only: bool, scale: float = EXPO
     for mesh in morph_meshes(arm):
         keys = mesh.data.shape_keys
         for block in keys.key_blocks:
-            if block != keys.reference_key and block.value > 0 and block.name not in morphs:
+            if block != keys.reference_key and keep_morph(block.name, block.value) and block.name not in morphs:
                 morphs[block.name] = round(block.value, 6)
     return VpdPose(_model_name(arm), tuple(bones), tuple(VpdMorph(n, w) for n, w in morphs.items()))
 

@@ -128,18 +128,50 @@ def _writable(name: str) -> bool:
     return True
 
 
+# Simplified-Chinese characters in this model's names that Shift-JIS lacks,
+# and the Japanese forms written in their place (齿上 → 歯上, 右结1_2 → 右結1_2).
+SJIS_ALIASES = {"齿": "歯", "结": "結"}
+
+# Morphs that may go below 0 (the user, 25 Nov 2026): pulling the teeth back
+# shows them in a smile. Every other morph stays within 0 to 1.
+SIGNED_MORPHS = frozenset({"齿上", "齿下"})
+
+
+def to_vpd_name(name: str) -> str:
+    """The name to write: Japanese forms for characters Shift-JIS lacks."""
+    if _writable(name):
+        return name
+    return "".join(SJIS_ALIASES.get(ch, ch) for ch in name)
+
+
+def from_vpd_name(name: str, model: set[str]) -> str:
+    """The model's own name for a name read from a VPD (歯下 → 齿下 when the model has 齿下)."""
+    if name in model:
+        return name
+    for simplified, japanese in SJIS_ALIASES.items():
+        candidate = name.replace(japanese, simplified)
+        if candidate in model:
+            return candidate
+    return name
+
+
+def keep_morph(name: str, value: float) -> bool:
+    """Whether a morph's value is saved: above 0, or any non-zero value for the teeth."""
+    return value != 0 if name in SIGNED_MORPHS else value > 0
+
+
 def split_unwritable(pose: VpdPose) -> tuple[VpdPose, list[str]]:
-    """Set aside bones and morphs whose names Shift-JIS cannot hold.
+    """Write names Shift-JIS cannot hold with SJIS_ALIASES; set aside the rest.
 
     PMX names are UTF-16, so a model can use characters VPD cannot store,
-    such as the simplified 齿 in 齿上. Returns the writable pose and the
-    names left out, in file order.
+    such as the simplified 齿 in 齿上, which is written as 歯上. Returns the
+    writable pose and the names still left out, in file order.
     """
-    bones = tuple(b for b in pose.bones if _writable(b.name))
-    morphs = tuple(m for m in pose.morphs if _writable(m.name))
-    skipped = [b.name for b in pose.bones if not _writable(b.name)]
-    skipped += [m.name for m in pose.morphs if not _writable(m.name)]
-    return VpdPose(pose.model, bones, morphs), skipped
+    bones = [VpdBone(to_vpd_name(b.name), b.location, b.rotation) for b in pose.bones]
+    morphs = [VpdMorph(to_vpd_name(m.name), m.weight) for m in pose.morphs]
+    skipped = [b.name for b in bones if not _writable(b.name)] + [m.name for m in morphs if not _writable(m.name)]
+    return VpdPose(pose.model, tuple(b for b in bones if _writable(b.name)),
+                   tuple(m for m in morphs if _writable(m.name))), skipped
 
 
 def _num(value: float) -> str:

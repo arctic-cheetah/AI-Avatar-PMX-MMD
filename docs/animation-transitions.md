@@ -43,6 +43,7 @@ units of 1/s (so a time constant τ is `1 / rate`).
 | Sleepy blink (#71) | Authored ramps, ×2.5 slower | 175 ms close, 125 ms hold, 275 ms open, twice as far apart | — |
 | Sleepy eyelids (#71) | Critically damped spring, the preset's own `ease` | 3 | 1.6 s |
 | Yawn (#71) | Authored curve (1.4 s open, 0.6 s hold, 1.0 s close), then spring | 8 | about 3 s |
+| Yawn hand (#270) | Authored curve (0.9 s up, held to 2.0 s, 1.0 s down), then spring | 8 | about 3 s |
 | Wake-up moods (#71) | Mood springs above | Same as mood morphs | 0.34 s per step |
 | Idle tilt, sigh, stretch (#71) | Authored curve, then critically damped spring | 8 | 0.6 s |
 | Idle glance (#71) | Gaze spring above | 15 | 0.32 s |

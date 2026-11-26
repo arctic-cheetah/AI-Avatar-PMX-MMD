@@ -25,8 +25,8 @@ in `say` and `report` narration, or plays one without speech with
 - **One per fragment.** A second action tag before the same words is dropped.
   An action tag with no words after it is dropped too, because no clip would
   start it.
-- **At most three per reply** (`MAX_ACTIONS` in `controller/actions.py`), so
-  she does not flail. Later tags are dropped.
+- **At most eight per reply** (`MAX_ACTIONS` in `controller/actions.py`; the
+  user raised it from three on 27 Nov 2026), so she does not flail. Later tags are dropped.
 - **Never spoken.** Every `[@…]` tag is removed from the speech text, valid or
   not. Unknown names and actions that are not speech-safe are dropped with a
   warning in the bridge log.

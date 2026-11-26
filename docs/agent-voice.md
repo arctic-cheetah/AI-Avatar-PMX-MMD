@@ -212,7 +212,7 @@ Options for `mcp_server.py`: `--name` is the label on her chat bubbles (default
 
 `say`, `report` narration and `ask` questions also take inline action tags:
 `[@tilt-left]` for a built-in action and `[@pose:elated-fist]` for a Blender
-pose. Each one starts with the words after it, at most three per reply, and
+pose. Each one starts with the words after it, at most eight per reply, and
 only speech-safe actions play while she speaks. The `play_action` description
 lists every action and pose with its description. See
 [Animation actions while speaking](./speech-actions.md).

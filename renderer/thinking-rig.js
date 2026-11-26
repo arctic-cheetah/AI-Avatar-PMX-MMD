@@ -32,7 +32,15 @@ function pointBone(bone, endpoint, target) {
   bone.updateWorldMatrix(false, true);
 }
 
-function poseArm(mesh, side, target, bendHint) {
+/**
+ * Point one arm's upper arm and forearm so its wrist reaches a world target.
+ * @param {THREE.Object3D} mesh
+ * @param {"右"|"左"} side
+ * @param {THREE.Vector3} target World wrist target.
+ * @param {THREE.Vector3} bendHint Which way the elbow bends.
+ * @returns {{ elbow: THREE.Bone, wrist: THREE.Bone } | null} null when a bone is missing.
+ */
+export function poseArm(mesh, side, target, bendHint) {
   const get = (suffix) => mesh.skeleton.getBoneByName(side + suffix);
   const arm = get("腕"), elbow = get("ひじ"), wrist = get("手首");
   if (!arm || !elbow || !wrist) return null;
@@ -91,7 +99,12 @@ export function curlFingers(mesh, side, palmWorld, angleFor) {
 /** The thumb curls this much of the other fingers' angle. */
 export const THUMB_CURL = 0.45;
 
-function poseHand(mesh, side, forward, normal, curlAmount) {
+/**
+ * Turn one hand so its fingers point along `forward` with the palm facing
+ * `normal` (world space), then curl the fingers by `curlAmount` radians.
+ * @returns {void}
+ */
+export function poseHand(mesh, side, forward, normal, curlAmount) {
   const wrist = mesh.skeleton.getBoneByName(`${side}手首`);
   const frame = handFrame(mesh, side);
   if (!frame) return;
@@ -134,6 +147,18 @@ export const THINKING_ARM = Object.freeze({
   fistPalm: Object.freeze([0, -0.766, -0.643]),
 });
 
+/** Both arms' bones a cached arm pose rewrites: arm, elbow, wrist and finger joints. */
+const ARM_POSE_BONE = /^(?:右|左)(?:腕$|ひじ$|手首$|(?:親指|人指|中指|薬指|小指)[０１２３]$)/;
+
+/**
+ * The bones a cached arm pose owns, in skeleton order, so two poses line up bone by bone.
+ * @param {THREE.Object3D} mesh
+ * @returns {THREE.Bone[]}
+ */
+export function armPoseBones(mesh) {
+  return (mesh.skeleton?.bones ?? []).filter((bone) => ARM_POSE_BONE.test(bone.name));
+}
+
 /**
  * Build a chin-rest pose, retaining exact rest rotations for release.
  * @param {THREE.Object3D} mesh
@@ -143,8 +168,7 @@ export function buildThinkingRig(mesh, arm = {}) {
   const { chin, elbowBend, support, supportBend, fist, fistPalm } = { ...THINKING_ARM, ...arm };
   const head = mesh.skeleton?.getBoneByName("頭");
   if (!head) return [];
-  const entries = mesh.skeleton.bones.filter((bone) => /^(?:右|左)(?:腕$|ひじ$|手首$|(?:親指|人指|中指|薬指|小指)[０１２３]$)/.test(bone.name))
-    .map((bone) => ({ bone, rest: bone.quaternion.clone(), posed: bone.quaternion.clone() }));
+  const entries = armPoseBones(mesh).map((bone) => ({ bone, rest: bone.quaternion.clone(), posed: bone.quaternion.clone() }));
   try {
     mesh.updateMatrixWorld(true);
     // Leave space in front of the jaw and outfit for the curled fingers and gloves.

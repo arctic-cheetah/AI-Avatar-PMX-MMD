@@ -41,6 +41,7 @@ import { FillerSession } from "./filler-session.js";
 import { HeldPose, bindPoseEase, idleMayPlay, poseActionTicks, poseFileNames, readVpd, savePoseActionTick } from "./held-pose.js";
 import { ThinkingPose, THINKING_POSE, headGazeScale } from "./thinking-pose.js";
 import { buildThinkingRig } from "./thinking-rig.js";
+import { armLayerWeights, blendArmLayers, buildYawnRig } from "./yawn-rig.js";
 import { handAngles, thinkingFidgetAngles } from "./thinking-fidget.js";
 import { REST_POSES, bindRestPoseSetting, relaxArms } from "./rest-pose.js";
 import { buildHandDriftRig } from "./hand-drift-rig.js";
@@ -266,6 +267,12 @@ const thinkingPose = new ThinkingPose();
 let thinkingBones = [];
 /** Arm-target overrides from the preview hook (#217); empty uses THINKING_ARM. */
 let thinkingArm = {};
+/** The hand under her chin while she yawns (#270): same bones as thinkingBones. */
+let yawnBones = [];
+/** Yawn arm overrides from the preview hook (#270); empty uses YAWN_ARM. */
+let yawnArm = {};
+/** How the thinking pose, the yawn hand and the arm drift share the arms this frame. */
+let armWeights = armLayerWeights(0, 0);
 /** Fidget size overrides from the preview hook (#218); a `clock` holds one moment. */
 let thinkingFidget = {};
 /** @type {{ bone: THREE.Bone, rest: THREE.Quaternion }[]} */
@@ -526,7 +533,7 @@ function applyGaze(delta) {
   if (!gazeBones.length) return;
   const angles = gaze.update(delta);
   // The chin-rest hand is solved against the resting head, so the head follows less while it is up.
-  const headScale = headGazeScale(thinkingPose.weight);
+  const headScale = headGazeScale(armWeights.headGaze);
   for (const { name, bone, rest } of gazeBones) {
     const isEye = name === "左目" || name === "右目";
     const yaw = isEye ? angles.eyeYaw : angles.headYaw * headScale;
@@ -538,18 +545,18 @@ function applyGaze(delta) {
   }
 }
 
-/** Cache the lowered-arm rest pose and a supported chin-rest pose. */
-function setupThinkingPose(object, arm = thinkingArm) {
+/** Cache the lowered-arm rest pose, a supported chin-rest pose and the yawn hand (#270). */
+function setupThinkingPose(object, arm = thinkingArm, yawn = yawnArm) {
   thinkingArm = arm;
+  yawnArm = yawn;
   thinkingBones = buildThinkingRig(object, arm);
+  yawnBones = buildYawnRig(object, yawn);
 }
 
-/** Blend the hand-to-chin gesture over the lowered-arm rest pose. */
+/** Blend the hand-to-chin gesture, then the yawn's hand, over the lowered-arm rest pose. */
 function applyThinkingPose(delta) {
-  const weight = thinkingPose.update(delta);
-  for (const { bone, rest, posed } of thinkingBones) {
-    bone.quaternion.copy(rest).slerp(posed, weight);
-  }
+  armWeights = armLayerWeights(thinkingPose.update(delta), idlePose.yawnHand);
+  blendArmLayers(thinkingBones, yawnBones, armWeights);
 }
 
 /**
@@ -613,16 +620,16 @@ function setupArmDrift(object) {
 }
 
 /**
- * Multiply the arm drift (#193) on top of the thinking pose, which owns the
- * arms: the drift fades as the hand goes to the chin and returns as it drops.
+ * Multiply the arm drift (#193) on top of the thinking pose and the yawn hand,
+ * which own the arms: the drift fades as a hand rises and returns as it drops.
  * Below the elbows the thinking fidget (#218) takes over as the drift fades.
  * @returns {void}
  */
 function applyArmDrift() {
-  const fade = 1 - thinkingPose.weight;
+  const fade = armWeights.drift;
   const { clock, ...sizes } = thinkingFidget;
   const fidget = clock === undefined ? thinkingPose.fidget(sizes) : thinkingFidgetAngles(clock, thinkingPose.weight, sizes);
-  const hands = handAngles(idlePose, fidget, thinkingPose.weight);
+  const hands = handAngles(idlePose, fidget, 1 - fade);
   const sum = (parts = []) => fade * parts.reduce((total, [key, sign]) => total + (idlePose[key] ?? 0) * sign, 0);
   for (const { bone, rest, frame, x, y, z } of armBones) {
     if (rest) bone.quaternion.copy(rest);
@@ -1226,7 +1233,7 @@ function updateIdle(delta) {
   refreshActionPlay();
   // A held pose lets previews and comparison grids show one motion on demand.
   idlePose = globalThis.__yidhariIdlePose
-    ? { glance: null, tilt: 0, chest: 0, shoulders: 0, shoulderLeft: 0, shoulderRight: 0, back: 0, headPitch: 0, yawn: 0, squint: 0, winkLeft: 0, winkRight: 0, mouthLift: 0, surprise: 0,
+    ? { glance: null, tilt: 0, chest: 0, shoulders: 0, shoulderLeft: 0, shoulderRight: 0, back: 0, headPitch: 0, yawn: 0, yawnHand: 0, squint: 0, winkLeft: 0, winkRight: 0, mouthLift: 0, surprise: 0,
       shiver: 0, shiverWave: 0, smile: 0, browRaise: 0, hum: 0, bobPitch: 0, bobRoll: 0, lean: 0, shy: 0, exhale: 0,
       armDrift: 0, ...Object.fromEntries(ARM_CHANNELS.map((key) => [key, 0])),
       ...globalThis.__yidhariIdlePose }
@@ -2021,6 +2028,16 @@ function onModelLoaded(loaded, data) {
       // Rebuild from the rest pose, not from the currently blended thinking pose.
       for (const { bone, rest } of thinkingBones) bone.quaternion.copy(rest);
       setupThinkingPose(mesh, arm);
+    },
+    /**
+     * Rebuild the yawn hand with other arm targets for comparison grids (#270).
+     * @param {Partial<typeof import("./yawn-rig.js").YAWN_ARM>} [arm] No argument restores the defaults.
+     * @returns {void}
+     */
+    yawnArm(arm = {}) {
+      if (!mesh) return;
+      for (const { bone, rest } of thinkingBones) bone.quaternion.copy(rest);
+      setupThinkingPose(mesh, thinkingArm, arm);
     },
     /**
      * Override the thinking fidget's sizes for comparison grids (#218).

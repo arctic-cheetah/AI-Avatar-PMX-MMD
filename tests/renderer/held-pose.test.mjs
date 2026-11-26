@@ -326,6 +326,29 @@ test("a pose with mouth morphs owns the mouth: the mood's mouth fades out as it 
   assert.equal(get("まばたき"), 0.3, "the blink is independent");
 });
 
+// Speech actions (#269): a pose played while she speaks keeps its bones, eyes
+// and brows, but leaves the mouth to the mood and lip sync.
+test("quietMouth leaves the mouth panel alone while the rest of the face follows the pose", () => {
+  const { mesh, panels, set, get } = faceRig();
+  const held = new HeldPose(mesh, { easeSeconds: 1, morphPanels: panels });
+  held.load("smile-wink", readVpd(`${SMILE}Morph2{ウィンク\r\n  1.000000;\t\t\t\t// weight\r\n}\r\n`));
+  held.quietMouth = true;
+  held.hold(true);
+  held.update(1);
+  set({ "にやり２": 1, "笑い": 0.4 });
+  held.applyMorphs();
+  assert.equal(get("にやり２"), 1, "the mood's mouth stays");
+  assert.equal(get("え"), 0, "the pose's mouth is not applied");
+  assert.equal(get("にやり"), 0);
+  assert.equal(get("ウィンク"), 1, "the pose's eyes still apply");
+  assert.equal(get("笑い"), 0, "and own the eye panel");
+  held.quietMouth = false;
+  set({ "にやり２": 1, "笑い": 0.4 });
+  held.applyMorphs();
+  assert.equal(get("にやり２"), 0, "after speech the pose owns the mouth again");
+  assert.ok(Math.abs(get("え") - 0.3) < 1e-9);
+});
+
 // Switching poses (#49): wink-clap → wink-v-sign snapped, because loading the
 // new pose put the old bones back at once while the weight stayed at 1.
 test("switching poses while held crossfades from what was shown", () => {

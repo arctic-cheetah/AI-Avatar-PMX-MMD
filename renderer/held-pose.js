@@ -229,7 +229,18 @@ export class HeldPose {
     return this.morphPanels[name] === 3;
   }
 
-  /** @returns {Set<number>} Morph indices of the mouth panel, cached. */
+  /** @template T @param {T[]} list @param {(item: T) => boolean} keep @returns {T[]} `list` without mouth morphs, memoised per list. */
+  #withoutMouth(list, keep) {
+    this.quietLists ??= new WeakMap();
+    let kept = this.quietLists.get(list);
+    if (!kept) {
+      kept = list.filter(keep);
+      this.quietLists.set(list, kept);
+    }
+    return kept;
+  }
+
+  /** @returns {Set<number>} Morph indices of the mouth panel, cached; HeldPose is rebuilt with each mesh, so it never goes stale. */
   #mouthIndices() {
     if (!this.mouthIndexCache) {
       const dictionary = this.mesh.morphTargetDictionary ?? {};
@@ -408,8 +419,9 @@ export class HeldPose {
   /** Apply one pose's face to `influences` at `weight`. */
   #face(influences, allMorphs, allOwned, weight) {
     if (weight === 0) return;
-    const morphs = this.quietMouth ? allMorphs.filter(({ name }) => this.#mouth(name) === false) : allMorphs;
-    const owned = this.quietMouth ? allOwned.filter((index) => !this.#mouthIndices().has(index)) : allOwned;
+    // Filtered once per list, not per frame (review of #271).
+    const morphs = this.quietMouth ? this.#withoutMouth(allMorphs, ({ name }) => !this.#mouth(name)) : allMorphs;
+    const owned = this.quietMouth ? this.#withoutMouth(allOwned, (index) => !this.#mouthIndices().has(index)) : allOwned;
     if (owned.length === 0) {
       for (const { index, weight: target } of morphs) influences[index] = Math.max(influences[index], target * weight);
       return;

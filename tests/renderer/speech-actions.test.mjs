@@ -56,7 +56,7 @@ test("speak clips accept only speech-safe catalog actions", () => {
 test("a mid-sentence action waits for its word, estimated from the clip length (Medium 2)", () => {
   assert.equal(actionDelay("I think maybe tomorrow.", 0, 2), 0);
   assert.equal(actionDelay("I think maybe tomorrow.", 2, 2), 1, "word 2 of 4 starts halfway");
-  assert.equal(actionDelay("Well — I think so.", 1, 3), 1, "a lone dash is not a word");
+  assert.equal(actionDelay("Well — I think so.", 1, 4), 1, "a lone dash is not a word: word 1 of 4");
   assert.equal(actionDelay("Hi.", 5, 1), 0, "past the end plays at the start");
   assert.equal(actionDelay("Hi there.", -1, 1), 0);
   assert.equal(actionDelay("Hi there.", 1, Number.NaN), 0);

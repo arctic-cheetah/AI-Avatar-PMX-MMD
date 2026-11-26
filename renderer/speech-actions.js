@@ -22,18 +22,46 @@ const POSE_NAME = /^[\p{L}\p{N}_][\p{L}\p{N}_-]{0,63}$/u;
 /**
  * @param {unknown} ref An action reference from the bridge.
  * @param {Record<string, ActionEntry>} [actions]
+ * @param {{ speaking?: boolean }} [options] speaking: a speak clip's action, which must be speech-safe.
  * @returns {{ layer: "body" | "tentacle" | "pose", name: string, ref: string } | null}
  */
-export function parseActionRef(ref, actions = ACTION_CATALOG) {
+export function parseActionRef(ref, actions = ACTION_CATALOG, { speaking = false } = {}) {
   if (typeof ref !== "string" || ref.length > 300) return null;
   if (ref.startsWith(POSE_PREFIX)) {
     const name = ref.slice(POSE_PREFIX.length).normalize("NFC");
-    return POSE_NAME.test(name) ? { layer: "pose", name, ref: POSE_PREFIX + name } : null;
+    // NFKC-stable, like the bridge (review of #271): no full-width or compatibility look-alikes.
+    return POSE_NAME.test(name) && name.normalize("NFKC") === name ? { layer: "pose", name, ref: POSE_PREFIX + name } : null;
   }
   if (!Object.hasOwn(actions, ref)) return null;
   const entry = actions[ref];
+  if (speaking && !entry.speech) return null;
   if (entry.layer === "tentacle") return { layer: "tentacle", name: entry.target, ref };
   return { layer: "body", name: ref, ref };
+}
+
+/**
+ * Seconds into a clip at which a mid-sentence action's word starts (review of
+ * #271). The visemes carry no word timings, so the clip is spread evenly over
+ * its spoken words (any word with a letter or digit, as the bridge counts them).
+ * @param {string} text The clip's text.
+ * @param {unknown} word Spoken-word index from the bridge; 0 is the clip's start.
+ * @param {number} duration Clip length in seconds.
+ * @returns {number} Seconds to wait; 0 for the start or anything unreadable.
+ */
+export function actionDelay(text, word, duration) {
+  if (!Number.isInteger(word) || word <= 0 || !Number.isFinite(duration) || duration <= 0) return 0;
+  const words = String(text).split(/\s+/).filter((part) => /[\p{L}\p{N}]/u.test(part)).length;
+  return word < words ? (duration * word) / words : 0;
+}
+
+/**
+ * A spoken-word index from the bridge or a manifest: a whole number up to
+ * 1000, else 0 (the clip's start).
+ * @param {unknown} value
+ * @returns {number}
+ */
+export function actionWordOf(value) {
+  return Number.isInteger(value) && value > 0 && value <= 1000 ? value : 0;
 }
 
 /**

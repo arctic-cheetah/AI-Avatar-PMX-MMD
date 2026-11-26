@@ -69,7 +69,7 @@ import { fetchTurn, turnFile } from "./turn-replay.js";
 import { createAmmoLoader } from "./ammo-loader.js";
 import { filterPhysics } from "./physics-groups.js";
 import { PhysicsLayer } from "./physics-layer.js";
-import { ACTION_CATALOG, bindSpeechActionsSetting, parseActionRef, poseSpeechSettings, speechActionBlocked, speechMayPlayPose } from "./speech-actions.js";
+import { ACTION_CATALOG, actionDelay, bindSpeechActionsSetting, parseActionRef, poseSpeechSettings, speechActionBlocked, speechMayPlayPose } from "./speech-actions.js";
 import { TENTACLE_ACTIONS, TENTACLE_WAVE_KEY, TentacleWave, bindTentacleHeight, bindTentacleSize, tailChains, tentacleBlocks } from "./tentacle-motion.js";
 import { bindStoredToggle } from "./stored-toggle.js";
 import {
@@ -239,6 +239,8 @@ let speechClip = null;
 const speechQueue = [];
 /** Bumped on every new response or stop, so stale clip loads are discarded. */
 let liveRun = 0;
+/** Counts clips started, so a delayed action (#269) plays only during its own clip. */
+let clipSerial = 0;
 let speechTurn = 0;
 let playingReplay = false;
 let speechStarting = false;
@@ -424,16 +426,42 @@ async function poseSettingsFor(name) {
  * @returns {Promise<string>} What happened, for the status line.
  */
 async function playSpokenPose(name, source) {
-  if (!heldPoseButtons.has(name)) await refreshPoseList();
-  if (!heldPoseButtons.has(name)) return `${name}: no such pose in ${POSES_URL}`;
-  if (!speechMayPlayPose({ playing: heldPose.playing, startedBy: heldPoseSource })) return `${name}: kept the pose you started`;
+  if (!(await knownPose(name))) return `${name}: no such pose in ${POSES_URL}`;
+  const allowed = () => speechMayPlayPose({ playing: heldPose.playing, startedBy: heldPoseSource });
+  if (!allowed()) return `${name}: kept the pose you started`;
   const settings = await poseSettingsFor(name);
+  if (!speechIdle() && !settings.speech) return `${name}: not played while speaking (its settings)`;
+  if (heldPose.name !== name) {
+    // Loading swaps the pose: check again, since a button may have started one meanwhile.
+    if (!allowed()) return `${name}: kept the pose you started`;
+    if (!(await loadHeldPose(name))) return `${name}: could not load`;
+  }
+  // Check again right before playing (review of #271): the awaits above can let a button pose in.
+  if (!allowed()) return `${name}: kept the pose you started`;
   const speaking = !speechIdle();
   if (speaking && !settings.speech) return `${name}: not played while speaking (its settings)`;
-  if (heldPose.name !== name && !(await loadHeldPose(name))) return `${name}: could not load`;
   heldPose.play(speaking ? settings.speechHold : POSE_HOLD_SECONDS);
-  heldPoseSource = "speech";
+  heldPoseSource = source;
   return `🎞️ ${name}`;
+}
+
+/** One pose-list refresh at a time, and names still missing are not looked up again for 5 s (review of #271). */
+let poseRefresh = null;
+const missingPoses = new Map();
+const MISSING_POSE_SECONDS = 5;
+/** @param {string} name @returns {Promise<boolean>} Whether the page knows the pose, listing the folder again if needed. */
+async function knownPose(name) {
+  if (heldPoseButtons.has(name)) return true;
+  const missed = missingPoses.get(name);
+  if (missed !== undefined && performance.now() - missed < MISSING_POSE_SECONDS * 1000) return false;
+  poseRefresh ??= refreshPoseList().finally(() => { poseRefresh = null; });
+  await poseRefresh;
+  if (heldPoseButtons.has(name)) {
+    missingPoses.delete(name);
+    return true;
+  }
+  missingPoses.set(name, performance.now());
+  return false;
 }
 
 /**
@@ -460,7 +488,7 @@ async function playSpokenAction(ref, from) {
       note = label;
     } else note = `${label}: Tentacle wave is off`;
   } else note = await playSpokenPose(action.name, source);
-  speechActionNote = `Last gesture (${from === "speech" ? "speech" : from}): ${note}`;
+  speechActionNote = `Last gesture (${from}): ${note}`;
   shownActionPlay = null;
   refreshActionPlay();
 }
@@ -1623,7 +1651,7 @@ async function replayTurn(turn) {
       const clip = speech.load(turnFile(turn, `${item.id}.wav`), turnFile(turn, `${item.id}.visemes.json`));
       clip.catch(() => {}); // Reported when its turn comes.
       speechQueue.push({ clip, expression: item.expression, weight: item.weight, text: item.text, replay: true,
-        ...(item.action ? { action: item.action } : {}) });
+        ...(item.action ? { action: item.action, actionWord: item.actionWord } : {}) });
     }
     liveSpeech.clipQueued();
     liveSpeech.responseFinished();
@@ -1694,7 +1722,7 @@ function applyMood(name, weight) {
  * @param {{ id: string, expression: string, weight: number, text: string, turn?: string }} event Validated speak event.
  * @returns {void}
  */
-function enqueueSpeech({ id, expression, weight, text, action, turn: diskTurn }) {
+function enqueueSpeech({ id, expression, weight, text, action, actionWord, turn: diskTurn }) {
   const kept = dropQueuedReplay(speechQueue);
   speechQueue.length = 0;
   speechQueue.push(...kept);
@@ -1711,7 +1739,7 @@ function enqueueSpeech({ id, expression, weight, text, action, turn: diskTurn })
     ? speech.load(turnFile(diskTurn, `${id}.wav`), turnFile(diskTurn, `${id}.visemes.json`))
     : speech.load(`${LIVE_CLIP_DIR}${id}.wav`, `${LIVE_CLIP_DIR}${id}.visemes.json`);
   clip.catch(() => {}); // Reported when its turn comes.
-  speechQueue.push({ clip, expression, weight, text, turn: speechTurn, ...(action ? { action } : {}) });
+  speechQueue.push({ clip, expression, weight, text, turn: speechTurn, ...(action ? { action, actionWord } : {}) });
   if (interruptReplay) speech.stop();
   if (interruptReplay || (!speech.playing && !speechStarting)) playNextSpeech();
   syncReplayControls();
@@ -1741,8 +1769,19 @@ async function playNextSpeech() {
         continue;
       }
       if (!started) continue;
-      // #269: the clip's action starts with its words, on replays too.
-      if (next.action) playSpokenAction(next.action, "speech");
+      // #269: the clip's action starts with its word, on replays too. A
+      // mid-sentence word waits (review of #271), unless the clip ends first.
+      clipSerial += 1;
+      if (next.action) {
+        const delay = actionDelay(next.text, next.actionWord, clip.buffer.duration);
+        if (delay === 0) playSpokenAction(next.action, "speech");
+        else {
+          const serial = clipSerial;
+          setTimeout(() => {
+            if (serial === clipSerial && speech.playing) playSpokenAction(next.action, "speech");
+          }, delay * 1000);
+        }
+      }
       if (!next.filler && !next.replay) lastSpeech.remember({ ...next, clip, turn: next.turn });
       playingReplay = Boolean(next.replay);
       speechButton.textContent = "■ Stop";
@@ -2548,7 +2587,7 @@ function animate() {
   mesh?.morphTargetInfluences?.fill(0);
   expressions?.update(delta);
   // A held pose owns the face panels it sets, over the mood but under speech, winks and the blink (#49).
-  if (heldPose) heldPose.quietMouth = heldPoseSource === "speech" && !speechIdle();
+  if (heldPose) heldPose.quietMouth = spokenSource(heldPoseSource) && !speechIdle();
   heldPose?.applyMorphs();
   syncThinkingState();
   speech?.update(delta);

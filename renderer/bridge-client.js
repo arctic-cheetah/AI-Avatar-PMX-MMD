@@ -2,7 +2,7 @@
 import { VoiceInput, voiceSupported } from './voice-input.js';
 import { renderMarkdown, plainText } from './markdown.js';
 import { ChatHistory } from './chat-history.js';
-import { parseActionRef } from './speech-actions.js';
+import { ACTION_CATALOG, actionWordOf, parseActionRef } from './speech-actions.js';
 
 const CLIP_ID = /^[0-9a-f]{16}$/;
 const TURN_ID = /^[0-9a-f]{16}$/;
@@ -468,9 +468,11 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
               typeof event.weight !== 'number' || !Number.isFinite(event.weight) || typeof event.text !== 'string' ||
               (event.turn !== undefined && (typeof event.turn !== 'string' || !TURN_ID.test(event.turn)))) throw new Error('Invalid speak');
             // #269: an invalid action is dropped; the clip still plays.
-            const action = event.action === undefined ? null : parseActionRef(event.action);
+            // Only speech-safe actions ride on clips (the bridge checks too); a bad word index starts it with the clip.
+            const action = event.action === undefined ? null : parseActionRef(event.action, ACTION_CATALOG, { speaking: true });
+            const word = action ? actionWordOf(event.actionWord) : 0;
             onSpeak({ id: event.id, expression: event.expression, weight: Math.max(0, Math.min(1, event.weight)), text: event.text,
-              ...(action ? { action: action.ref } : {}), ...turnOf(event) });
+              ...(action ? { action: action.ref } : {}), ...(word ? { actionWord: word } : {}), ...turnOf(event) });
             if (event.turn) turnSpoke(event.turn);
             break;
           case 'turn':

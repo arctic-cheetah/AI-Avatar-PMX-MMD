@@ -135,6 +135,13 @@ class TagTests(unittest.TestCase):
         self.assertEqual([e for e in events if e["type"] == "action"], [])
         self.assertEqual(spoken(events), "A  B  C  D  E  F")
 
+    def test_a_reply_keeps_up_to_eight_actions(self):
+        # The user asked for up to 8 action tags per reply (27 Nov 2026).
+        tags = " ".join(f"[@tilt-left] Line {n}." for n in range(9))
+        with self.assertLogs("controller.bridge", "WARNING"):
+            events = parse([tags])
+        self.assertEqual(len([e for e in events if e["type"] == "action"]), 8)
+
     def test_actions_per_reply_are_capped(self):
         tags = " ".join(f"[@tilt-left] Line {n}." for n in range(MAX_ACTIONS + 3))
         events = parse([tags])

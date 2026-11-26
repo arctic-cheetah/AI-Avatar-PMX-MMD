@@ -300,6 +300,53 @@ test("no yawn while active or waking, and a block mid-yawn closes the mouth smoo
   assert.ok(back.at(-1).yawn < 0.01);
 });
 
+// ---- the hand under her chin while she yawns (#270) ----
+
+test("her hand rises under her chin as the yawn opens and is down again by the end of the stretch", () => {
+  const motion = new IdleMotion({ random: seeded() });
+  const poses = play(motion, "stretching", IDLE_TIMING.stretch);
+  const hand = poses.map((p) => p.yawnHand);
+  const yawn = poses.map((p) => p.yawn);
+  assert.ok(hand[0] < 0.01, "starts at rest");
+  const handPeak = hand.indexOf(Math.max(...hand));
+  assert.ok(hand[handPeak] > 0.9, `reaches the chin (${hand[handPeak].toFixed(2)})`);
+  const up = (values) => values.findIndex((value) => value > 0.9);
+  assert.ok(up(hand) < up(yawn), "the hand is up before her mouth is wide open");
+  const { open, hold } = IDLE_MOTION.yawn;
+  assert.ok(hand[Math.round((open + hold) * 60) - 1] > 0.9, "held while the mouth holds open");
+  for (let i = 1; i < hand.length; i += 1) assert.ok(Math.abs(hand[i] - hand[i - 1]) < 0.03, `smooth at frame ${i}`);
+  assert.ok(play(motion, "sleepy", 1.5).at(-1).yawnHand < 0.01, "lowered again once she is sleepy");
+  assert.ok(hand.every((value) => value >= 0 && value <= 1), "a 0-1 weight");
+});
+
+test("the stretch-and-yawn action raises her hand too, awake and asleep", () => {
+  for (const { kind, poses } of [awake("stretch-yawn"), asleep("stretch-yawn")]) {
+    assert.equal(kind, "stretch-yawn");
+    assert.ok(peak(poses, "yawnHand") > 0.9, "hand under her chin");
+    assert.ok(poses.at(-1).yawnHand < 0.01, "and back down");
+  }
+});
+
+test("only the yawn raises her hand: the sneeze's open mouth and other actions leave it down", () => {
+  for (const name of NAMES.filter((action) => action !== "stretch-yawn")) {
+    assert.equal(peak(awake(name).poses, "yawnHand"), 0, name);
+  }
+  assert.ok(peak(awake("sneeze").poses, "yawn") > 0.1, "the sneeze still opens her mouth");
+});
+
+test("no raised hand while active or waking, and a block mid-yawn lowers it smoothly", () => {
+  for (const state of ["active", "waking"]) {
+    const motion = new IdleMotion({ random: seeded() });
+    assert.ok(play(motion, state, 30, { fps: 10 }).every((p) => p.yawnHand === 0), state);
+  }
+  const motion = new IdleMotion({ random: seeded() });
+  play(motion, "stretching", 1.6);
+  const back = play(motion, "active", 1.5);
+  assert.ok(back[0].yawnHand > 0.5, "eases, not snaps");
+  for (let i = 1; i < back.length; i += 1) assert.ok(back[i].yawnHand <= back[i - 1].yawnHand + 1e-12, "only goes down");
+  assert.equal(back.at(-1).yawnHand, 0, "settles exactly at rest");
+});
+
 // ---- asleep ----
 
 test("an action plays on every interval while sleepy, then she settles", () => {

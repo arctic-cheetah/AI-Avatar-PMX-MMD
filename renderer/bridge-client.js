@@ -2,6 +2,7 @@
 import { VoiceInput, voiceSupported } from './voice-input.js';
 import { renderMarkdown, plainText } from './markdown.js';
 import { ChatHistory } from './chat-history.js';
+import { parseActionRef } from './speech-actions.js';
 
 const CLIP_ID = /^[0-9a-f]{16}$/;
 const TURN_ID = /^[0-9a-f]{16}$/;
@@ -60,7 +61,8 @@ export function greetFrame({ text, mood, weight }) {
  * Validate a coding agent's event (#27): a say line or a full report for the chat log, or a rest mood.
  * @returns {{ kind: 'say', source: string, text: string } |
  *   { kind: 'report', source: string, status: string, text: string } |
- *   { kind: 'mood', source: string, name: string, weight: number }}
+ *   { kind: 'mood', source: string, name: string, weight: number } |
+ *   { kind: 'action', source: string, name: string }}
  */
 export function agentEvent(event, catalog) {
   if (typeof event.source !== 'string') throw new Error('Invalid agent source');
@@ -85,6 +87,12 @@ export function agentEvent(event, catalog) {
     }
     return { kind: 'mood', source, name: event.name, weight: Math.max(0, Math.min(1, event.weight)) };
   }
+  if (event.kind === 'action') {
+    // play_action (#269): a catalog action or pose:<name>, never a path.
+    const action = parseActionRef(event.name);
+    if (!action) throw new Error('Invalid agent action');
+    return { kind: 'action', source, name: action.ref };
+  }
   throw new Error('Unknown agent event');
 }
 
@@ -96,7 +104,7 @@ export function agentEvent(event, catalog) {
  * feed the idle timer (#71). With bridge false (#215) no WebSocket is opened
  * and the chat stays disabled; the restored log is still shown.
  */
-export function connectBridge({ catalog, onStart, onFinish, onExpression, onText, onSpeak, onFiller, onReset, onAgentSay, onAgentMood, onTurn, greeting = null, onGreeting,
+export function connectBridge({ catalog, onStart, onFinish, onExpression, onText, onSpeak, onFiller, onReset, onAgentSay, onAgentMood, onAction, onTurn, greeting = null, onGreeting,
   onActivity, onAskChange, onReplayTurn, history = new ChatHistory(), win = globalThis, bridge = true }) {
   const button = document.querySelector('#bridge-start');
   const status = document.querySelector('#bridge-status');
@@ -444,6 +452,12 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
               chatLog.scrollTop = chatLog.scrollHeight;
             }
             break;
+          case 'action': {
+            // Text-only bridge (#269): an action tag arrives as soon as it is parsed.
+            const action = parseActionRef(event.name);
+            if (!action) throw new Error('Invalid action');
+            onAction?.(action.ref, 'chat'); break;
+          }
           case 'filler':
             if (typeof event.id !== 'string' || !CLIP_ID.test(event.id) || !Object.hasOwn(catalog, event.expression) ||
               typeof event.weight !== 'number' || !Number.isFinite(event.weight)) throw new Error('Invalid filler');
@@ -453,7 +467,10 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
             if (typeof event.id !== 'string' || !CLIP_ID.test(event.id) || !Object.hasOwn(catalog, event.expression) ||
               typeof event.weight !== 'number' || !Number.isFinite(event.weight) || typeof event.text !== 'string' ||
               (event.turn !== undefined && (typeof event.turn !== 'string' || !TURN_ID.test(event.turn)))) throw new Error('Invalid speak');
-            onSpeak({ id: event.id, expression: event.expression, weight: Math.max(0, Math.min(1, event.weight)), text: event.text, ...turnOf(event) });
+            // #269: an invalid action is dropped; the clip still plays.
+            const action = event.action === undefined ? null : parseActionRef(event.action);
+            onSpeak({ id: event.id, expression: event.expression, weight: Math.max(0, Math.min(1, event.weight)), text: event.text,
+              ...(action ? { action: action.ref } : {}), ...turnOf(event) });
             if (event.turn) turnSpoke(event.turn);
             break;
           case 'turn':
@@ -480,6 +497,8 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
                 setPendingAsk(null);
                 status.textContent = `${agent.source} stopped waiting for an answer`;
               }
+            } else if (agent.kind === 'action') {
+              onAction?.(agent.name, agent.source);
             } else {
               onAgentMood?.(agent.name, agent.weight);
             }

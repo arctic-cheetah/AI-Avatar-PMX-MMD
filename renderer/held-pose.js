@@ -169,6 +169,8 @@ export class HeldPose {
     this.name = null;
     this.holding = false;
     this.remaining = Infinity;
+    /** While she speaks (#269): leave the mouth panel to the mood and lip sync. */
+    this.quietMouth = false;
   }
 
   /**
@@ -220,6 +222,22 @@ export class HeldPose {
     this.morphs = morphs;
     this.owned = this.#ownedIndices(morphs);
     return { bones: targets.size, missing };
+  }
+
+  /** @param {string} name @returns {boolean} Whether a morph is in the mouth panel (3). */
+  #mouth(name) {
+    return this.morphPanels[name] === 3;
+  }
+
+  /** @returns {Set<number>} Morph indices of the mouth panel, cached. */
+  #mouthIndices() {
+    if (!this.mouthIndexCache) {
+      const dictionary = this.mesh.morphTargetDictionary ?? {};
+      this.mouthIndexCache = new Set(Object.keys(this.morphPanels)
+        .filter((name) => this.#mouth(name) && dictionary[name] !== undefined)
+        .map((name) => dictionary[name]));
+    }
+    return this.mouthIndexCache;
   }
 
   /** @param {{ name: string }[]} morphs @returns {number[]} Morphs in the panels these set, but the blink. */
@@ -388,8 +406,10 @@ export class HeldPose {
   }
 
   /** Apply one pose's face to `influences` at `weight`. */
-  #face(influences, morphs, owned, weight) {
+  #face(influences, allMorphs, allOwned, weight) {
     if (weight === 0) return;
+    const morphs = this.quietMouth ? allMorphs.filter(({ name }) => this.#mouth(name) === false) : allMorphs;
+    const owned = this.quietMouth ? allOwned.filter((index) => !this.#mouthIndices().has(index)) : allOwned;
     if (owned.length === 0) {
       for (const { index, weight: target } of morphs) influences[index] = Math.max(influences[index], target * weight);
       return;

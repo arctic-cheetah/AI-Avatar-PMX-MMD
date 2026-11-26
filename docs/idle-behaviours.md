@@ -126,8 +126,11 @@ her chin and lowers again as her mouth closes:
   rest's two-bone solver (`renderer/thinking-rig.js`) and caches it once.
   `YAWN_ARM` holds the wrist target, from the head bone. It sits lower than
   the thinking fist, so the hand stays under her chin with a little gap
-  instead of propping it. The fingers curl loosely, less than that fist. Her
-  right hand yawns by default, and the other arm stays where it is.
+  instead of propping it. The fingers stay open and straight (the user asked
+  to uncurl them), unlike that fist, and lie across her throat toward her
+  other side. Her right hand yawns by default, and the other arm stays where
+  it is. A first, higher pick covered her mouth before the stretch had tipped
+  her head back, so the target is lower.
 - **Sharing the arms:** the thinking pose wins. The yawn gets
   `yawnHand × (1 − thinking)`. The arm drift (#193) fades by both weights,
   so it never pushes a raised hand into her face. The head follows the gaze
@@ -136,7 +139,8 @@ her chin and lowers again as her mouth closes:
 - **Interruptions:** speech, thinking and an open `ask` end the yawn, and
   the spring lowers the hand smoothly. Idle behaviours off means no yawn and
   no hand.
-- **Grids:** the hand at 0.25 / 0.5 / 1 and through the yawn are kept in
+- **Grids:** placement candidates, curled vs open fingers, weights and a
+  played stretch-and-yawn are kept in
   `assets/private/270/` (private model).
 
 ## Actions

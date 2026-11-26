@@ -66,7 +66,9 @@ class TurnStoreTests(unittest.TestCase):
         directory = open_turn(A, cap_bytes=10**9, root=self.root)
         record_clip(directory, {**clip(1), "action": "tilt-left"})
         record_clip(directory, clip(2))
-        self.assertEqual(self.manifest(A)["clips"], [{**clip(1), "action": "tilt-left"}, clip(2)])
+        record_clip(directory, {**clip(3), "action": "shrug-both", "actionWord": 2})
+        self.assertEqual(self.manifest(A)["clips"], [{**clip(1), "action": "tilt-left"}, clip(2),
+                                                     {**clip(3), "action": "shrug-both", "actionWord": 2}])
 
     def test_turn_ids_are_checked(self):
         for bad in ("../" + "a" * 13, "A" * 16, "a" * 15, "a" * 17, "", "aaaa/aaaaaaaaaaa"):

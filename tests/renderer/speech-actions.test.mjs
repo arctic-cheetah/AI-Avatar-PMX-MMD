@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  ACTION_CATALOG, SPEECH_ACTIONS_KEY, SPEECH_POSE_HOLD, bindSpeechActionsSetting, parseActionRef,
+  ACTION_CATALOG, SPEECH_ACTIONS_KEY, SPEECH_POSE_HOLD, actionDelay, bindSpeechActionsSetting, parseActionRef,
   poseSpeechSettings, speechActionBlocked, speechMayPlayPose,
 } from "../../renderer/speech-actions.js";
 import { ACTION_LABELS, ACTIONS, IdleMotion } from "../../renderer/idle-motion.js";
@@ -40,6 +40,26 @@ test("action references resolve to a layer and name, poses in NFC", () => {
   assert.deepEqual(parseActionRef(`pose:${NFD_POSE}`), { layer: "pose", name: "ポーズ", ref: "pose:ポーズ" });
   assert.deepEqual(parseActionRef("pose:glance"), { layer: "pose", name: "glance", ref: "pose:glance" },
     "a pose called glance stays a pose");
+});
+
+test("full-width and compatibility pose names are refused (review of #271, Medium 1)", () => {
+  for (const name of ["ｗｉｎｋ", "ｗink", "ｳｲﾝｸ", "①", "ﬁst"]) assert.equal(parseActionRef(`pose:${name}`), null, name);
+  assert.equal(parseActionRef("pose:ウインク")?.name, "ウインク");
+});
+
+test("speak clips accept only speech-safe catalog actions", () => {
+  assert.equal(parseActionRef("sneeze", ACTION_CATALOG, { speaking: true }), null);
+  assert.equal(parseActionRef("tilt-left", ACTION_CATALOG, { speaking: true })?.ref, "tilt-left");
+  assert.equal(parseActionRef("sneeze")?.ref, "sneeze", "play_action may use any action");
+});
+
+test("a mid-sentence action waits for its word, estimated from the clip length (Medium 2)", () => {
+  assert.equal(actionDelay("I think maybe tomorrow.", 0, 2), 0);
+  assert.equal(actionDelay("I think maybe tomorrow.", 2, 2), 1, "word 2 of 4 starts halfway");
+  assert.equal(actionDelay("Well — I think so.", 1, 3), 1, "a lone dash is not a word");
+  assert.equal(actionDelay("Hi.", 5, 1), 0, "past the end plays at the start");
+  assert.equal(actionDelay("Hi there.", -1, 1), 0);
+  assert.equal(actionDelay("Hi there.", 1, Number.NaN), 0);
 });
 
 test("unknown or malformed references are refused", () => {
@@ -119,7 +139,13 @@ test("speak events pass a valid action to onSpeak and drop an invalid one, keepi
   page.receive({ ...speak, action: "moonwalk" });
   page.receive({ ...speak, action: 7 });
   page.receive(speak);
-  assert.deepEqual(clips.map((clip) => clip.action ?? null), ["tilt-left", "pose:ポーズ", null, null, null]);
+  page.receive({ ...speak, action: "sneeze" });
+  page.receive({ ...speak, action: "shrug-both", actionWord: 2 });
+  page.receive({ ...speak, action: "shrug-both", actionWord: -3 });
+  page.receive({ ...speak, action: "shrug-both", actionWord: "2" });
+  assert.deepEqual(clips.map((clip) => clip.action ?? null),
+    ["tilt-left", "pose:ポーズ", null, null, null, null, "shrug-both", "shrug-both", "shrug-both"]);
+  assert.deepEqual(clips.slice(6).map((clip) => clip.actionWord ?? 0), [2, 0, 0], "a bad word index starts it with the clip");
 });
 
 test("text-only action events and agent play_action reach onAction", (t) => {

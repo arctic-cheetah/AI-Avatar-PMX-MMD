@@ -23,6 +23,7 @@ import time
 import unicodedata
 from pathlib import Path
 
+from controller.actions import resolve_action
 from controller.bridge import THINKING, THINKING_WEIGHT, TagParser, resolve_mood, speak_segments
 from controller.replay_store import new_turn_id
 
@@ -58,6 +59,7 @@ MIN_INTERVAL = {
     "report": 1.0,
     "ask": 1.0,
     "set_mood": 0.2,
+    "play_action": 0.5,
 }  # seconds between calls of one tool
 DEFAULT_SOURCE = "Agent"
 LOG = logging.getLogger(__name__)
@@ -273,6 +275,13 @@ def validate(request, catalog):
             "name": _mood(request.get("name"), catalog),
             "weight": _weight(request),
         }
+    if tool == "play_action":
+        # #269: any catalog action (she is not speaking) or pose:<name>.
+        name = request.get("name")
+        ref = resolve_action(name, speaking=False)
+        if ref is None:
+            raise AgentError(f"unknown action: {str(name)[:40]}")
+        return {"tool": "play_action", "source": source, "name": ref}
     raise AgentError("unknown tool")
 
 
@@ -500,6 +509,13 @@ class AgentRouter:
             await stage.send(event)
             stage.enqueue(call)
             return "queued"
+        if call["tool"] == "play_action":
+            if self._limited("play_action"):
+                return "busy"
+            await stage.send(
+                {"type": "agent", "kind": "action", "source": call["source"], "name": call["name"]}
+            )
+            return "ok"
         if self._limited("set_mood"):
             return "busy"
         return await self._mood(stage, call)

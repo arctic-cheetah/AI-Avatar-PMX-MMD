@@ -784,7 +784,7 @@ class McpServerTests(unittest.IsolatedAsyncioTestCase):
 
         server = mcp_server.build_server(Path("/tmp/x.sock"), "Claude Code")
         tools = {tool.name for tool in await server.list_tools()}
-        self.assertEqual(tools, {"say", "report", "ask", "set_mood"})
+        self.assertEqual(tools, {"say", "report", "ask", "set_mood", "play_action"})  # #269
         with patch("controller.mcp_server.call_bridge", fake_call):
             await server.call_tool("say", {"text": "Hi", "mood": "happy"})
             await server.call_tool("set_mood", {"name": "thinking"})

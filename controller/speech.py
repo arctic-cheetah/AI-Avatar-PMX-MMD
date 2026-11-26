@@ -277,6 +277,7 @@ class Segment:
     expression: str = "neutral"
     weight: float = 1.0
     emphasis: tuple[int, ...] = ()  # spoken-word indices marked *word* by the LLM
+    action: str | None = None  # #269: an animation action that starts with this clip
 
 
 def spoken_words(text: str) -> list[str]:
@@ -535,12 +536,15 @@ class Segmenter:
     """Group parsed bridge events into sentences, each with the mood active at its start.
 
     A mood tag closes the current fragment so the new mood starts with the
-    following text, matching where the LLM placed the tag.
+    following text, matching where the LLM placed the tag. An action tag does
+    the same, and the action rides on the next spoken segment (#269). A second
+    action before those words, or one with no words after it, is dropped.
     """
 
     expression: str = "neutral"
     weight: float = 1.0
     buffer: str = ""
+    action: str | None = None
     _done: list[Segment] = field(default_factory=list)
 
     def _emit(self, text: str) -> None:
@@ -555,10 +559,18 @@ class Segmenter:
         )[:MAX_EMPHASIS]
         cleaned = " ".join(marked.replace(EMPHASIS_MARK, "").split())
         if speakable(cleaned):
-            self._done.append(Segment(cleaned, self.expression, self.weight, emphasis))
+            self._done.append(Segment(cleaned, self.expression, self.weight, emphasis, self.action))
+            self.action = None
 
     def feed(self, event: dict) -> list[Segment]:
-        if event["type"] == "expression":
+        if event["type"] == "action":
+            self._emit(self.buffer)
+            self.buffer = ""
+            if self.action is None:
+                self.action = event["name"]
+            else:
+                LOG.warning("Dropped a second action before the same words")
+        elif event["type"] == "expression":
             self._emit(self.buffer)
             self.buffer = ""
             self.expression, self.weight = event["name"], event["weight"]
@@ -576,6 +588,9 @@ class Segmenter:
     def finish(self) -> list[Segment]:
         self._emit(self.buffer)
         self.buffer = ""
+        if self.action is not None:
+            LOG.warning("Dropped an action with no words after it")
+            self.action = None
         done, self._done = self._done, []
         return done
 

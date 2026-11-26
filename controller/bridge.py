@@ -21,6 +21,7 @@ if not __package__:
     # Support `python controller/bridge.py` as well as `python -m controller.bridge`.
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from controller.actions import MAX_ACTIONS, default_actions, resolve_action  # noqa: E402
 from controller.replay_store import (  # noqa: E402
     DEFAULT_CAP_MB,
     MB,
@@ -113,10 +114,23 @@ class TagParser:
     their closing bracket. finish() discards an unfinished block.
     """
 
-    def __init__(self, catalog):
+    def __init__(self, catalog, actions=None):
         self.catalog = catalog
+        # Animation actions (#269): [@name] and [@pose:name], at most MAX_ACTIONS per reply.
+        self.actions = default_actions() if actions is None else actions
+        self.action_count = 0
         self.pending = None
         self.overflow = False
+
+    def _action(self, events):
+        ref = resolve_action(self.pending[1:], self.actions)
+        if ref is None:
+            LOG.warning("Dropped unknown or idle-only action tag")
+        elif self.action_count >= MAX_ACTIONS:
+            LOG.warning("Dropped an action tag past %d per reply", MAX_ACTIONS)
+        else:
+            self.action_count += 1
+            events.append({"type": "action", "name": ref})
 
     def feed(self, chunk):
         events, text = [], []
@@ -133,6 +147,9 @@ class TagParser:
                     self.pending = ""
                 else:
                     text.append(char)
+            elif char == "]" and not self.overflow and self.pending.startswith("@"):
+                self._action(events)
+                self.pending = None
             elif char == "]":
                 match = None if self.overflow else TAG.fullmatch(self.pending)
                 name = match and resolve_mood(self.catalog, match[1])
@@ -174,7 +191,22 @@ def prompts_emphasis(settings):
     return bool(settings and settings.emphasis and settings.tts_provider == "kokoro")
 
 
-def system_prompt(catalog, emphasis=False):
+def actions_prompt(actions):
+    """Teach the chat LLM the speech-safe actions (#269, --chat-actions)."""
+    return (
+        f"You may add up to {MAX_ACTIONS} gesture tags per reply, at most one per sentence, "
+        "right before the words they go with, and only when they fit. "
+        "Use [@pose:name] for a Blender pose the user named. Allowed gestures:\n"
+        + "\n".join(
+            f"[@{name}]: {entry['description']}"
+            for name, entry in actions.items()
+            if entry["speech"]
+        )
+        + "\n"
+    )
+
+
+def system_prompt(catalog, emphasis=False, actions=None):
     return (
         "You are Yidhari, a warm, lovable, concise companion. Answer the user. Act like a waifu. "
         "Place optional emotion tags BEFORE the text they affect, one mood at a time. "
@@ -186,6 +218,7 @@ def system_prompt(catalog, emphasis=False):
         + "\n".join(
             f'[{name}]: {entry["description"]}' for name, entry in catalog.items()
         )
+        + ("\n" + actions_prompt(actions) if actions else "")
     )
 
 
@@ -631,6 +664,9 @@ async def speak_segments(queue, send, worker, run=None, turn=None):
                 "weight": segment.weight,
                 "text": segment.text,
             }
+            if segment.action is not None:
+                # #269: the renderer plays it when this clip starts.
+                event["action"] = segment.action
             if directory is not None:
                 await asyncio.to_thread(record_clip, directory, event)
                 event["turn"] = turn
@@ -682,7 +718,11 @@ async def handle_connection(socket, args, catalog):
 
     worker = getattr(args, "speech_worker", None)
     speech_settings = getattr(args, "speech_settings", None)
-    system = system_prompt(catalog, emphasis=prompts_emphasis(speech_settings))
+    system = system_prompt(
+        catalog,
+        emphasis=prompts_emphasis(speech_settings),
+        actions=default_actions() if getattr(args, "chat_actions", False) else None,
+    )
     tool_session = None
     if getattr(args, "tools", False):
         from controller.tools import ToolSession, TOOL_PROMPT
@@ -1094,6 +1134,11 @@ def build_parser():
         "--tools",
         action="store_true",
         help="Enable allowlisted companion tool calling.",
+    )
+    parser.add_argument(
+        "--chat-actions",
+        action="store_true",
+        help="Teach the chat LLM [@action] gesture tags (#269; docs/speech-actions.md).",
     )
     parser.add_argument(
         "--web-search",

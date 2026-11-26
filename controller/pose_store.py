@@ -10,10 +10,12 @@ import os
 from pathlib import Path
 import re
 import tempfile
+import unicodedata
 
 MAX_POSE_BYTES = 1024 * 1024
 MAGIC = b"Vocaloid Pose Data file"
 # Letters (Japanese included), digits, _ and -: nothing that can leave the folder.
+# The one pose-name rule: uploads, [@pose:name] tags and play_action all use it (#269).
 NAME = re.compile(r"\w[\w-]{0,63}")
 
 
@@ -27,12 +29,17 @@ def valid_name(name: str) -> bool:
     return bool(NAME.fullmatch(name)) and "/" not in name and "\\" not in name
 
 
+def normal_name(name: str) -> str:
+    """Pose names are stored and looked up in Unicode NFC (#269)."""
+    return unicodedata.normalize("NFC", name)
+
+
 def check_pose_upload(headers, origin: str, name: str) -> int:
     """Validate an upload's headers and pose name; return the byte length or raise PoseUploadError."""
     if headers.get("Origin") != origin:
         # Blocks other web pages (and DNS-rebinding hosts) from writing files.
         raise PoseUploadError(403, "Poses are accepted only from the renderer page.")
-    if not valid_name(name):
+    if not valid_name(normal_name(name)):
         raise PoseUploadError(400, "Pose names are 1-64 letters, digits, _ or -.")
     kind = (headers.get("Content-Type") or "").split(";")[0].strip().lower()
     if kind != "application/octet-stream":
@@ -49,13 +56,22 @@ def check_pose_upload(headers, origin: str, name: str) -> int:
 
 
 def save_pose(folder: Path, name: str, data: bytes, overwrite: bool) -> Path:
-    """Write `<folder>/<name>.vpd` through a temporary file; refuse non-VPD data and silent replacement."""
+    """Write `<folder>/<name>.vpd` through a temporary file; refuse non-VPD data and silent replacement.
+
+    The name is saved in NFC. A name that differs from an existing pose only
+    by case is refused, so `Wink` and `wink` never both exist (#269).
+    """
+    name = normal_name(name)
     if not valid_name(name):
         raise PoseUploadError(400, "Pose names are 1-64 letters, digits, _ or -.")
     if not data.startswith(MAGIC):
         raise PoseUploadError(422, "That is not a VPD pose file.")
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
+    for existing in folder.glob("*.vpd"):
+        stem = normal_name(existing.stem)
+        if stem != name and stem.casefold() == name.casefold():
+            raise PoseUploadError(409, f"A pose named {stem} already exists; names differ only by case.")
     path = folder / f"{name}.vpd"
     if path.exists() and not overwrite:
         raise PoseUploadError(409, f"A pose named {name} already exists.")

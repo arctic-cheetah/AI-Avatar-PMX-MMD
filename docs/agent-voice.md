@@ -208,6 +208,14 @@ Options for `mcp_server.py`: `--name` is the label on her chat bubbles (default
 | `report`   | `text` (≤ 16384 chars), optional `spoken_text` (≤ 600 chars), `kind`: `progress`, `done` (default) or `error` | Logs the full text; speaks supplied narration directly, or uses the configured missing-narration fallback | `queued` at once |
 | `ask`      | `question` (≤ 500 chars), optional `timeout` (s, default 120, max 600) | Logs and speaks the question; your next chat message (typed or spoken) is the answer | Your reply (≤ 4000 chars), or `no answer` after the timeout |
 | `set_mood` | `name`, optional `weight`                     | Sets her resting face without speaking            | `ok`                                     |
+| `play_action` | `name`: an action or `pose:<name>`         | Plays one animation action without speaking (#269) | `ok`, or `busy` within 0.5 s of the last call |
+
+`say`, `report` narration and `ask` questions also take inline action tags:
+`[@tilt-left]` for a built-in action and `[@pose:elated-fist]` for a Blender
+pose. Each one starts with the words after it, at most eight per reply, and
+only speech-safe actions play while she speaks. The `play_action` description
+lists every action and pose with its description. See
+[Animation actions while speaking](./speech-actions.md).
 
 The agent sees every mood: `mcp_server.py` loads
 [expressions.json](../renderer/expressions.json) at start, lists each name in the
@@ -520,7 +528,7 @@ and a bridge restart:
 
 ```text
 assets/private/speech/turns/<turn id>/      # gitignored
-  turn.json                                 # ordered clips: id, mood, weight, text
+  turn.json                                 # ordered clips: id, mood, weight, text, optional action (#269)
   <clip id>.wav  <clip id>.visemes.json  <clip id>.txt
 ```
 

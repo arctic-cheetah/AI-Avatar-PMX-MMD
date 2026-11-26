@@ -37,6 +37,27 @@ test("a manifest's weights are clamped and bad clips are dropped", () => {
   assert.deepEqual(clips.map((item) => [item.id, item.weight]), [[clip(1).id, 1], [clip(6).id, 0.8]]);
 });
 
+test("a manifest keeps a valid clip action and drops an invalid one, keeping the clip (#269)", () => {
+  const clips = parseManifest({ version: 1, clips: [
+    { ...clip(1), action: "tilt-left" },
+    { ...clip(2), action: "pose:ウインク" },
+    { ...clip(3), action: "moonwalk" },
+    { ...clip(4), action: "pose:../x" },
+    clip(5),
+  ] }, CATALOG);
+  assert.deepEqual(clips.map((item) => item.action ?? null), ["tilt-left", "pose:ウインク", null, null, null]);
+  assert.equal(Object.hasOwn(clips[2], "action"), false);
+});
+
+test("a manifest keeps a mid-sentence action's word (review of #271, Medium 2)", () => {
+  const clips = parseManifest({ version: 1, clips: [
+    { ...clip(1), action: "shrug-both", actionWord: 2 },
+    { ...clip(2), action: "shrug-both", actionWord: -1 },
+    { ...clip(3), action: "shrug-both", actionWord: 1.5 },
+  ] }, CATALOG);
+  assert.deepEqual(clips.map((item) => item.actionWord ?? 0), [2, 0, 0]);
+});
+
 test("a manifest with an unknown version or shape is rejected", () => {
   for (const bad of [null, [], { version: 2, clips: [] }, { version: 1 }, { version: 1, clips: {} }]) {
     assert.throws(() => parseManifest(bad, CATALOG), undefined, JSON.stringify(bad));

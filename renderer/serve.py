@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RENDERER = ROOT / "renderer"
 sys.path.insert(0, str(ROOT))
 from controller.stt import SttWorker, UploadError, check_upload  # noqa: E402
-from controller.pose_store import PoseUploadError, check_pose_upload, save_pose  # noqa: E402
+from controller.pose_store import PoseUploadError, check_pose_upload, normal_name, save_pose  # noqa: E402
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -81,7 +81,7 @@ class Handler(SimpleHTTPRequestHandler):
     def upload_pose(self) -> None:
         """POST /poses/<name>[?overwrite=1]: save a Blender pose (#49)."""
         url = urllib.parse.urlsplit(self.path)
-        name = urllib.parse.unquote(url.path[len("/poses/"):])
+        name = normal_name(urllib.parse.unquote(url.path[len("/poses/"):]))  # NFC (#269)
         overwrite = urllib.parse.parse_qs(url.query).get("overwrite") == ["1"]
         try:
             length = check_pose_upload(self.headers, self.server.origin, name)

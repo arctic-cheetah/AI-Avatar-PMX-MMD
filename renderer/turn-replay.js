@@ -4,6 +4,8 @@
  * its clips. Paths are built here only from validated IDs, and the manifest is
  * fetched only when the user presses replay.
  */
+import { ACTION_CATALOG, actionWordOf, parseActionRef } from './speech-actions.js';
+
 export const TURN_ID = /^[0-9a-f]{16}$/;
 const CLIP_ID = /^[0-9a-f]{16}$/;
 const TURNS_DIR = '/assets/private/speech/turns/';
@@ -34,7 +36,11 @@ export function parseManifest(data, catalog) {
     if (!clip || typeof clip !== 'object' || typeof clip.id !== 'string' || !CLIP_ID.test(clip.id) ||
       typeof clip.expression !== 'string' || !Object.hasOwn(catalog, clip.expression) ||
       typeof clip.weight !== 'number' || !Number.isFinite(clip.weight) || typeof clip.text !== 'string') continue;
-    clips.push({ id: clip.id, expression: clip.expression, weight: Math.max(0, Math.min(1, clip.weight)), text: clip.text.slice(0, MAX_TEXT) });
+    // #269: a valid action repeats with the clip; an invalid one is dropped, the clip kept.
+    const action = clip.action === undefined ? null : parseActionRef(clip.action, ACTION_CATALOG, { speaking: true });
+    const word = action ? actionWordOf(clip.actionWord) : 0;
+    clips.push({ id: clip.id, expression: clip.expression, weight: Math.max(0, Math.min(1, clip.weight)), text: clip.text.slice(0, MAX_TEXT),
+      ...(action ? { action: action.ref } : {}), ...(word ? { actionWord: word } : {}) });
   }
   return clips;
 }

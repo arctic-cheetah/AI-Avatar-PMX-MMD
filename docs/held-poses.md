@@ -36,6 +36,14 @@ are saved per browser (`yidhari.poseActions`), apart from the built-in
 actions. `IdleMotion.setExternalActions()` registers them; IdleMotion only
 decides when, and main.js plays the pose through `HeldPose`.
 
+## While she speaks
+
+A pose can also play while she speaks, from a `[@pose:<name>]` tag or the
+agent's `play_action("pose:<name>")`. It holds for a shorter time and leaves
+her mouth to lip sync. An optional `<name>.json` next to the VPD gives it a
+description for the agent, or keeps it out of speech. See
+[Animation actions while speaking](./speech-actions.md#poses-as-actions).
+
 ## Uploading a pose from the page
 
 Under the pose buttons, **Upload VPD** sends a `.vpd` file to `serve.py`, which
@@ -50,7 +58,10 @@ Blender.
 - is accepted only from the renderer page itself (the `Origin` header must
   be the server's own), so other web pages cannot write files;
 - takes names of 1–64 letters, digits, `_` or `-` (Japanese included), so a
-  name cannot leave the folder;
+  name cannot leave the folder. The name is normalised to Unicode NFC, and a
+  name that differs from an existing pose only by case is refused with 409
+  (#269). The same rule checks `[@pose:name]` tags, see
+  [Animation actions while speaking](./speech-actions.md#one-name-rule);
 - takes `application/octet-stream` up to 1 MB that starts with
   `Vocaloid Pose Data file`;
 - answers 409 when the pose exists, unless `?overwrite=1`, and writes

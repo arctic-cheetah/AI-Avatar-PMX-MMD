@@ -53,6 +53,11 @@ Yidhari avatar alongside written replies:
   chat/summarisation LLM; missing narration speaks a fixed acknowledgement.
 - `ask` — when a decision is needed from the user; it speaks the question and
   returns their typed or spoken reply, or `no answer` after a timeout.
+- Gestures (#269) — when the connected `say` or `play_action` description
+  lists them, add at most one inline action tag to a spoken reply, such as
+  `[@tilt-left]` or `[@pose:elated-fist]`, and only when it fits the words.
+  Put it right before the words it goes with. Use `play_action` for a gesture
+  without speech. See [Animation actions while speaking](docs/speech-actions.md).
 
 The tools may need loading first (for example via a tool search) and may still
 be connecting at session start, so check before assuming they are unavailable.

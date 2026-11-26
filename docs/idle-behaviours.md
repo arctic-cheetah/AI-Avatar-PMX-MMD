@@ -265,6 +265,10 @@ eases in, eases out and settles back to rest.
 - The **Actions** ticks above choose what idle and sleep may pick
   automatically. They do not limit the buttons, and the buttons never change
   them.
+- **While speaking** (#269), the same actions can play from `[@name]` tags in
+  her speech or from the agent's `play_action`. Speech does not block those,
+  and they have their own **Gestures while speaking** toggle. See
+  [Animation actions while speaking](./speech-actions.md).
 
 ### Arm drift (#193)
 

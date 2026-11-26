@@ -19,7 +19,7 @@ import tempfile
 import unittest
 
 import bpy
-from mathutils import Matrix, Quaternion
+from mathutils import Euler, Matrix, Quaternion
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools" / "yidhari-poses"))
@@ -34,6 +34,8 @@ BONES = (
     ("腕.R", "右腕", (-0.2, 0.0, 1.4), (-0.5, 0.05, 1.2), 0.4, "センター"),
     ("人指１.R", "右人指１", (-0.5, 0.05, 1.2), (-0.56, 0.08, 1.17), -0.7, "腕.R"),
     ("人指２.R", "右人指２", (-0.56, 0.08, 1.17), (-0.6, 0.1, 1.15), -0.7, "人指１.R"),
+    ("腕.L", "左腕", (0.2, 0.0, 1.4), (0.5, 0.05, 1.2), -0.4, "センター"),
+    ("人指１.L", "左人指１", (0.5, 0.05, 1.2), (0.56, 0.08, 1.17), 0.7, "腕.L"),
     ("齿上", "齿上", (0, -0.05, 1.6), (0, -0.08, 1.6), 0.0, "センター"),
 )
 MORPHS = ("ウィンク右", "あ", "齿下")
@@ -93,6 +95,15 @@ def matrices(arm: bpy.types.Object) -> dict[str, Matrix]:
 
 def morph(body: bpy.types.Object, name: str) -> float:
     return body.data.shape_keys.key_blocks[name].value
+
+
+def copy_rotation(arm: bpy.types.Object, owner: str, target: str) -> bpy.types.CopyRotationConstraint:
+    constraint = arm.pose.bones[owner].constraints.new("COPY_ROTATION")
+    constraint.target = arm
+    constraint.subtarget = target
+    constraint.owner_space = constraint.target_space = "LOCAL"
+    constraint.invert_x = constraint.invert_y = True
+    return constraint
 
 
 class PosesTest(unittest.TestCase):
@@ -233,6 +244,64 @@ class PosesTest(unittest.TestCase):
         out = self.dir / "out.vpd"
         poses.save_vpd(self.arm, out, selected_only=True)
         self.assertEqual([b.name for b in parse_vpd(out.read_bytes()).bones], ["右人指１"])
+
+    def test_export_bakes_the_visible_mirror_without_editing_the_rig(self) -> None:
+        self.arm.pose.bones["腕.L"].rotation_quaternion = Euler((0.4, -0.2, 0.3)).to_quaternion()
+        self.arm.pose.bones["人指１.L"].rotation_quaternion = Euler((-0.7, 0.2, 0.1)).to_quaternion()
+        self.arm.pose.bones["腕.R"].location = (0.01, 0.02, -0.03)
+        mirrored = {
+            "腕.R": copy_rotation(self.arm, "腕.R", "腕.L"),
+            "人指１.R": copy_rotation(self.arm, "人指１.R", "人指１.L"),
+        }
+        unrelated = copy_rotation(self.arm, "人指２.R", "腕.L")
+        before = matrices(self.arm)
+        evaluated = self.arm.evaluated_get(bpy.context.evaluated_depsgraph_get())
+        visible = {name: evaluated.pose.bones[name].matrix.copy() for name in mirrored}
+
+        raw_path = self.dir / "raw.vpd"
+        baked_path = self.dir / "baked.vpd"
+        self.assertEqual(bpy.ops.yidhari_poses.save_vpd(filepath=str(raw_path)), {"FINISHED"})
+        self.assertEqual(bpy.ops.yidhari_poses.save_vpd(
+            filepath=str(baked_path), bake_mirrored_bones=True,
+        ), {"FINISHED"})
+        raw = {b.name: b for b in parse_vpd(raw_path.read_bytes()).bones}
+        baked = {b.name: b for b in parse_vpd(baked_path.read_bytes()).bones}
+        self.assertNotEqual(baked["右腕"].rotation, raw["右腕"].rotation)
+        self.assertNotEqual(baked["右人指１"].rotation, raw["右人指１"].rotation)
+        self.assertEqual(baked["右人指２"], raw["右人指２"])
+        self.assertEqual(baked["右腕"].location, raw["右腕"].location)
+        self.assertMatricesClose(matrices(self.arm), before)
+        self.assertTrue(all(not c.mute for c in (*mirrored.values(), unrelated)))
+
+        for name, constraint in mirrored.items():
+            self.arm.pose.bones[name].constraints.remove(constraint)
+        self.arm.pose.bones["人指２.R"].constraints.remove(unrelated)
+        poses.apply_pose(self.arm, poses.import_pose(self.arm, baked_path).action)
+        evaluated = self.arm.evaluated_get(bpy.context.evaluated_depsgraph_get())
+        self.assertMatricesClose({name: evaluated.pose.bones[name].matrix for name in visible}, visible)
+
+    def test_bake_respects_selection_and_disabled_constraints(self) -> None:
+        self.arm.pose.bones["腕.L"].rotation_quaternion = Euler((0.4, 0.0, 0.0)).to_quaternion()
+        mirror = copy_rotation(self.arm, "腕.R", "腕.L")
+        for bone in self.arm.data.bones:
+            bone.select = bone.name == "腕.R"
+        output = self.dir / "selected.vpd"
+        poses.save_vpd(self.arm, output, selected_only=True, bake_mirrored_bones=True)
+        bones = parse_vpd(output.read_bytes()).bones
+        self.assertEqual([bone.name for bone in bones], ["右腕"])
+        self.assertNotEqual(bones[0].rotation, (0.0, 0.0, 0.0, 1.0))
+
+        for muted, influence in ((True, 1.0), (False, 0.0)):
+            with self.subTest(muted=muted, influence=influence):
+                mirror.mute, mirror.influence = muted, influence
+                pose = poses.capture_pose(self.arm, selected_only=False, bake_mirrored_bones=True)
+                self.assertNotIn("右腕", [bone.name for bone in pose.bones])
+
+    def test_bake_keeps_an_unposed_mirrored_rig_out_of_the_vpd(self) -> None:
+        copy_rotation(self.arm, "腕.R", "腕.L")
+        copy_rotation(self.arm, "人指１.R", "人指１.L")
+        pose = poses.capture_pose(self.arm, selected_only=False, bake_mirrored_bones=True)
+        self.assertEqual(pose.bones, ())
 
 
 def main() -> int:

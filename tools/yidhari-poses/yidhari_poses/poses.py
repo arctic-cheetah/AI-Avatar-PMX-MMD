@@ -198,28 +198,63 @@ def _model_name(arm: bpy.types.Object) -> str:
     return f"{name}.osm"
 
 
-def capture_pose(arm: bpy.types.Object, selected_only: bool, scale: float = EXPORT_SCALE) -> VpdPose:
+def _baked_mirror_bases(arm: bpy.types.Object, by_name: dict[str, bpy.types.PoseBone]) -> dict[str, Matrix]:
+    """Read visible mirror rotations in bone-local space without changing the armature."""
+    evaluated = arm.evaluated_get(bpy.context.evaluated_depsgraph_get())
+    bases = {}
+    for name, bone in by_name.items():
+        opposite = bpy.utils.flip_name(bone.name)
+        if opposite == bone.name:
+            continue
+        posed = evaluated.pose.bones[bone.name]
+        active = [c for c in posed.constraints if c.enabled and c.is_valid and c.influence > 0.0]
+        # Other constraints, such as MMD grants, can also run on the renderer.
+        if not active or not all(
+            c.type == "COPY_ROTATION" and c.target is not None
+            and c.target.original == arm and c.subtarget == opposite
+            for c in active
+        ):
+            continue
+        parent = {}
+        if posed.parent:
+            parent = {"parent_matrix": posed.parent.matrix, "parent_matrix_local": posed.parent.bone.matrix_local}
+        local = posed.bone.convert_local_to_pose(posed.matrix, posed.bone.matrix_local, invert=True, **parent)
+        rotation = local.to_quaternion()
+        if max(abs(value) for value in rotation[1:]) < 1e-6:
+            # Remove evaluation noise so an unposed mirror does not bring in the arm chain.
+            rotation = Quaternion()
+        bases[name] = Matrix.LocRotScale(bone.location, rotation, bone.scale)
+    return bases
+
+
+def capture_pose(
+    arm: bpy.types.Object, selected_only: bool, scale: float = EXPORT_SCALE, *, bake_mirrored_bones: bool = False,
+) -> VpdPose:
     """The current pose as VPD values and morphs above zero.
 
     Saves the selected bones, or the posed ones plus the at-rest bones below
     a posed arm (vpd_lib.arm_chain_fill), so straight fingers stay straight
-    in the renderer.
+    in the renderer. Optionally capture the rotations produced by mirror constraints.
     """
     converter = _bone_converter()
     identity = Matrix.Identity(4)
     by_name = mmd_bones(arm)
+    bases = {name: bone.matrix_basis for name, bone in by_name.items()}
+    if bake_mirrored_bones and arm.data.pose_position == "POSE":
+        bases.update(_baked_mirror_bases(arm, by_name))
     if selected_only:
         keep = {name for name, pose_bone in by_name.items() if pose_bone.bone.select}
     else:
-        keep = {name for name, pose_bone in by_name.items() if pose_bone.matrix_basis != identity}
+        keep = {name for name, basis in bases.items() if basis != identity}
         keep |= set(arm_chain_fill(keep, set(by_name)))
     bones = []
     for name, pose_bone in by_name.items():
         if name not in keep:
             continue
         convert = converter(pose_bone, scale, invert=True)
-        location = tuple(convert.convert_location(pose_bone.matrix_basis.to_translation()))
-        w, x, y, z = pose_bone.matrix_basis.to_quaternion()
+        basis = bases[name]
+        location = tuple(convert.convert_location(basis.to_translation()))
+        w, x, y, z = basis.to_quaternion()
         w, x, y, z = convert.convert_rotation([x, y, z, w])
         bones.append(VpdBone(name, location, (x, y, z, w)))
     morphs: dict[str, float] = {}
@@ -231,9 +266,11 @@ def capture_pose(arm: bpy.types.Object, selected_only: bool, scale: float = EXPO
     return VpdPose(_model_name(arm), tuple(bones), tuple(VpdMorph(n, w) for n, w in morphs.items()))
 
 
-def save_vpd(arm: bpy.types.Object, path: str | Path, selected_only: bool) -> PoseSave:
+def save_vpd(
+    arm: bpy.types.Object, path: str | Path, selected_only: bool, *, bake_mirrored_bones: bool = False,
+) -> PoseSave:
     """Write the current pose. Names Shift-JIS cannot hold are left out and listed."""
-    pose, skipped = split_unwritable(capture_pose(arm, selected_only))
+    pose, skipped = split_unwritable(capture_pose(arm, selected_only, bake_mirrored_bones=bake_mirrored_bones))
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(format_vpd(pose))

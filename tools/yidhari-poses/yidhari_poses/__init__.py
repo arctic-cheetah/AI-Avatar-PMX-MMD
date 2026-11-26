@@ -125,6 +125,15 @@ class YIDHARI_OT_save_vpd(_NeedsArmature, ExportHelper, bpy.types.Operator):
     filename_ext = ".vpd"
     filter_glob: StringProperty(default="*.vpd", options={"HIDDEN"})
     selected_only: BoolProperty(name="Selected Bones Only", default=False)
+    bake_mirrored_bones: BoolProperty(
+        name="Bake Mirrored Bones",
+        description="Export the visible rotations from Copy Rotation constraints between opposite bones on this rig",
+        default=False,
+    )
+
+    def draw(self, context):
+        self.layout.prop(self, "selected_only")
+        self.layout.prop(self, "bake_mirrored_bones")
 
     def invoke(self, context, event):
         if not self.filepath:
@@ -133,7 +142,10 @@ class YIDHARI_OT_save_vpd(_NeedsArmature, ExportHelper, bpy.types.Operator):
 
     def execute(self, context):
         try:
-            saved = poses.save_vpd(find_armature(context), self.filepath, self.selected_only)
+            saved = poses.save_vpd(
+                find_armature(context), self.filepath, self.selected_only,
+                bake_mirrored_bones=self.bake_mirrored_bones,
+            )
         except (VpdError, OSError) as error:
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}

@@ -18,13 +18,19 @@ in `say` and `report` narration, or plays one without speech with
 | `[@name]` | A built-in action from [actions.json](../renderer/actions.json) | `[@shrug-both]` |
 | `[@pose:name]` | A Blender pose, `assets/poses/<name>.vpd` | `[@pose:elated-fist]` |
 
-- **Where it starts.** An action tag closes the current fragment, like a mood
-  tag, so the action starts with the words after it. The bridge attaches it to
-  the next spoken sentence or fragment, and the renderer plays it when that
-  clip starts playing.
-- **One per fragment.** A second action tag before the same words is dropped.
-  An action tag with no words after it is dropped too, because no clip would
-  start it.
+- **Where it starts.** The action starts with the words after its tag.
+  - At the start of a sentence, the bridge puts it on that sentence's clip and
+    the renderer plays it when the clip starts.
+  - In the middle of a sentence it does **not** split the clip, unlike a mood
+    tag (review of #271): one clip keeps the sentence's prosody and costs one
+    synthesis call. The segment records the spoken word the tag came before
+    (`action_word`, sent as `actionWord`), and the renderer waits for that
+    word. It estimates the time from the clip length, spread evenly over the
+    words (`actionDelay()`), since the visemes carry no word timings.
+  - If a mood tag splits the sentence right after an action tag, the action
+    moves to the words after the mood tag.
+- **One per clip.** A second action tag in the same clip is dropped. An action
+  tag with no words after it is dropped too, because no clip would start it.
 - **At most eight per reply** (`MAX_ACTIONS` in `controller/actions.py`; the
   user raised it from three on 27 Nov 2026), so she does not flail. Later tags are dropped.
 - **Never spoken.** Every `[@…]` tag is removed from the speech text, valid or
@@ -86,6 +92,12 @@ upload can be tagged, and every name a tag accepts can be uploaded.
 - **Case.** An upload whose name differs from an existing pose only by case,
   such as `wink` next to `Wink`, is refused with 409. The same name with the
   same case still overwrites with `?overwrite=1`.
+- **Compatibility forms** (review of #271). A name must already be in NFKC
+  form, so full-width letters (`ｗｉｎｋ`, `ｗink`), half-width katakana
+  (`ｳｲﾝｸ`), circled digits (`①`) and ligatures (`ﬁ`) are refused, and a pose
+  can never look like another. Ordinary Japanese (`ウインク`, `考え中`) is
+  unchanged by NFKC, so it is still accepted. Collisions are compared on
+  NFKC plus case folding. The renderer applies the same NFKC check.
 - **Look-alikes.** Full-width punctuation such as `－` or `＿` is not a word
   character, so it is refused, not folded into `-` or `_`.
 - **Control characters** are refused by the rule, so a pose name cannot break
@@ -133,6 +145,17 @@ An optional sidecar next to the VPD, committed with it so it travels with
 
 A missing or unreadable sidecar gives the defaults.
 
+**Sidecars are trusted input; review them like code** (review of #271). Their
+`label` and `description` reach the agent's `play_action` description. So the
+bridge keeps only letters, digits, spaces and `. , ' ! ? ( ) -`, cuts each to
+80 characters, and quotes it as data from the file
+(`pose:name, from its file: "…"`). That limits a prompt-injection line in a
+contributed pose file, but cannot rule one out. Read a new sidecar before
+committing it.
+
+If a `git pull` brings two poses whose names differ only by case, the agent's
+list shows the first one only. Uploads refuse such pairs.
+
 ## In the renderer
 
 - **When.** `playNextSpeech()` plays a clip's action when the clip starts,
@@ -143,6 +166,10 @@ A missing or unreadable sidecar gives the defaults.
   next to the mood. A replayed action goes through the same gate, and an
   invalid one in a manifest is dropped while its clip still plays.
 - **Gate** (`speechActionBlocked()`): speech does not block a speech action,
+  and neither does **Idle behaviours** being off. That is intended: gestures
+  from speech have their own toggle, and the idle switch is about what she does
+  on her own. A speak clip only plays speech-safe catalog actions, a second
+  check after the bridge's.
   unlike the panel buttons. It is blocked before the model loads, with
   **Gestures while speaking** off, while a pose is held for a preview, during
   a morph preview, while stretching into sleepy and while waking.
@@ -152,7 +179,12 @@ A missing or unreadable sidecar gives the defaults.
 - **Layering.** Body actions play through `IdleMotion` on top of the speech
   body sway, so they ease in and out through the same springs. A button or
   the next speech action switches, as before.
-- **Poses while speaking** play for their `speechHold`. `HeldPose.quietMouth`
+- **Poses while speaking** play for their `speechHold`. Whether a pose may
+  replace the one showing, and whether she is speaking, are checked again
+  after the pose's settings and file load, right before it plays (review of
+  #271), so a button pose started meanwhile is kept. An unknown pose lists the
+  folder again at most once at a time, and a name still missing is not looked
+  up again for 5 s. `HeldPose.quietMouth`
   leaves the mouth panel to the mood and lip sync while she speaks, and the
   pose keeps its bones, eyes and brows. A speech pose never replaces a pose
   you started from a button or `?pose=`, like an idle pick.

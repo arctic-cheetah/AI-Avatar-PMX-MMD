@@ -61,6 +61,13 @@ class TurnStoreTests(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in directory.iterdir()), [MANIFEST],
                          "the manifest is written in place, with no temp file left over")
 
+    def test_a_clip_keeps_its_action_for_replay(self):
+        # #269: replaying a bubble repeats the gesture that started with the clip.
+        directory = open_turn(A, cap_bytes=10**9, root=self.root)
+        record_clip(directory, {**clip(1), "action": "tilt-left"})
+        record_clip(directory, clip(2))
+        self.assertEqual(self.manifest(A)["clips"], [{**clip(1), "action": "tilt-left"}, clip(2)])
+
     def test_turn_ids_are_checked(self):
         for bad in ("../" + "a" * 13, "A" * 16, "a" * 15, "a" * 17, "", "aaaa/aaaaaaaaaaa"):
             with self.subTest(turn=bad), self.assertRaises(ValueError):

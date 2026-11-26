@@ -132,6 +132,18 @@ test('retention counts every audio channel and accepts a turn exactly at the lim
   assert.equal(replay.partial, false);
 });
 
+test('replay keeps each clip action so the gesture repeats (#269)', async () => {
+  const { replayQueueItems } = await import('../../renderer/speech-replay.js');
+  const replay = new LastSpeechReplay();
+  replay.remember({ ...entry('Look!', 5), action: 'tilt-left' });
+  replay.remember(entry('Plain.', 5));
+  assert.equal(replay.entries[0].action, 'tilt-left');
+  assert.equal(replay.entries[1].action, undefined);
+  const queued = replayQueueItems(replay.entries);
+  assert.equal(queued[0].action, 'tilt-left');
+  assert.equal(Object.hasOwn(queued[1], 'action'), false);
+});
+
 test('replay queue items keep turn order and are marked so playback does not retain them again', async () => {
   const { replayQueueItems } = await import('../../renderer/speech-replay.js');
   const replay = new LastSpeechReplay();

@@ -183,6 +183,13 @@ Select the model's armature (`伊德海莉_arm`). The **Yidhari Poses** tab in t
 | **Save as VPD** | Writes the current pose to a VPD file: every bone that is not in its bind pose, plus the at-rest bones below a posed arm (see below), or only the selected bones; and every morph above zero, plus the teeth (`齿上`/`齿下`) when negative. |
 | **Reset** | Puts every bone back in the bind pose and clears the morphs the last applied pose set. |
 
+Enable **Bake Mirrored Bones** in the **Save as VPD** dialog to include rotations
+driven by Copy Rotation constraints between opposite bones on the same armature.
+Pose the source side, preview both sides, and export. The export leaves the
+rig and constraints editable. **Selected Bones Only** includes a mirrored
+destination only when it is selected. Bones with other active constraints
+use their stored channels so MMD grants and IK can still run in the renderer.
+
 Each pose is an action marked as an asset, so it also appears in the Pose
 Library and the Asset Browser. The Pose Library's own apply only sets bones,
 so use **Apply** in the Yidhari Poses tab when a pose has morphs, such as a

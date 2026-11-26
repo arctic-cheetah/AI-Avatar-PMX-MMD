@@ -26,7 +26,19 @@ class PoseUploadError(Exception):
 
 
 def valid_name(name: str) -> bool:
-    return bool(NAME.fullmatch(name)) and "/" not in name and "\\" not in name
+    # NFKC-stable only (review of #271): full-width letters, half-width kana,
+    # circled digits and ligatures would let one pose look like another.
+    return (
+        bool(NAME.fullmatch(name))
+        and "/" not in name
+        and "\\" not in name
+        and unicodedata.normalize("NFKC", name) == name
+    )
+
+
+def name_key(name: str) -> str:
+    """Two pose names clash when their NFKC, case-folded forms are equal."""
+    return unicodedata.normalize("NFKC", name).casefold()
 
 
 def normal_name(name: str) -> str:
@@ -70,7 +82,7 @@ def save_pose(folder: Path, name: str, data: bytes, overwrite: bool) -> Path:
     folder.mkdir(parents=True, exist_ok=True)
     for existing in folder.glob("*.vpd"):
         stem = normal_name(existing.stem)
-        if stem != name and stem.casefold() == name.casefold():
+        if stem != name and name_key(stem) == name_key(name):
             raise PoseUploadError(409, f"A pose named {stem} already exists; names differ only by case.")
     path = folder / f"{name}.vpd"
     if path.exists() and not overwrite:

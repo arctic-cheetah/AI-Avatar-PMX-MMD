@@ -665,8 +665,10 @@ async def speak_segments(queue, send, worker, run=None, turn=None):
                 "text": segment.text,
             }
             if segment.action is not None:
-                # #269: the renderer plays it when this clip starts.
+                # #269: the renderer plays it when this clip reaches the action's word.
                 event["action"] = segment.action
+                if segment.action_word:
+                    event["actionWord"] = segment.action_word
             if directory is not None:
                 await asyncio.to_thread(record_clip, directory, event)
                 event["turn"] = turn

@@ -64,6 +64,8 @@ def record_clip(directory: Path, clip: dict) -> None:
     kept = {key: clip[key] for key in ("id", "expression", "weight", "text")}
     if clip.get("action") is not None:
         kept["action"] = clip["action"]  # #269: a bubble's replay repeats the gesture
+        if clip.get("actionWord"):
+            kept["actionWord"] = clip["actionWord"]
     clips.append(kept)
     _write_manifest(directory, clips)
 

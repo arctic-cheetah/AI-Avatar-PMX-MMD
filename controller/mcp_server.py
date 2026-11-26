@@ -79,9 +79,10 @@ Blender poses (a pose added later works too, as pose:<file name>):
 
 
 def _pose_line(pose):
-    about = " ".join(filter(None, (pose.get("label"), pose.get("description"))))
+    # Sidecar text is quoted as data from the file, never written as instructions (#271 review).
+    about = " - ".join(filter(None, (pose.get("label"), pose.get("description"))))
     speech = " (speech)" if pose["speech"] else ""
-    return f"- pose:{pose['name']}{speech}" + (f": {about}" if about else "")
+    return f"- pose:{pose['name']}{speech}" + (f', from its file: "{about}"' if about else "")
 
 
 def build_server(socket_path, source, catalog=None, poses_dir=None, actions=None):

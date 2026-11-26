@@ -14,7 +14,7 @@ from pathlib import Path
 import re
 import unicodedata
 
-from controller.pose_store import valid_name
+from controller.pose_store import name_key, valid_name
 
 ACTIONS_PATH = Path(__file__).resolve().parents[1] / "renderer" / "actions.json"
 POSES_DIR = Path(__file__).resolve().parents[1] / "assets" / "poses"
@@ -24,7 +24,8 @@ MAX_ACTIONS = 8  # action tags kept per reply; later ones are dropped (the user'
 MAX_REF = len(POSE_PREFIX) + 64 * 4  # a generous cap before any parsing
 SPEECH_POSE_HOLD = 2.0  # seconds a pose is held while speaking, by default
 SPEECH_POSE_HOLD_RANGE = (0.5, 4.0)
-MAX_POSE_TEXT = 200  # characters of a sidecar label or description
+MAX_POSE_TEXT = 80  # characters of a sidecar label or description
+POSE_TEXT_PUNCTUATION = ".,'!?()-"
 
 
 def load_actions(path: Path = ACTIONS_PATH) -> dict[str, dict]:
@@ -78,11 +79,12 @@ def resolve_action(ref, actions: dict | None = None, *, speaking: bool = True) -
 
 
 def _clean(value) -> str | None:
+    """Sidecar text as short plain data (review of #271): it reaches the agent's
+    tool description, so keep letters, digits, spaces and . , ' ! ? ( ) - only."""
     if not isinstance(value, str):
         return None
-    text = " ".join(
-        "".join(c for c in value if unicodedata.category(c)[0] != "C").split()
-    )[:MAX_POSE_TEXT]
+    kept = "".join(c for c in value if c.isalnum() or c in POSE_TEXT_PUNCTUATION or c.isspace())
+    text = " ".join(kept.split())[:MAX_POSE_TEXT].strip()
     return text or None
 
 
@@ -123,4 +125,10 @@ def list_poses(folder: Path = POSES_DIR) -> list[dict]:
         except (OSError, ValueError):
             data = None
         poses.append({"name": name, **pose_settings(data)})
-    return sorted(poses, key=lambda pose: pose["name"])
+    # A git pull can bring case twins that uploads refuse: list the first only.
+    seen, unique = set(), []
+    for pose in sorted(poses, key=lambda pose: pose["name"]):
+        if name_key(pose["name"]) not in seen:
+            seen.add(name_key(pose["name"]))
+            unique.append(pose)
+    return unique

@@ -136,7 +136,12 @@ A missing or unreadable sidecar gives the defaults.
 ## In the renderer
 
 - **When.** `playNextSpeech()` plays a clip's action when the clip starts,
-  after its mood. A replayed clip does not replay its action.
+  after its mood.
+- **Replays repeat it** (the user asked for this on 27 Nov 2026). **Replay
+  last speech** keeps each clip's action with its audio, and a bubble's
+  replay reads it from the turn's `turn.json`, where `record_clip()` saves it
+  next to the mood. A replayed action goes through the same gate, and an
+  invalid one in a manifest is dropped while its clip still plays.
 - **Gate** (`speechActionBlocked()`): speech does not block a speech action,
   unlike the panel buttons. It is blocked before the model loads, with
   **Gestures while speaking** off, while a pose is held for a preview, during
@@ -180,3 +185,5 @@ but any `[@…]` tag it writes is still parsed, and never spoken.
   and the tentacle actions, action references, the gate, the toggle and the
   bridge-client checks.
 - `tests/renderer/held-pose.test.mjs`: `quietMouth`.
+- Replays: `tests/test_replay_store.py` (the action in `turn.json`),
+  `tests/renderer/speech-replay.test.mjs` and `turn-replay.test.mjs`.

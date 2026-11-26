@@ -528,7 +528,7 @@ and a bridge restart:
 
 ```text
 assets/private/speech/turns/<turn id>/      # gitignored
-  turn.json                                 # ordered clips: id, mood, weight, text
+  turn.json                                 # ordered clips: id, mood, weight, text, optional action (#269)
   <clip id>.wav  <clip id>.visemes.json  <clip id>.txt
 ```
 

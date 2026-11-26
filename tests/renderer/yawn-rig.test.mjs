@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { THINKING_ARM, buildThinkingRig } from "../../renderer/thinking-rig.js";
+import { buildThinkingRig } from "../../renderer/thinking-rig.js";
 import { YAWN_ARM, armLayerWeights, blendArmLayers, buildYawnRig } from "../../renderer/yawn-rig.js";
 import { bustDepth, fixture } from "./arm-fixture.mjs";
 
@@ -36,16 +36,18 @@ test("building the yawn pose leaves the rig exactly at rest and caches the think
   }
 });
 
-test("the yawning hand sits just below her chin, lower than the thinking chin rest", () => {
+test("the yawning hand sits just below her chin, in front of her throat", () => {
   const { mesh, get } = fixture();
   const head = worldPosition(get("頭"));
   applyPose(mesh, buildYawnRig(mesh), 1);
   const side = YAWN_ARM.side;
   const wrist = worldPosition(get(`${side}手首`));
   assert.ok(wrist.distanceTo(head.clone().add(new THREE.Vector3(...YAWN_ARM.chin))) < 1e-6, "reaches its target");
-  assert.ok(wrist.y < head.y + THINKING_ARM.chin[1], "below where the thinking fist props the chin");
-  assert.ok(wrist.y > head.y - 2.2, "still up at her chin, not at her chest");
-  assert.ok(wrist.z > head.z + 1, "in front of her face, not inside it");
+  assert.ok(wrist.y < head.y - 0.3, "below her chin, not over her mouth");
+  assert.ok(wrist.y > head.y - 1.2, "still up at her chin, not at her collar");
+  assert.ok(wrist.z > head.z + 2, "in front of her throat, not inside it");
+  const fingers = worldPosition(get(`${side}中指１`)).sub(wrist);
+  assert.ok(fingers.x * (side === "右" ? 1 : -1) > 0, "fingers reach across toward her other side");
   assert.ok(worldPosition(get(`${side}ひじ`)).y < wrist.y, "the elbow hangs below the hand");
 });
 
@@ -53,7 +55,7 @@ test("only the yawning arm moves; the other stays at rest", () => {
   const { mesh } = fixture();
   const other = YAWN_ARM.side === "右" ? "左" : "右";
   for (const { bone, rest, posed } of buildYawnRig(mesh)) {
-    if (bone.name.startsWith(other)) assert.ok(rest.angleTo(posed) < 1e-9, `${bone.name} stays put`);
+    if (bone.name.startsWith(other)) assert.deepEqual(posed.toArray(), rest.toArray(), `${bone.name} stays put`);
   }
   for (const side of ["右", "左"]) {
     const moved = buildYawnRig(mesh, { side }).filter(({ rest, posed }) => rest.angleTo(posed) > 1e-6);
@@ -74,17 +76,21 @@ test("the yawning forearm keeps clear of the bust (#217)", () => {
   }
 });
 
-test("the yawning hand's fingers curl loosely, less than the thinking fist", () => {
+test("the yawning hand's fingers stay open and straight, unlike the thinking fist", () => {
   const { mesh } = fixture();
   const yawn = buildYawnRig(mesh);
   const think = buildThinkingRig(mesh);
-  const tip = `${YAWN_ARM.side}人指３`;
-  const angle = (entries) => {
-    const { rest, posed } = entries.find(({ bone }) => bone.name === tip);
+  const angle = (entries, name) => {
+    const { rest, posed } = entries.find(({ bone }) => bone.name === name);
     return rest.angleTo(posed);
   };
-  assert.ok(angle(yawn) > 0.1, "curled a little");
-  assert.ok(angle(yawn) < angle(think), "looser than the fist");
+  for (const digit of ["親指", "人指", "中指", "薬指", "小指"]) {
+    for (const joint of ["１", "２", "３"]) {
+      const name = `${YAWN_ARM.side}${digit}${joint}`;
+      assert.ok(angle(yawn, name) < 1e-6, `${name} uncurled`);
+    }
+  }
+  assert.ok(angle(think, `${YAWN_ARM.side}人指３`) > 0.15, "the thinking fist still curls");
 });
 
 test("missing bones are safe and a missing head gives no pose", () => {

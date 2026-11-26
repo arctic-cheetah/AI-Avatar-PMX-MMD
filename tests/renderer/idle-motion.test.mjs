@@ -341,7 +341,7 @@ test("no raised hand while active or waking, and a block mid-yawn lowers it smoo
   }
   const motion = new IdleMotion({ random: seeded() });
   play(motion, "stretching", 1.6);
-  const back = play(motion, "active", 1.5);
+  const back = play(motion, "active", 3);
   assert.ok(back[0].yawnHand > 0.5, "eases, not snaps");
   for (let i = 1; i < back.length; i += 1) assert.ok(back[i].yawnHand <= back[i - 1].yawnHand + 1e-12, "only goes down");
   assert.equal(back.at(-1).yawnHand, 0, "settles exactly at rest");

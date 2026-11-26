@@ -61,7 +61,10 @@ def record_clip(directory: Path, clip: dict) -> None:
         clips = json.loads((directory / MANIFEST).read_text(encoding="utf-8"))["clips"]
     except (OSError, ValueError, KeyError, TypeError):
         clips = []
-    clips.append({key: clip[key] for key in ("id", "expression", "weight", "text")})
+    kept = {key: clip[key] for key in ("id", "expression", "weight", "text")}
+    if clip.get("action") is not None:
+        kept["action"] = clip["action"]  # #269: a bubble's replay repeats the gesture
+    clips.append(kept)
     _write_manifest(directory, clips)
 
 

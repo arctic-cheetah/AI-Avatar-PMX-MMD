@@ -1622,7 +1622,8 @@ async function replayTurn(turn) {
     for (const item of clips) {
       const clip = speech.load(turnFile(turn, `${item.id}.wav`), turnFile(turn, `${item.id}.visemes.json`));
       clip.catch(() => {}); // Reported when its turn comes.
-      speechQueue.push({ clip, expression: item.expression, weight: item.weight, text: item.text, replay: true });
+      speechQueue.push({ clip, expression: item.expression, weight: item.weight, text: item.text, replay: true,
+        ...(item.action ? { action: item.action } : {}) });
     }
     liveSpeech.clipQueued();
     liveSpeech.responseFinished();
@@ -1740,8 +1741,8 @@ async function playNextSpeech() {
         continue;
       }
       if (!started) continue;
-      // #269: the clip's action starts with its words; a replay does not repeat it.
-      if (next.action && !next.replay) playSpokenAction(next.action, "speech");
+      // #269: the clip's action starts with its words, on replays too.
+      if (next.action) playSpokenAction(next.action, "speech");
       if (!next.filler && !next.replay) lastSpeech.remember({ ...next, clip, turn: next.turn });
       playingReplay = Boolean(next.replay);
       speechButton.textContent = "■ Stop";

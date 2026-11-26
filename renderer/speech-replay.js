@@ -33,7 +33,7 @@ export class LastSpeechReplay {
    * @param {{ clip: import('./speech-player.js').SpeechClip, expression: string, weight: number, text: string, turn: number }} item
    * @returns {boolean} Whether this clip was retained.
    */
-  remember({ clip, expression, weight, text, turn }) {
+  remember({ clip, expression, weight, text, turn, action }) {
     if (this.turn === turn && (this.partial || this.expired)) return false;
     const same = this.turn === turn && this.entries.length > 0;
     const base = same ? this.entries : [];
@@ -60,6 +60,7 @@ export class LastSpeechReplay {
       expression,
       weight,
       text: text.slice(0, MAX_TEXT),
+      ...(action ? { action } : {}), // #269: the gesture repeats on replay
     };
     if (!same) {
       this.entries = [stored];
@@ -84,11 +85,12 @@ export function dropQueuedReplay(queue) {
 }
 
 export function replayQueueItems(entries) {
-  return entries.map(({ clip, expression, weight, text }) => ({
+  return entries.map(({ clip, expression, weight, text, action }) => ({
     clip: Promise.resolve(clip),
     expression,
     weight,
     text,
+    ...(action ? { action } : {}),
     replay: true,
   }));
 }

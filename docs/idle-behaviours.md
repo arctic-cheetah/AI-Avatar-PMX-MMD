@@ -13,6 +13,7 @@ mood.
 | Idle-state timer | States, sleepy face and blinks, wake-up, blocking, settings | Done |
 | Idle motions | Side glances, head tilts, a visual sigh, a stretch before sleepy | Done |
 | Sleepy mouth | A slow yawn (`あ` 1 + `お` 0.4) during the stretch, a closed mouth while sleepy | Done |
+| Yawn hand | One hand rises to just below her chin while she yawns (#270) | Done |
 | Sigh and yawn clips | Short synthesised clips, cached like the thinking filler | Planned |
 
 Authored VMD/VPD idle motion is a separate ticket, #140.
@@ -113,6 +114,45 @@ She **yawns during each stretch**: on the way into sleepy, and whenever the stre
   strengths, the yawn through its curve, and mid-speech captures are kept in
   `assets/private/71/` (private model).
 
+**Hand under her chin (#270).** As she yawns, one hand rises to just below
+her chin and lowers again as her mouth closes:
+
+- **Timing:** the `yawnHand` channel rises over 0.9 s, so the hand is up
+  before her mouth is widest at 1.4 s. It holds through the 0.6 s hold and
+  lowers over the 1.0 s close, so it is down by the end of the 3.2 s
+  stretch. The curve goes through the motion spring (rate 8). Only the yawn
+  drives it: the sneeze's small open mouth (#149) leaves the hand down.
+- **Pose:** the arms come from the user's Blender pose,
+  `assets/poses/yawn-v1.vpd` (both arms, shoulders, elbows, wrists and
+  fingers). It is held like a [Blender pose](held-poses.md), as bind ⊗ vpd,
+  but its weight is driven by `yawnHand` instead of the pose ease. Before it
+  is held, every finger joint on both hands bends a little toward the palm
+  (`YAWN_FINGER_BEND`, about 14°, the thumb 45 % of that), because the
+  authored fingers are straight and the user asked for a slight bend.
+- **Fallback:** when the file is missing or fails to load, the console says
+  why, and `renderer/yawn-rig.js` solves the right arm instead with the
+  thinking chin rest's two-bone solver. `YAWN_ARM` holds that wrist target,
+  from the head bone, with the open hand lying across her throat just under
+  her chin. A first, higher target covered her mouth before the stretch had
+  tipped her head back, so the target is lower.
+- **Exporting the pose:** in the Blender rig, the right upper arm (`腕.R`) had
+  the MMD name `左腕`, the same as the left arm. The first export therefore
+  saved only one `左腕` and lost the right upper arm. The committed file was
+  captured again with each arm under its own name, and a test checks that
+  each upper arm appears once. Fix the name to `右腕` in Blender before the
+  next export.
+- **Sharing the arms:** the thinking pose wins. The yawn gets
+  `yawnHand × (1 − thinking)`. The arm drift (#193) fades by both weights,
+  so it never pushes a raised hand into her face. The head follows the gaze
+  less while the hand is up, as it does for the chin rest, so her chin
+  stays over the hand. A held pose (#49) still wins over both.
+- **Interruptions:** speech, thinking and an open `ask` end the yawn, and
+  the spring lowers the hand smoothly. Idle behaviours off means no yawn and
+  no hand.
+- **Grids:** placement candidates, curled vs open fingers, the authored pose
+  with finger bends, weights and a played stretch-and-yawn are kept in
+  `assets/private/270/` (private model).
+
 ## Actions
 
 Pure logic in `renderer/idle-motion.js` (`IdleMotion`). Each action follows an
@@ -138,7 +178,7 @@ panel picks it up by itself.
 | `shrug-right` | 2.2 % | 2.4–3.0 s | The shoulder on the right of the screen (`左肩`) | 12° |
 | `shrug-both` | 2.2 % | 2.4–3.0 s | Both `肩` together | 12° |
 | `sigh` | **15 % (fixed)** | 1.1 s in, 1.7 s out | Chest (`上半身2` pitch) and both `肩` lift, then fall; the mouth parts a little breathing in and opens with `お` breathing out | 2° chest, 2.5° shoulders, `お` 0.15 in, 0.35 out |
-| `stretch-yawn` | 13.4 % | 3.2 s | Back arches (`上半身`), head tips back (`首`/`頭`), shoulders lift, and she yawns | 5° back, 7° head, 6° shoulders, yawn 1 |
+| `stretch-yawn` | 13.4 % | 3.2 s | Back arches (`上半身`), head tips back (`首`/`頭`), shoulders lift, and she yawns with a hand under her chin (#270) | 5° back, 7° head, 6° shoulders, yawn 1, hand 1 |
 | `nod` | 4.5 % | 3.2 s | A dozing nod: `首`/`頭` dip forward slowly, then lift | 6° |
 | `sneeze` | 2.2 % | 2.2 s | A light sneeze: breathe in with the head tipped back, the chest rising and the mouth a little open (0.9 s), then a quick forward snap with the eyes squeezed shut (`まばたき`) and the mouth closed, then rest | 4° back, 5° forward, 1.5° chest, mouth 0.3 |
 | `wink-left` | 2.2 % | 1.4 s | A playful wink: the eye on the left of the screen closes in a happy arc (`ウィンク右`), the mouth corners lift a little (`口角上げ` 0.5), and the head tilts toward it | 3° tilt |

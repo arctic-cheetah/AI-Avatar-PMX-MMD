@@ -41,6 +41,7 @@ import { FillerSession } from "./filler-session.js";
 import { HeldPose, bindPoseEase, idleMayPlay, poseActionTicks, poseFileNames, readVpd, savePoseActionTick } from "./held-pose.js";
 import { ThinkingPose, THINKING_POSE, headGazeScale } from "./thinking-pose.js";
 import { buildThinkingRig } from "./thinking-rig.js";
+import { YAWN_FINGER_BEND, YAWN_POSE, armLayerWeights, bendYawnFingers, blendArmLayers, buildYawnRig } from "./yawn-rig.js";
 import { handAngles, thinkingFidgetAngles } from "./thinking-fidget.js";
 import { REST_POSES, bindRestPoseSetting, relaxArms } from "./rest-pose.js";
 import { buildHandDriftRig } from "./hand-drift-rig.js";
@@ -269,6 +270,15 @@ const thinkingPose = new ThinkingPose();
 let thinkingBones = [];
 /** Arm-target overrides from the preview hook (#217); empty uses THINKING_ARM. */
 let thinkingArm = {};
+/** The hand under her chin while she yawns (#270): same bones as thinkingBones. */
+let yawnBones = [];
+/** The user's Blender yawn pose (#270), held by the yawn weight once loaded; until then the solved arm. */
+let yawnPose = null;
+let yawnPoseLoaded = false;
+/** Yawn arm overrides from the preview hook (#270); empty uses YAWN_ARM. */
+let yawnArm = {};
+/** How the thinking pose, the yawn hand and the arm drift share the arms this frame. */
+let armWeights = armLayerWeights(0, 0);
 /** Fidget size overrides from the preview hook (#218); a `clock` holds one moment. */
 let thinkingFidget = {};
 /** @type {{ bone: THREE.Bone, rest: THREE.Quaternion }[]} */
@@ -645,7 +655,7 @@ function applyGaze(delta) {
   if (!gazeBones.length) return;
   const angles = gaze.update(delta);
   // The chin-rest hand is solved against the resting head, so the head follows less while it is up.
-  const headScale = headGazeScale(thinkingPose.weight);
+  const headScale = headGazeScale(armWeights.headGaze);
   for (const { name, bone, rest } of gazeBones) {
     const isEye = name === "左目" || name === "右目";
     const yaw = isEye ? angles.eyeYaw : angles.headYaw * headScale;
@@ -657,18 +667,19 @@ function applyGaze(delta) {
   }
 }
 
-/** Cache the lowered-arm rest pose and a supported chin-rest pose. */
-function setupThinkingPose(object, arm = thinkingArm) {
+/** Cache the lowered-arm rest pose, a supported chin-rest pose and the yawn hand (#270). */
+function setupThinkingPose(object, arm = thinkingArm, yawn = yawnArm) {
   thinkingArm = arm;
+  yawnArm = yawn;
   thinkingBones = buildThinkingRig(object, arm);
+  // The authored pose replaces the solved arm once it has loaded.
+  yawnBones = yawnPoseLoaded ? [] : buildYawnRig(object, yawn);
 }
 
-/** Blend the hand-to-chin gesture over the lowered-arm rest pose. */
+/** Blend the hand-to-chin gesture, then the yawn's hand, over the lowered-arm rest pose. */
 function applyThinkingPose(delta) {
-  const weight = thinkingPose.update(delta);
-  for (const { bone, rest, posed } of thinkingBones) {
-    bone.quaternion.copy(rest).slerp(posed, weight);
-  }
+  armWeights = armLayerWeights(thinkingPose.update(delta), idlePose.yawnHand);
+  blendArmLayers(thinkingBones, yawnBones, armWeights);
 }
 
 /**
@@ -732,16 +743,16 @@ function setupArmDrift(object) {
 }
 
 /**
- * Multiply the arm drift (#193) on top of the thinking pose, which owns the
- * arms: the drift fades as the hand goes to the chin and returns as it drops.
+ * Multiply the arm drift (#193) on top of the thinking pose and the yawn hand,
+ * which own the arms: the drift fades as a hand rises and returns as it drops.
  * Below the elbows the thinking fidget (#218) takes over as the drift fades.
  * @returns {void}
  */
 function applyArmDrift() {
-  const fade = 1 - thinkingPose.weight;
+  const fade = armWeights.drift;
   const { clock, ...sizes } = thinkingFidget;
   const fidget = clock === undefined ? thinkingPose.fidget(sizes) : thinkingFidgetAngles(clock, thinkingPose.weight, sizes);
-  const hands = handAngles(idlePose, fidget, thinkingPose.weight);
+  const hands = handAngles(idlePose, fidget, 1 - fade);
   const sum = (parts = []) => fade * parts.reduce((total, [key, sign]) => total + (idlePose[key] ?? 0) * sign, 0);
   for (const { bone, rest, frame, x, y, z } of armBones) {
     if (rest) bone.quaternion.copy(rest);
@@ -1345,7 +1356,7 @@ function updateIdle(delta) {
   refreshActionPlay();
   // A held pose lets previews and comparison grids show one motion on demand.
   idlePose = globalThis.__yidhariIdlePose
-    ? { glance: null, tilt: 0, chest: 0, shoulders: 0, shoulderLeft: 0, shoulderRight: 0, back: 0, headPitch: 0, yawn: 0, squint: 0, winkLeft: 0, winkRight: 0, mouthLift: 0, surprise: 0,
+    ? { glance: null, tilt: 0, chest: 0, shoulders: 0, shoulderLeft: 0, shoulderRight: 0, back: 0, headPitch: 0, yawn: 0, yawnHand: 0, squint: 0, winkLeft: 0, winkRight: 0, mouthLift: 0, surprise: 0,
       shiver: 0, shiverWave: 0, smile: 0, browRaise: 0, hum: 0, bobPitch: 0, bobRoll: 0, lean: 0, shy: 0, exhale: 0,
       armDrift: 0, ...Object.fromEntries(ARM_CHANNELS.map((key) => [key, 0])),
       ...globalThis.__yidhariIdlePose }
@@ -1934,6 +1945,31 @@ async function loadHeldPose(name) {
 }
 
 /**
+ * Load the user's yawn pose (#270) with its fingers bent a little. Without
+ * it, the yawn keeps the solved arm from yawn-rig.js.
+ * @param {number} [bend] Radians per finger joint, for comparison grids.
+ * @returns {Promise<boolean>} Whether the authored pose is in use.
+ */
+async function loadYawnPose(bend = YAWN_FINGER_BEND) {
+  const pose = yawnPose;
+  try {
+    const response = await fetch(`${POSES_URL}${encodeURIComponent(YAWN_POSE)}.vpd`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const text = new TextDecoder("shift_jis").decode(await response.arrayBuffer());
+    if (pose !== yawnPose) return false; // another model loaded meanwhile
+    const bind = new Map([...pose.bind].map(([bone, { quaternion }]) => [bone, quaternion]));
+    const { missing } = pose.load(YAWN_POSE, bendYawnFingers(mesh, bind, readVpd(text), bend));
+    if (missing.length) console.warn(`Yawn pose: not on this model: ${missing.join(", ")}`);
+    yawnPoseLoaded = true;
+    yawnBones = [];
+    return true;
+  } catch (error) {
+    console.warn(`Yawn pose ${YAWN_POSE}.vpd not used (${error.message}); the yawn keeps the solved arm.`);
+    return false;
+  }
+}
+
+/**
  * Play a pose once, or stop it if it is the one playing.
  * @param {string} name
  * @param {number} [seconds] How long to keep it; Infinity holds until clicked.
@@ -2088,6 +2124,9 @@ function onModelLoaded(loaded, data) {
     morphPanels: Object.fromEntries(data.morphs.map((morph) => [morph.name, morph.panel])),
   });
   bindHeldPose();
+  // Before restArms(), like heldPose: the yawn pose is measured from the bind pose too.
+  yawnPose = new HeldPose(mesh);
+  loadYawnPose();
   scene.add(mesh);
   frameModel(mesh);
 
@@ -2155,6 +2194,24 @@ function onModelLoaded(loaded, data) {
       // Rebuild from the rest pose, not from the currently blended thinking pose.
       for (const { bone, rest } of thinkingBones) bone.quaternion.copy(rest);
       setupThinkingPose(mesh, arm);
+    },
+    /**
+     * Reload the authored yawn pose with another finger bend for comparison grids (#270).
+     * @param {number} [bend] Radians per finger joint; no argument restores the default.
+     * @returns {Promise<boolean>}
+     */
+    yawnFingerBend(bend = YAWN_FINGER_BEND) {
+      return loadYawnPose(bend);
+    },
+    /**
+     * Rebuild the solved yawn arm (the fallback) with other targets for comparison grids (#270).
+     * @param {Partial<typeof import("./yawn-rig.js").YAWN_ARM>} [arm] No argument restores the defaults.
+     * @returns {void}
+     */
+    yawnArm(arm = {}) {
+      if (!mesh) return;
+      for (const { bone, rest } of thinkingBones) bone.quaternion.copy(rest);
+      setupThinkingPose(mesh, thinkingArm, arm);
     },
     /**
      * Override the thinking fidget's sizes for comparison grids (#218).
@@ -2599,6 +2656,11 @@ function animate() {
   applySway(now / 1000, delta);
   applyIdleMotion();
   applyArmDrift();
+  // The authored yawn arms (#270) follow the yawn weight; a held pose still wins after them.
+  yawnPose?.drive(yawnPoseLoaded ? armWeights.yawn : 0);
+  // Only a reload while she yawns crossfades; update() finishes that crossfade.
+  yawnPose?.update(delta);
+  yawnPose?.apply();
   heldPose?.update(delta);
   heldPose?.apply();
   refreshHeldPoseButtons();

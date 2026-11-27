@@ -421,3 +421,28 @@ test("idle may play a pose only when no user-started pose is showing", () => {
   assert.equal(idleMayPlay({ picked: "wink-clap", playing: true, name: "wink-clap", startedBy: "idle" }), false,
     "already showing: a toggle would stop it");
 });
+
+test("a driven pose follows the weight it is given instead of its ease (#270)", () => {
+  const { mesh, get } = rig();
+  const pose = new HeldPose(mesh);
+  const arm = get("右腕");
+  const rest = arm.quaternion.clone();
+  pose.load("yawn", readVpd(VPD));
+  const target = pose.targets.get(arm).quaternion.clone();
+  pose.drive(1);
+  pose.apply();
+  assert.ok(close(arm.quaternion, target), "full weight reaches the pose");
+  arm.quaternion.copy(rest); // the layers rewrite it next frame
+  pose.drive(0.5);
+  pose.apply();
+  assert.ok(Math.abs(rest.angleTo(arm.quaternion) - rest.angleTo(target) / 2) < 1e-6, "half weight is halfway");
+  pose.update(10); // its own ease does not move a driven pose
+  assert.equal(pose.weight, 0.5);
+  pose.drive(0);
+  pose.apply();
+  assert.deepEqual(arm.quaternion.toArray(), rest.toArray(), "weight 0 lets the bone go back");
+  for (const bad of [Number.NaN, -1, 3]) {
+    pose.drive(bad);
+    assert.ok(pose.weight >= 0 && pose.weight <= 1, `clamped for ${bad}`);
+  }
+});

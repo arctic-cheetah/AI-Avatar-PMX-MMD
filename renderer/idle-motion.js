@@ -32,6 +32,8 @@ export const IDLE_MOTION = Object.freeze({
   stretch: Object.freeze({ rise: 1, back: 5 * DEG, headPitch: 7 * DEG, shoulders: 6 * DEG }),
   /** The yawn during the stretch: the user's mouth pick, opened slowly (#71). */
   yawn: Object.freeze({ open: 1.4, hold: 0.6, close: 1.0, morphs: Object.freeze({ "あ": 1, "お": 0.4 }) }),
+  /** The hand under her chin as she yawns (#270): up over `rise`, then down with the yawn's close. */
+  yawnHand: Object.freeze({ rise: 0.9 }),
   /**
    * A light sneeze (#149): keyframes in seconds and the value at each, eased
    * between them. Breathe in with the head back (0-0.9 s), snap forward with
@@ -166,7 +168,7 @@ export const IDLE_MOTION = Object.freeze({
 });
 
 const ANGLES = ["tilt", "chest", "shoulders", "shoulderLeft", "shoulderRight", "back", "headPitch", "shiver", "hum", "lean",
-  "yawn", "squint", "winkLeft", "winkRight", "mouthLift", "surprise", "smile", "browRaise", "shy", "exhale"];
+  "yawn", "yawnHand", "squint", "winkLeft", "winkRight", "mouthLift", "surprise", "smile", "browRaise", "shy", "exhale"];
 
 /**
  * Face channels (#149): an action writes a 0-1 weight per channel, and the
@@ -199,6 +201,7 @@ const LIMITS = Object.freeze({
   back: [0, IDLE_MOTION.stretch.back],
   headPitch: [-IDLE_MOTION.nod.angle, IDLE_MOTION.stretch.headPitch],
   yawn: [0, 1],
+  yawnHand: [0, 1],
   squint: [0, 1],
   winkLeft: [0, 1],
   winkRight: [0, 1],
@@ -305,6 +308,14 @@ function yawnCurve(t) {
   return 1 - smoothstep((t - open - hold) / close);
 }
 
+/** The hand under her chin: up before the mouth is wide, held, down as it closes. */
+function yawnHandCurve(t) {
+  const { open, hold, close } = IDLE_MOTION.yawn;
+  if (!(t > 0) || t >= open + hold + close) return 0;
+  if (t < open + hold) return smoothstep(t / IDLE_MOTION.yawnHand.rise);
+  return 1 - smoothstep((t - open - hold) / close);
+}
+
 /** The stretch with its yawn; also the step into sleepy. */
 function stretchYawn(t, target) {
   const { rise, back, headPitch, shoulders } = IDLE_MOTION.stretch;
@@ -313,6 +324,7 @@ function stretchYawn(t, target) {
   target.headPitch = weight * headPitch;
   target.shoulders = weight * shoulders;
   target.yawn = yawnCurve(t);
+  target.yawnHand = yawnHandCurve(t);
 }
 
 /** A head tilt; sign 1 leans toward the left of the screen. */
@@ -565,9 +577,10 @@ export const ACTIONS_KEY = "yidhari.actions";
 /**
  * Turns the idle state into one small action at a time: every 8-20 s while
  * idle, and on every sleep action interval while asleep.
- * update() returns `{ glance, tilt, chest, shoulders, shoulderLeft, shoulderRight, back, headPitch, yawn }`:
+ * update() returns `{ glance, tilt, chest, shoulders, shoulderLeft, shoulderRight, back, headPitch, yawn, yawnHand }`:
  * glance is a normalised gaze target or null, yawn is a 0-1 weight for
- * IDLE_MOTION.yawn.morphs, and the rest are radians.
+ * IDLE_MOTION.yawn.morphs, yawnHand is the 0-1 weight of the hand under her
+ * chin (#270), and the rest are radians.
  */
 export class IdleMotion {
   /** @param {{ random?: () => number }} [options] Random source in [0, 1). */
@@ -604,7 +617,7 @@ export class IdleMotion {
    * @param {string} state IdleController state.
    * @param {number} stateTime Seconds in that state.
    * @param {number} [sleepActionEvery=0] While sleepy, do a random action this often (s); 0 = never.
-   * @returns {{glance:{x:number,y:number}|null,tilt:number,chest:number,shoulders:number,shoulderLeft:number,shoulderRight:number,back:number,headPitch:number,yawn:number}}
+   * @returns {{glance:{x:number,y:number}|null,tilt:number,chest:number,shoulders:number,shoulderLeft:number,shoulderRight:number,back:number,headPitch:number,yawn:number,yawnHand:number}}
    */
   update(delta, state, stateTime, sleepActionEvery = 0) {
     const dt = Number.isFinite(delta) && delta > 0 ? delta : 0;

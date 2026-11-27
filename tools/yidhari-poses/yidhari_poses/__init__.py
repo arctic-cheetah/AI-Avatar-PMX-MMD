@@ -14,7 +14,7 @@ from bpy.props import BoolProperty, StringProperty
 from bpy_extras.io_utils import ExportHelper
 
 from . import poses
-from .vpd_lib import VpdError, poses_folder
+from .vpd_lib import NameConflict, VpdError, describe_conflict, poses_folder
 
 bl_info = {
     "name": "Yidhari Poses",
@@ -43,6 +43,23 @@ def default_folder() -> str:
     """The repository's `assets/poses/` (tracked in git), created if missing (vpd_lib.poses_folder)."""
     folder = poses_folder(Path(bpy.data.filepath) if bpy.data.filepath else None)
     return f"{folder}/" if folder else ""
+
+
+def draw_name_conflicts(layout: bpy.types.UILayout, conflicts: list[NameConflict], *, select: bool = True) -> None:
+    """A warning box for MMD names shared by more than one bone (#273); nothing when there are none."""
+    if not conflicts:
+        return
+    box = layout.box()
+    box.alert = True
+    box.label(text="Shared MMD names: a VPD keeps one bone each", icon="ERROR")
+    for conflict in conflicts:
+        col = box.column(align=True)
+        col.label(text=f"{conflict.name}: {', '.join(conflict.bones)}", icon="BONE_DATA")
+        col.label(text=f"    saved from {conflict.saved}; left out: {', '.join(conflict.left_out)}")
+        for bone, hint in conflict.hints:
+            col.label(text=f"    fix? {bone}: {conflict.name} → {hint}", icon="LIGHT")
+    if select:
+        box.operator(YIDHARI_OT_select_name_conflicts.bl_idname, icon="RESTRICT_SELECT_OFF")
 
 
 class _NeedsArmature:
@@ -132,6 +149,9 @@ class YIDHARI_OT_save_vpd(_NeedsArmature, ExportHelper, bpy.types.Operator):
     )
 
     def draw(self, context):
+        arm = find_armature(context)
+        if arm is not None:
+            draw_name_conflicts(self.layout, poses.name_conflicts(arm), select=False)
         self.layout.prop(self, "selected_only")
         self.layout.prop(self, "bake_mirrored_bones")
 
@@ -151,7 +171,33 @@ class YIDHARI_OT_save_vpd(_NeedsArmature, ExportHelper, bpy.types.Operator):
             return {"CANCELLED"}
         if saved.skipped:
             self.report({"WARNING"}, f"Left out (Shift-JIS cannot name them): {', '.join(saved.skipped)}")
+        for conflict in saved.conflicts:
+            self.report({"WARNING"}, describe_conflict(conflict))
         self.report({"INFO"}, f"Saved {len(saved.pose.bones)} bones and {len(saved.pose.morphs)} morphs")
+        return {"FINISHED"}
+
+
+class YIDHARI_OT_select_name_conflicts(_NeedsArmature, bpy.types.Operator):
+    """Select the bones that share an MMD name, to fix them in MMD Bone Tools"""
+
+    bl_idname = "yidhari_poses.select_name_conflicts"
+    bl_label = "Select Conflicts"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        arm = find_armature(context)
+        conflicts = poses.name_conflicts(arm)
+        if not conflicts:
+            self.report({"INFO"}, "No shared MMD names")
+            return {"CANCELLED"}
+        clashing = {bone for conflict in conflicts for bone in conflict.bones}
+        for bone in arm.data.bones:
+            bone.select = bone.name in clashing
+        # The likely culprit (a side mismatch) first, so its MMD name is in view.
+        first = next((bone for c in conflicts for bone, _ in c.hints), conflicts[0].bones[0])
+        arm.data.bones.active = arm.data.bones[first]
+        for conflict in conflicts:
+            self.report({"WARNING"}, describe_conflict(conflict))
         return {"FINISHED"}
 
 
@@ -206,6 +252,7 @@ class VIEW3D_PT_yidhari_poses(bpy.types.Panel):
         row.operator(YIDHARI_OT_import_folder.bl_idname, icon="IMPORT")
         row.operator(YIDHARI_OT_save_vpd.bl_idname, icon="EXPORT")
         layout.operator(YIDHARI_OT_reset.bl_idname, icon="LOOP_BACK")
+        draw_name_conflicts(layout, poses.name_conflicts(arm))
         box = layout.box()
         found = poses.list_poses()
         if not found:
@@ -224,6 +271,7 @@ CLASSES = (
     YIDHARI_OT_apply_pose,
     YIDHARI_OT_reset,
     YIDHARI_OT_save_vpd,
+    YIDHARI_OT_select_name_conflicts,
     YIDHARI_OT_thumbnail,
     VIEW3D_PT_yidhari_poses,
 )

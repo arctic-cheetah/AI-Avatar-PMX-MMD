@@ -9,7 +9,7 @@ importer and exporter use.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import importlib
 from pathlib import Path
 
@@ -17,6 +17,7 @@ import bpy
 from mathutils import Matrix, Quaternion, Vector
 
 from .vpd_lib import (
+    NameConflict, name_conflicts as _name_conflicts,
     VpdBone, VpdMorph, VpdPose, decode_morphs, encode_morphs, format_vpd, missing_names, parse_vpd,
     arm_chain_fill, from_vpd_name, keep_morph, pose_name, split_unwritable,
 )
@@ -33,6 +34,7 @@ FRAME = 1
 class PoseSave:
     pose: VpdPose
     skipped: list[str]
+    conflicts: list[NameConflict] = field(default_factory=list)
 
 
 @dataclass
@@ -65,6 +67,17 @@ def mmd_bones(arm: bpy.types.Object) -> dict[str, bpy.types.PoseBone]:
         mmd = getattr(pose_bone, "mmd_bone", None)
         bones[(mmd.name_j if mmd and mmd.name_j else pose_bone.name)] = pose_bone
     return bones
+
+
+def name_conflicts(arm: bpy.types.Object) -> list[NameConflict]:
+    """MMD names more than one exported bone shares (#273); a VPD can keep only one of each."""
+    pairs = []
+    for pose_bone in arm.pose.bones:
+        if _is_helper(pose_bone):
+            continue
+        mmd = getattr(pose_bone, "mmd_bone", None)
+        pairs.append((pose_bone.name, mmd.name_j if mmd and mmd.name_j else pose_bone.name))
+    return _name_conflicts(pairs)
 
 
 def morph_meshes(arm: bpy.types.Object) -> list[bpy.types.Object]:
@@ -274,4 +287,4 @@ def save_vpd(
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(format_vpd(pose))
-    return PoseSave(pose, skipped)
+    return PoseSave(pose, skipped, name_conflicts(arm))

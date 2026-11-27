@@ -171,6 +171,8 @@ export class HeldPose {
     this.remaining = Infinity;
     /** A weight set from outside (drive), or null to follow the ease. */
     this.driven = null;
+    /** While she speaks (#269): leave the mouth panel to the mood and lip sync. */
+    this.quietMouth = false;
   }
 
   /**
@@ -222,6 +224,33 @@ export class HeldPose {
     this.morphs = morphs;
     this.owned = this.#ownedIndices(morphs);
     return { bones: targets.size, missing };
+  }
+
+  /** @param {string} name @returns {boolean} Whether a morph is in the mouth panel (3). */
+  #mouth(name) {
+    return this.morphPanels[name] === 3;
+  }
+
+  /** @template T @param {T[]} list @param {(item: T) => boolean} keep @returns {T[]} `list` without mouth morphs, memoised per list. */
+  #withoutMouth(list, keep) {
+    this.quietLists ??= new WeakMap();
+    let kept = this.quietLists.get(list);
+    if (!kept) {
+      kept = list.filter(keep);
+      this.quietLists.set(list, kept);
+    }
+    return kept;
+  }
+
+  /** @returns {Set<number>} Morph indices of the mouth panel, cached; HeldPose is rebuilt with each mesh, so it never goes stale. */
+  #mouthIndices() {
+    if (!this.mouthIndexCache) {
+      const dictionary = this.mesh.morphTargetDictionary ?? {};
+      this.mouthIndexCache = new Set(Object.keys(this.morphPanels)
+        .filter((name) => this.#mouth(name) && dictionary[name] !== undefined)
+        .map((name) => dictionary[name]));
+    }
+    return this.mouthIndexCache;
   }
 
   /** @param {{ name: string }[]} morphs @returns {number[]} Morphs in the panels these set, but the blink. */
@@ -399,8 +428,11 @@ export class HeldPose {
   }
 
   /** Apply one pose's face to `influences` at `weight`. */
-  #face(influences, morphs, owned, weight) {
+  #face(influences, allMorphs, allOwned, weight) {
     if (weight === 0) return;
+    // Filtered once per list, not per frame (review of #271).
+    const morphs = this.quietMouth ? this.#withoutMouth(allMorphs, ({ name }) => !this.#mouth(name)) : allMorphs;
+    const owned = this.quietMouth ? this.#withoutMouth(allOwned, (index) => !this.#mouthIndices().has(index)) : allOwned;
     if (owned.length === 0) {
       for (const { index, weight: target } of morphs) influences[index] = Math.max(influences[index], target * weight);
       return;

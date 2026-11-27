@@ -6,6 +6,7 @@
 
 import { Spring } from "./smoothing.js";
 import { IDLE_TIMING } from "./idle-behaviour.js";
+import { ACTION_CATALOG } from "./speech-actions.js";
 
 const DEG = Math.PI / 180;
 /** The arm drift's weight while asleep or waking (#193). */
@@ -566,33 +567,10 @@ export const ACTIONS = Object.freeze(Object.fromEntries(Object.entries(ACTION_TA
   Object.freeze({ ...action, weight: action.fixed ?? (1 - SIGH_SHARE) * (action.share / SHARED) }),
 ])));
 
-/** Panel labels for the action checkboxes (#149). */
-export const ACTION_LABELS = Object.freeze({
-  glance: "Glance",
-  "tilt-left": "Tilt head left",
-  "tilt-right": "Tilt head right",
-  "shrug-left": "Shrug left",
-  "shrug-right": "Shrug right",
-  "shrug-both": "Shrug both",
-  sigh: "Sigh",
-  "stretch-yawn": "Stretch & yawn",
-  nod: "Dozing nod",
-  sneeze: "Light sneeze",
-  "wink-left": "Wink left",
-  "wink-right": "Wink right",
-  "look-around": "Look around",
-  shiver: "Little shiver",
-  hiccup: "Hiccup",
-  "nodding-off": "Nodding off",
-  "humming-bob": "Humming bob",
-  "contented-smile": "Contented smile",
-  "eyebrow-raise": "Eyebrow raise",
-  "deep-breath": "Deep breath",
-  sniffle: "Sniffle",
-  "neck-roll": "Neck roll",
-  "weight-shift": "Weight shift",
-  "shy-look-away": "Shy look-away",
-});
+/** Panel labels for the action checkboxes (#149), from the shared catalog (#269, actions.json). */
+export const ACTION_LABELS = Object.freeze(Object.fromEntries(Object.entries(ACTION_CATALOG)
+  .filter(([, entry]) => (entry.layer ?? "body") === "body")
+  .map(([name, entry]) => [name, entry.label])));
 
 export const ACTIONS_KEY = "yidhari.actions";
 
@@ -619,7 +597,7 @@ export class IdleMotion {
     this.actions = Object.keys(ACTIONS);
     /** @type {Map<string, { share: number, duration: number }>} Picked like actions; main.js plays them (#49). */
     this.external = new Map();
-    /** @type {null | { kind: string, t: number, duration: number }} The action played from a panel button (#164). */
+    /** @type {null | { kind: string, t: number, duration: number, source: string }} The action played from a panel button (#164) or speech (#269). */
     this.manual = null;
     this.springs = Object.fromEntries(ANGLES.map((key) => [key, new Spring(0)]));
     /** Seconds of motion so far; the shiver's wave and the arm drift run on it. */
@@ -762,19 +740,25 @@ export class IdleMotion {
     return null;
   }
 
-  /** The name of the action playing from a button, or null. */
+  /** The name of the action playing from a button or speech, or null. */
   get playing() {
     return this.manual?.kind ?? null;
+  }
+
+  /** Who started it: "user" (a button), "speech" or "agent" (#269), or null. */
+  get playingSource() {
+    return this.manual?.source ?? null;
   }
 
   /**
    * Play one action now, once, whatever is ticked (#164). It does not wake her.
    * @param {string} name An ACTIONS key; anything else is ignored.
+   * @param {"user" | "speech" | "agent"} [source] Who started it (#269).
    * @returns {boolean} Whether it started.
    */
-  play(name) {
+  play(name, source = "user") {
     if (typeof name !== "string" || !Object.hasOwn(ACTIONS, name)) return false;
-    this.manual = { kind: name, t: 0, ...ACTIONS[name].create(this.random) };
+    this.manual = { kind: name, t: 0, source, ...ACTIONS[name].create(this.random) };
     this.current = null;
     return true;
   }

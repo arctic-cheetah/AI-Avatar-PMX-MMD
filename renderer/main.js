@@ -70,6 +70,7 @@ import { fetchTurn, turnFile } from "./turn-replay.js";
 import { createAmmoLoader } from "./ammo-loader.js";
 import { filterPhysics } from "./physics-groups.js";
 import { PhysicsLayer } from "./physics-layer.js";
+import { ACTION_CATALOG, actionDelay, bindSpeechActionsSetting, parseActionRef, poseSpeechSettings, speechActionBlocked, speechMayPlayPose } from "./speech-actions.js";
 import { TENTACLE_ACTIONS, TENTACLE_WAVE_KEY, TentacleWave, bindTentacleHeight, bindTentacleSize, tailChains, tentacleBlocks } from "./tentacle-motion.js";
 import { bindStoredToggle } from "./stored-toggle.js";
 import {
@@ -239,6 +240,8 @@ let speechClip = null;
 const speechQueue = [];
 /** Bumped on every new response or stop, so stale clip loads are discarded. */
 let liveRun = 0;
+/** Counts clips started, so a delayed action (#269) plays only during its own clip. */
+let clipSerial = 0;
 let speechTurn = 0;
 let playingReplay = false;
 let speechStarting = false;
@@ -389,6 +392,116 @@ bindRestPoseSetting((name) => {
 }, restPoseButtons);
 const actionPlayStatus = document.querySelector("#action-play-status");
 let shownActionPlay = null;
+// Animation actions while she speaks (#269). See docs/speech-actions.md.
+let speechActionsEnabled = true;
+bindSpeechActionsSetting(document.querySelector("#speech-actions-toggle"), (on) => {
+  speechActionsEnabled = on;
+});
+/** Who started the tentacle action: "user", "speech" or "agent". */
+let tentacleSource = null;
+/** The last speech or agent action, or why it did not play, for the status line. */
+let speechActionNote = "";
+/** @param {string | null} source @returns {boolean} Started by speech or the agent, not a button. */
+const spokenSource = (source) => source === "speech" || source === "agent";
+
+/** @returns {string | null} Why a speech or agent action cannot play now (#269). */
+function speechActionReason() {
+  return speechActionBlocked({
+    loaded: Boolean(mesh && expressions && heldPose),
+    enabled: speechActionsEnabled,
+    held: Boolean(globalThis.__yidhariIdlePose),
+    previewing: Boolean(audition?.sweeping || globalThis.__yidhariHold),
+    state: idle.state,
+  });
+}
+
+/** Pose sidecar settings by pose name, read once per pose list (#269). */
+const poseSettingsCache = new Map();
+/** @param {string} name @returns {Promise<{ speech: boolean, speechHold: number }>} */
+async function poseSettingsFor(name) {
+  if (!poseSettingsCache.has(name)) {
+    poseSettingsCache.set(name, fetch(`${POSES_URL}${encodeURIComponent(name)}.json`, { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .catch(() => null)
+      .then(poseSpeechSettings));
+  }
+  return poseSettingsCache.get(name);
+}
+
+/**
+ * Play a pose for speech or the agent (#269): list the folder again for a
+ * pose the page does not know, never replace a pose the user started, and
+ * hold it for its speech hold while she speaks.
+ * @param {string} name @param {"speech" | "agent"} source
+ * @returns {Promise<string>} What happened, for the status line.
+ */
+async function playSpokenPose(name, source) {
+  if (!(await knownPose(name))) return `${name}: no such pose in ${POSES_URL}`;
+  const allowed = () => speechMayPlayPose({ playing: heldPose.playing, startedBy: heldPoseSource });
+  if (!allowed()) return `${name}: kept the pose you started`;
+  const settings = await poseSettingsFor(name);
+  if (!speechIdle() && !settings.speech) return `${name}: not played while speaking (its settings)`;
+  if (heldPose.name !== name) {
+    // Loading swaps the pose: check again, since a button may have started one meanwhile.
+    if (!allowed()) return `${name}: kept the pose you started`;
+    if (!(await loadHeldPose(name))) return `${name}: could not load`;
+  }
+  // Check again right before playing (review of #271): the awaits above can let a button pose in.
+  if (!allowed()) return `${name}: kept the pose you started`;
+  const speaking = !speechIdle();
+  if (speaking && !settings.speech) return `${name}: not played while speaking (its settings)`;
+  heldPose.play(speaking ? settings.speechHold : POSE_HOLD_SECONDS);
+  heldPoseSource = source;
+  return `🎞️ ${name}`;
+}
+
+/** One pose-list refresh at a time, and names still missing are not looked up again for 5 s (review of #271). */
+let poseRefresh = null;
+const missingPoses = new Map();
+const MISSING_POSE_SECONDS = 5;
+/** @param {string} name @returns {Promise<boolean>} Whether the page knows the pose, listing the folder again if needed. */
+async function knownPose(name) {
+  if (heldPoseButtons.has(name)) return true;
+  const missed = missingPoses.get(name);
+  if (missed !== undefined && performance.now() - missed < MISSING_POSE_SECONDS * 1000) return false;
+  poseRefresh ??= refreshPoseList().finally(() => { poseRefresh = null; });
+  await poseRefresh;
+  if (heldPoseButtons.has(name)) {
+    missingPoses.delete(name);
+    return true;
+  }
+  missingPoses.set(name, performance.now());
+  return false;
+}
+
+/**
+ * Play an action from a speech clip, a text-only reply or the agent (#269).
+ * @param {string} ref An action reference ("tilt-left", "tentacle-perk", "pose:name").
+ * @param {string} from "speech", "chat", or the agent's name.
+ * @returns {Promise<void>}
+ */
+async function playSpokenAction(ref, from) {
+  const action = parseActionRef(ref);
+  if (!action) return;
+  const source = from === "speech" || from === "chat" ? "speech" : "agent";
+  const label = action.layer === "pose" ? `🎞️ ${action.name}` : ACTION_CATALOG[action.ref].label;
+  const reason = speechActionReason();
+  let note;
+  if (reason) note = `${label}: ${reason}`;
+  else if (action.layer === "body") {
+    idleMotion.play(action.name, source);
+    note = label;
+  } else if (action.layer === "tentacle") {
+    if (tentacleWave.enabled) {
+      tentacleWave.play(action.name);
+      tentacleSource = source;
+      note = label;
+    } else note = `${label}: Tentacle wave is off`;
+  } else note = await playSpokenPose(action.name, source);
+  speechActionNote = `Last gesture (${from}): ${note}`;
+  shownActionPlay = null;
+  refreshActionPlay();
+}
 
 /**
  * Gate the play buttons each frame and stop a playing action when they are
@@ -403,12 +516,15 @@ function refreshActionPlay() {
     held: Boolean(globalThis.__yidhariIdlePose),
     state: idle.state,
   });
-  if (reason) idleMotion.stop();
+  // A speech or agent action (#269) has its own gate: speech does not stop it.
+  const spokenReason = speechActionReason();
+  if (reason && !(spokenSource(idleMotion.playingSource) && !spokenReason)) idleMotion.stop();
   const tailReason = reason ?? (tentacleWave.enabled ? null : "Tentacle wave is off");
-  if (tailReason) tentacleWave.stop();
+  if (tailReason && !(spokenSource(tentacleSource) && !spokenReason && tentacleWave.enabled)) tentacleWave.stop();
+  if (!tentacleWave.playing) tentacleSource = null;
   const playing = idleMotion.playing;
   const tailPlaying = tentacleWave.playing;
-  const shown = `${reason}|${tailReason}|${playing}|${tailPlaying}`;
+  const shown = `${reason}|${tailReason}|${playing}|${tailPlaying}|${speechActionNote}`;
   if (shown === shownActionPlay) return;
   shownActionPlay = shown;
   for (const [name, button] of Object.entries(actionButtons)) {
@@ -421,7 +537,9 @@ function refreshActionPlay() {
   }
   const labels = [playing && ACTION_LABELS[playing], tailPlaying && TENTACLE_ACTIONS[tailPlaying].label].filter(Boolean);
   const ready = labels.length ? `Playing: ${labels.join(" + ")}` : "Ready: click an action to play it once";
-  actionPlayStatus.textContent = reason ?? (tailReason ? `${ready} · ${tailReason}` : ready);
+  const main = (spokenSource(idleMotion.playingSource) || spokenSource(tentacleSource)) && labels.length
+    ? ready : reason ?? (tailReason ? `${ready} · ${tailReason}` : ready);
+  actionPlayStatus.textContent = speechActionNote ? `${main} · ${speechActionNote}` : main;
 }
 /**
  * Idle motion bones: which angle of the pose each one takes, and its sign
@@ -468,7 +586,8 @@ const idleQuat = new THREE.Quaternion();
 // Activity also ends an action played from the panel (#164), without the panel waking her.
 const noteActivity = () => {
   idle.activity();
-  idleMotion.stop();
+  // Bridge events during speech must not end the action that speech started (#269).
+  if (!spokenSource(idleMotion.playingSource)) idleMotion.stop();
 };
 const cameraGaze = new CameraGaze((target) => gaze.setCamera(target, cameraGazeToggle.checked));
 const cameraControls = new CameraControls({
@@ -1542,7 +1661,8 @@ async function replayTurn(turn) {
     for (const item of clips) {
       const clip = speech.load(turnFile(turn, `${item.id}.wav`), turnFile(turn, `${item.id}.visemes.json`));
       clip.catch(() => {}); // Reported when its turn comes.
-      speechQueue.push({ clip, expression: item.expression, weight: item.weight, text: item.text, replay: true });
+      speechQueue.push({ clip, expression: item.expression, weight: item.weight, text: item.text, replay: true,
+        ...(item.action ? { action: item.action, actionWord: item.actionWord } : {}) });
     }
     liveSpeech.clipQueued();
     liveSpeech.responseFinished();
@@ -1613,7 +1733,7 @@ function applyMood(name, weight) {
  * @param {{ id: string, expression: string, weight: number, text: string, turn?: string }} event Validated speak event.
  * @returns {void}
  */
-function enqueueSpeech({ id, expression, weight, text, turn: diskTurn }) {
+function enqueueSpeech({ id, expression, weight, text, action, actionWord, turn: diskTurn }) {
   const kept = dropQueuedReplay(speechQueue);
   speechQueue.length = 0;
   speechQueue.push(...kept);
@@ -1630,7 +1750,7 @@ function enqueueSpeech({ id, expression, weight, text, turn: diskTurn }) {
     ? speech.load(turnFile(diskTurn, `${id}.wav`), turnFile(diskTurn, `${id}.visemes.json`))
     : speech.load(`${LIVE_CLIP_DIR}${id}.wav`, `${LIVE_CLIP_DIR}${id}.visemes.json`);
   clip.catch(() => {}); // Reported when its turn comes.
-  speechQueue.push({ clip, expression, weight, text, turn: speechTurn });
+  speechQueue.push({ clip, expression, weight, text, turn: speechTurn, ...(action ? { action, actionWord } : {}) });
   if (interruptReplay) speech.stop();
   if (interruptReplay || (!speech.playing && !speechStarting)) playNextSpeech();
   syncReplayControls();
@@ -1660,6 +1780,19 @@ async function playNextSpeech() {
         continue;
       }
       if (!started) continue;
+      // #269: the clip's action starts with its word, on replays too. A
+      // mid-sentence word waits (review of #271), unless the clip ends first.
+      clipSerial += 1;
+      if (next.action) {
+        const delay = actionDelay(next.text, next.actionWord, clip.buffer.duration);
+        if (delay === 0) playSpokenAction(next.action, "speech");
+        else {
+          const serial = clipSerial;
+          setTimeout(() => {
+            if (serial === clipSerial && speech.playing) playSpokenAction(next.action, "speech");
+          }, delay * 1000);
+        }
+      }
       if (!next.filler && !next.replay) lastSpeech.remember({ ...next, clip, turn: next.turn });
       playingReplay = Boolean(next.replay);
       speechButton.textContent = "■ Stop";
@@ -1902,6 +2035,7 @@ async function refreshPoseList() {
     // No poses folder: no buttons.
   }
   heldPoseButtons.clear();
+  poseSettingsCache.clear();
   shownHeldPose = undefined;
   heldPoseControls.replaceChildren(...names.map((name) => {
     const button = document.createElement("button");
@@ -2180,6 +2314,7 @@ function onModelLoaded(loaded, data) {
       // The bubble arrives when the item is queued. The turn opens on the later turn event.
       if (!chatBusy) liveSpeech.responseFinished();
     },
+    onAction: playSpokenAction,
     onAgentMood: (name, weight) => {
       liveSpeech.setRestMood(name, weight);
       if (speechIdle()) applyMood(name, weight);
@@ -2509,6 +2644,7 @@ function animate() {
   mesh?.morphTargetInfluences?.fill(0);
   expressions?.update(delta);
   // A held pose owns the face panels it sets, over the mood but under speech, winks and the blink (#49).
+  if (heldPose) heldPose.quietMouth = spokenSource(heldPoseSource) && !speechIdle();
   heldPose?.applyMorphs();
   syncThinkingState();
   speech?.update(delta);

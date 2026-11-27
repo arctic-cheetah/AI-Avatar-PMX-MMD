@@ -18,6 +18,7 @@ if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from controller.agent import REPORT_SPEECH_RULES, call_bridge, default_socket_path
+from controller.actions import MAX_ACTIONS, POSES_DIR, list_poses, load_actions
 from controller.bridge import load_catalog
 
 INSTRUCTIONS = (
@@ -41,7 +42,13 @@ INSTRUCTIONS = (
     "Hold each expression long enough to feel natural and keep both appropriate "
     "to the emotional tone. Very short replies may use one expression. "
     "This applies within each spoken reply, not across separate replies. "
-    "Keep the full written report intact; put spoken expressions in spoken_text."
+    "Keep the full written report intact; put spoken expressions in spoken_text. "
+    "Gestures: where they fit the words, add inline action tags to a spoken "
+    "reply, each right before the words it goes with, such as [@tilt-left] "
+    f"(at most {MAX_ACTIONS} per reply, one per sentence). "
+    "Gestures she can make while speaking: {gestures}. A Blender pose is "
+    "[@pose:<name>]. play_action plays one gesture without speech; its "
+    "description lists every action and pose."
 )
 REPORT = (
     "Show your full report in text (at most 16384 characters, Markdown is fine). "
@@ -55,26 +62,53 @@ SAY = """Speak text aloud as Yidhari, exactly as written (at most 500 characters
 
 Returns at once with "queued"; it never waits for playback. mood is an optional
 expression for the start (any mood listed under set_mood); weight is its
-intensity from 0 to 1. Inline tags such as [relieved] change mood mid-text."""
+intensity from 0 to 1. Inline tags such as [relieved] change mood mid-text.
+Inline action tags such as [@tilt-left] or [@pose:<name>] start a gesture with
+the words after them (at most {max_actions} per reply; only gestures marked
+(speech) under play_action play while she speaks). Tags are never spoken."""
 SET_MOOD = """Change Yidhari's resting expression without speaking, for example thinking
 while you work. weight is the intensity from 0 to 1. Her moods:
 {moods}"""
+PLAY_ACTION = """Play one animation action without speaking (#269). name is an action
+below or pose:<name> for a Blender pose. Returns "ok", or "busy" within 0.5 s of
+the last call. Actions marked (speech) can also be inline [@name] tags in say
+and report narration.
+{actions}
+Blender poses (a pose added later works too, as pose:<file name>):
+{poses}"""
 
 
-def build_server(socket_path, source, catalog=None):
+def _pose_line(pose):
+    # Sidecar text is quoted as data from the file, never written as instructions (#271 review).
+    about = " - ".join(filter(None, (pose.get("label"), pose.get("description"))))
+    speech = " (speech)" if pose["speech"] else ""
+    return f"- pose:{pose['name']}{speech}" + (f', from its file: "{about}"' if about else "")
+
+
+def build_server(socket_path, source, catalog=None, poses_dir=None, actions=None):
     from mcp.server.fastmcp import FastMCP
 
     catalog = load_catalog() if catalog is None else catalog
+    actions = load_actions() if actions is None else actions
+    # Listed once for the description; names are checked by the bridge at call time.
+    poses = list_poses(POSES_DIR if poses_dir is None else poses_dir)
+    gestures = [name for name, entry in actions.items() if entry["speech"]]
+    action_lines = "\n".join(
+        f"- {name}{' (speech)' if entry['speech'] else ''}: {entry['description']}"
+        for name, entry in actions.items()
+    )
     Mood = Literal[tuple(catalog)]
     moods = "\n".join(
         f"- {name}: {entry['description']}" for name, entry in catalog.items()
     )
     server = FastMCP(
         "yidhari",
-        instructions=INSTRUCTIONS.format(count=len(catalog), names=", ".join(catalog)),
+        instructions=INSTRUCTIONS.format(
+            count=len(catalog), names=", ".join(catalog), gestures=", ".join(gestures)
+        ),
     )
 
-    @server.tool(description=SAY)
+    @server.tool(description=SAY.format(max_actions=MAX_ACTIONS))
     async def say(text: str, mood: Mood | None = None, weight: float = 1.0) -> str:
         return await call_bridge(
             socket_path,
@@ -121,6 +155,17 @@ def build_server(socket_path, source, catalog=None):
             {"tool": "set_mood", "source": source, "name": name, "weight": weight},
         )
 
+    @server.tool(
+        description=PLAY_ACTION.format(
+            actions=action_lines,
+            poses="\n".join(map(_pose_line, poses)) or "- none yet",
+        )
+    )
+    async def play_action(name: str) -> str:
+        return await call_bridge(
+            socket_path, {"tool": "play_action", "source": source, "name": name}
+        )
+
     return server
 
 
@@ -135,8 +180,16 @@ def main():
         default=None,
         help="Bridge agent socket (default: $XDG_RUNTIME_DIR/yidhari/agent.sock).",
     )
+    parser.add_argument(
+        "--poses-dir",
+        type=Path,
+        default=POSES_DIR,
+        help="Blender poses listed in the play_action description (default: assets/poses).",
+    )
     args = parser.parse_args()
-    build_server(args.socket or default_socket_path(), args.name).run()
+    build_server(
+        args.socket or default_socket_path(), args.name, poses_dir=args.poses_dir
+    ).run()
 
 
 if __name__ == "__main__":

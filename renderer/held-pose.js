@@ -169,6 +169,8 @@ export class HeldPose {
     this.name = null;
     this.holding = false;
     this.remaining = Infinity;
+    /** A weight set from outside (drive), or null to follow the ease. */
+    this.driven = null;
   }
 
   /**
@@ -276,7 +278,16 @@ export class HeldPose {
    * @returns {number} 0 (free) to 1 (fully held).
    */
   get weight() {
-    return this.ease.value;
+    return this.driven ?? this.ease.value;
+  }
+
+  /**
+   * Set the weight from another layer instead of the ease, such as the yawn's
+   * hand (#270). Call every frame before apply().
+   * @param {number} weight 0 (free) to 1 (fully held); invalid values count as 0.
+   */
+  drive(weight) {
+    this.driven = Number.isFinite(weight) ? Math.min(1, Math.max(0, weight)) : 0;
   }
 
   /** @param {number} delta Seconds since the last frame. */

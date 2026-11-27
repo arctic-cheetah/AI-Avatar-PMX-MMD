@@ -1,8 +1,54 @@
-// The hand under her chin while she yawns (#270): one arm reaches to just
-// below the chin, solved once like the thinking chin rest and blended by the
-// idle motion's yawnHand weight. See docs/idle-behaviours.md#sleepy-face-and-yawn.
+// The hand under her chin while she yawns (#270): the user's Blender pose
+// (YAWN_POSE), held by the idle motion's yawnHand weight, with the fingers
+// bent a little. Without that file, one arm reaches to just below the chin,
+// solved once like the thinking chin rest. See docs/idle-behaviours.md#sleepy-face-and-yawn.
 import * as THREE from "three";
-import { armPoseBones, poseArm, poseHand } from "./thinking-rig.js";
+import { THUMB_CURL, armPoseBones, curlFingers, handFrame, poseArm, poseHand } from "./thinking-rig.js";
+
+/** The user's Blender pose for the yawn, in assets/poses/ (#270). */
+export const YAWN_POSE = "yawn-v1";
+
+/** Radians each finger joint bends toward the palm in the authored yawn pose; the thumb bends THUMB_CURL of it. */
+export const YAWN_FINGER_BEND = 0.25;
+
+const FINGER_JOINT = /^(?:右|左)(?:親指|人指|中指|薬指|小指)[０１２３]$/;
+
+/**
+ * Bend the authored pose's fingers a little toward each palm. The pose is
+ * put on the rig only to measure the palms, then everything is put back.
+ * @param {THREE.Object3D} mesh
+ * @param {Map<THREE.Bone, THREE.Quaternion>} bind Each bone's PMX bind rotation (VPD rotations are measured from it).
+ * @param {{ bones: { name: string, translation: number[], quaternion: number[] }[], morphs: object[] }} vpd From readVpd.
+ * @param {number} [bend] Radians per finger joint.
+ * @returns {typeof vpd} A new pose: the same bones, finger joints bent, every finger joint listed.
+ */
+export function bendYawnFingers(mesh, bind, vpd, bend = YAWN_FINGER_BEND) {
+  const bones = mesh.skeleton?.bones ?? [];
+  const saved = bones.map((bone) => bone.quaternion.clone());
+  const byName = new Map(vpd.bones.map((entry) => [entry.name, entry]));
+  try {
+    for (const bone of bones) {
+      const entry = byName.get(bone.name);
+      bone.quaternion.copy(bind.get(bone) ?? bone.quaternion);
+      if (entry) bone.quaternion.multiply(new THREE.Quaternion().fromArray(entry.quaternion).normalize());
+    }
+    mesh.updateMatrixWorld(true);
+    for (const side of ["右", "左"]) {
+      const frame = handFrame(mesh, side);
+      if (frame) curlFingers(mesh, side, frame.palm, (digit) => (digit === "親指" ? bend * THUMB_CURL : bend));
+    }
+    const fingers = bones.filter((bone) => FINGER_JOINT.test(bone.name) && bind.has(bone)).map((bone) => ({
+      name: bone.name,
+      translation: byName.get(bone.name)?.translation ?? [0, 0, 0],
+      quaternion: bind.get(bone).clone().invert().multiply(bone.quaternion).toArray(),
+    }));
+    const kept = vpd.bones.filter((entry) => !FINGER_JOINT.test(entry.name));
+    return { ...vpd, bones: [...kept, ...fingers] };
+  } finally {
+    bones.forEach((bone, index) => bone.quaternion.copy(saved[index]));
+    mesh.updateMatrixWorld(true);
+  }
+}
 
 /**
  * Arm targets for the yawn, for her right hand; the left mirrors them.

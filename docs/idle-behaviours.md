@@ -122,15 +122,25 @@ her chin and lowers again as her mouth closes:
   lowers over the 1.0 s close, so it is down by the end of the 3.2 s
   stretch. The curve goes through the motion spring (rate 8). Only the yawn
   drives it: the sneeze's small open mouth (#149) leaves the hand down.
-- **Pose:** `renderer/yawn-rig.js` solves the arm with the thinking chin
-  rest's two-bone solver (`renderer/thinking-rig.js`) and caches it once.
-  `YAWN_ARM` holds the wrist target, from the head bone. It sits lower than
-  the thinking fist, so the hand stays under her chin with a little gap
-  instead of propping it. The fingers stay open and straight (the user asked
-  to uncurl them), unlike that fist, and lie across her throat toward her
-  other side. Her right hand yawns by default, and the other arm stays where
-  it is. A first, higher pick covered her mouth before the stretch had tipped
-  her head back, so the target is lower.
+- **Pose:** the arms come from the user's Blender pose,
+  `assets/poses/yawn-v1.vpd` (both arms, shoulders, elbows, wrists and
+  fingers). It is held like a [Blender pose](held-poses.md), as bind ⊗ vpd,
+  but its weight is driven by `yawnHand` instead of the pose ease. Before it
+  is held, every finger joint on both hands bends a little toward the palm
+  (`YAWN_FINGER_BEND`, about 14°, the thumb 45 % of that), because the
+  authored fingers are straight and the user asked for a slight bend.
+- **Fallback:** when the file is missing or fails to load, the console says
+  why, and `renderer/yawn-rig.js` solves the right arm instead with the
+  thinking chin rest's two-bone solver. `YAWN_ARM` holds that wrist target,
+  from the head bone, with the open hand lying across her throat just under
+  her chin. A first, higher target covered her mouth before the stretch had
+  tipped her head back, so the target is lower.
+- **Exporting the pose:** in the Blender rig, the right upper arm (`腕.R`) had
+  the MMD name `左腕`, the same as the left arm. The first export therefore
+  saved only one `左腕` and lost the right upper arm. The committed file was
+  captured again with each arm under its own name, and a test checks that
+  each upper arm appears once. Fix the name to `右腕` in Blender before the
+  next export.
 - **Sharing the arms:** the thinking pose wins. The yawn gets
   `yawnHand × (1 − thinking)`. The arm drift (#193) fades by both weights,
   so it never pushes a raised hand into her face. The head follows the gaze
@@ -139,8 +149,8 @@ her chin and lowers again as her mouth closes:
 - **Interruptions:** speech, thinking and an open `ask` end the yawn, and
   the spring lowers the hand smoothly. Idle behaviours off means no yawn and
   no hand.
-- **Grids:** placement candidates, curled vs open fingers, weights and a
-  played stretch-and-yawn are kept in
+- **Grids:** placement candidates, curled vs open fingers, the authored pose
+  with finger bends, weights and a played stretch-and-yawn are kept in
   `assets/private/270/` (private model).
 
 ## Actions

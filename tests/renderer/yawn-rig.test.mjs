@@ -5,7 +5,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { buildThinkingRig } from "../../renderer/thinking-rig.js";
-import { YAWN_ARM, armLayerWeights, blendArmLayers, buildYawnRig } from "../../renderer/yawn-rig.js";
+import { existsSync, readFileSync } from "node:fs";
+import { THUMB_CURL, handFrame } from "../../renderer/thinking-rig.js";
+import { readVpd } from "../../renderer/held-pose.js";
+import { YAWN_ARM, YAWN_FINGER_BEND, YAWN_POSE, armLayerWeights, bendYawnFingers, blendArmLayers, buildYawnRig } from "../../renderer/yawn-rig.js";
 import { bustDepth, fixture } from "./arm-fixture.mjs";
 
 const worldPosition = (object) => object.getWorldPosition(new THREE.Vector3());
@@ -137,4 +140,70 @@ test("blending the layers releases exactly to rest and reaches each pose at full
   blendArmLayers(thinking, [], armLayerWeights(0.3, 1));
   thinking.forEach(({ bone, rest, posed }) => assert.ok(Math.abs(bone.quaternion.angleTo(rest) - 0.3 * rest.angleTo(posed)) < 1e-6,
     "without a yawn rig the thinking pose blends as before"));
+});
+
+// ---- the authored yawn pose (assets/poses/yawn-v1.vpd) ----
+
+const POSE_FILE = new URL(`../../assets/poses/${YAWN_POSE}.vpd`, import.meta.url);
+
+test("the authored yawn pose names each arm once, so neither upper arm is lost", { skip: !existsSync(POSE_FILE) }, () => {
+  const pose = readVpd(new TextDecoder("shift_jis").decode(readFileSync(POSE_FILE)));
+  const count = (name) => pose.bones.filter((bone) => bone.name === name).length;
+  for (const name of ["右腕", "左腕", "右ひじ", "右手首", "左ひじ", "左手首"]) assert.equal(count(name), 1, name);
+  const raised = pose.bones.find((bone) => bone.name === "右腕").quaternion;
+  assert.ok(2 * Math.acos(Math.min(1, Math.abs(raised[3]))) > 0.5, "the right upper arm is posed, not at bind");
+});
+
+/** A small authored pose for the fixture: the right arm raised, fingers straight. */
+function authored(mesh) {
+  const fingers = mesh.skeleton.bones.filter((bone) => /^(右|左)(親指|人指|中指|薬指|小指)[０１２３]$/.test(bone.name))
+    .map((bone) => ({ name: bone.name, translation: [0, 0, 0], quaternion: [0, 0, 0, 1] }));
+  return { bones: [
+    { name: "右腕", translation: [0, 0, 0], quaternion: new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.9, 0, 0.4)).toArray() },
+    { name: "右ひじ", translation: [0, 0, 0], quaternion: new THREE.Quaternion().setFromEuler(new THREE.Euler(-1.2, 0, 0)).toArray() },
+    ...fingers,
+  ], morphs: [] };
+}
+
+const bindOf = (mesh) => new Map(mesh.skeleton.bones.map((bone) => [bone, bone.quaternion.clone()]));
+
+test("bending the yawn's fingers keeps the authored arm and leaves the rig untouched", () => {
+  const { mesh } = fixture();
+  const before = snapshot(mesh);
+  const vpd = authored(mesh);
+  const bent = bendYawnFingers(mesh, bindOf(mesh), vpd, YAWN_FINGER_BEND);
+  assert.deepEqual(snapshot(mesh), before, "posed only while measuring");
+  for (const name of ["右腕", "右ひじ"]) {
+    assert.deepEqual(bent.bones.find((bone) => bone.name === name), vpd.bones.find((bone) => bone.name === name), name);
+  }
+  assert.ok(vpd.bones.every(({ quaternion }, index) => quaternion === authored(mesh).bones[index].quaternion
+    || quaternion.every((v, k) => v === authored(mesh).bones[index].quaternion[k])), "the input pose is not changed");
+});
+
+test("the yawn's fingers bend slightly toward the palm, the thumb less, on both hands", () => {
+  assert.ok(YAWN_FINGER_BEND > 0.1 && YAWN_FINGER_BEND < 0.5, "slight, not a fist");
+  const { mesh, get } = fixture();
+  const bind = bindOf(mesh);
+  const bent = bendYawnFingers(mesh, bind, authored(mesh), YAWN_FINGER_BEND);
+  const local = (name) => new THREE.Quaternion().fromArray(bent.bones.find((bone) => bone.name === name).quaternion);
+  for (const side of ["右", "左"]) {
+    for (const [digit, angle] of [["人指", YAWN_FINGER_BEND], ["小指", YAWN_FINGER_BEND], ["親指", YAWN_FINGER_BEND * THUMB_CURL]]) {
+      for (const joint of ["１", "２"]) {
+        const bend = 2 * Math.acos(Math.min(1, Math.abs(local(`${side}${digit}${joint}`).w)));
+        assert.ok(Math.abs(bend - angle) < 1e-6, `${side}${digit}${joint} bends ${bend.toFixed(3)} (want ${angle.toFixed(3)})`);
+      }
+    }
+    // Pose the hand as bent: the fingertip moves toward the palm side.
+    for (const { name, quaternion } of bent.bones) {
+      const bone = get(name);
+      bone.quaternion.copy(bind.get(bone)).multiply(new THREE.Quaternion().fromArray(quaternion));
+    }
+    mesh.updateMatrixWorld(true);
+    const { palm } = handFrame(mesh, side);
+    const knuckle = get(`${side}中指１`).getWorldPosition(new THREE.Vector3());
+    const tip = get(`${side}中指３`).children.find((child) => !child.isBone).getWorldPosition(new THREE.Vector3());
+    assert.ok(tip.sub(knuckle).dot(palm) > 0.02, `${side} fingertips curl toward the palm`);
+    for (const bone of mesh.skeleton.bones) bone.quaternion.copy(bind.get(bone));
+    mesh.updateMatrixWorld(true);
+  }
 });

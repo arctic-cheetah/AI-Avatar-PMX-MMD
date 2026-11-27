@@ -19,6 +19,7 @@ from vpd_lib import (  # noqa: E402
     arm_chain_fill, from_vpd_name, keep_morph, missing_names, parse_vpd, pose_name, poses_folder,
     split_unwritable, to_vpd_name,
 )
+from vpd_lib import NameConflict, describe_conflict, name_conflicts, side_hint  # noqa: E402
 
 SAMPLE = (
     "Vocaloid Pose Data file\r\n"
@@ -271,6 +272,46 @@ class HelpersTest(unittest.TestCase):
 
     def test_names_a_pose_after_its_file(self) -> None:
         self.assertEqual(pose_name("/poses/wink-v-sign.vpd"), "wink-v-sign")
+
+
+
+
+class NameConflictTest(unittest.TestCase):
+    """Two rig bones under one MMD name (#273): 腕.R was named 左腕 like 腕.L."""
+
+    RIG = (("センター", "センター"), ("腕.R", "左腕"), ("ひじ.R", "右ひじ"), ("腕.L", "左腕"), ("ひじ.L", "左ひじ"))
+
+    def test_unique_names_have_no_conflicts(self) -> None:
+        self.assertEqual(name_conflicts((("腕.R", "右腕"), ("腕.L", "左腕"), ("センター", "センター"))), [])
+
+    def test_a_shared_name_lists_its_bones_in_rig_order_and_the_one_saved(self) -> None:
+        [conflict] = name_conflicts(self.RIG)
+        self.assertEqual(conflict.name, "左腕")
+        self.assertEqual(conflict.bones, ("腕.R", "腕.L"))
+        # The exporter keys bones by MMD name, so the last one wins.
+        self.assertEqual(conflict.saved, "腕.L")
+        self.assertEqual(conflict.left_out, ("腕.R",))
+
+    def test_the_bone_whose_side_disagrees_is_named_with_a_fix(self) -> None:
+        [conflict] = name_conflicts(self.RIG)
+        self.assertEqual(conflict.hints, (("腕.R", "右腕"),))
+        self.assertEqual(side_hint("腕.R", "左腕"), "右腕")
+        self.assertEqual(side_hint("足_L", "右足"), "左足")
+        self.assertIsNone(side_hint("腕.L", "左腕"), "sides agree")
+        self.assertIsNone(side_hint("センター", "センター"), "no side")
+        self.assertIsNone(side_hint("腕.R", "腕"), "MMD name without a side")
+
+    def test_a_shared_name_without_a_side_mistake_has_no_hint(self) -> None:
+        [conflict] = name_conflicts((("上半身", "上半身"), ("上半身.001", "上半身")))
+        self.assertEqual(conflict.hints, ())
+
+    def test_the_message_names_every_bone_the_saved_one_and_the_fix(self) -> None:
+        [conflict] = name_conflicts(self.RIG)
+        text = describe_conflict(conflict)
+        for part in ("左腕", "腕.R", "腕.L", "右腕"):
+            self.assertIn(part, text)
+        self.assertIn("saved from 腕.L", text)
+        self.assertNotIn("rename", describe_conflict(NameConflict("上半身", ("a", "b"), ())))
 
 
 if __name__ == "__main__":

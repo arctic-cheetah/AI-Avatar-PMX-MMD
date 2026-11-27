@@ -274,3 +274,59 @@ def poses_folder(blend: Path | None) -> Path | None:
 def pose_name(path: str | PurePath) -> str:
     """A pose is named after its file."""
     return PurePath(path).stem
+
+
+# ---- duplicate MMD names (#273) ----
+
+_SIDES = {"R": "右", "L": "左"}
+_OPPOSITE = {"右": "左", "左": "右"}
+
+
+@dataclass(frozen=True)
+class NameConflict:
+    """An MMD name that more than one rig bone carries."""
+
+    name: str
+    bones: tuple[str, ...]  # Blender bone names, in rig order
+    hints: tuple[tuple[str, str], ...]  # (Blender bone, suggested MMD name) where the side disagrees
+
+    @property
+    def saved(self) -> str:
+        """The bone a VPD keeps: bones are keyed by MMD name, so the last one wins."""
+        return self.bones[-1]
+
+    @property
+    def left_out(self) -> tuple[str, ...]:
+        return self.bones[:-1]
+
+
+def side_hint(bone: str, mmd_name: str) -> str | None:
+    """The MMD name with its 右/左 prefix matching the bone's .R/.L (or _R/_L) side, when they disagree."""
+    side = next((_SIDES[key] for key in _SIDES for sep in (".", "_") if bone.endswith(sep + key)), None)
+    if side and mmd_name[:1] in _OPPOSITE and mmd_name[0] != side:
+        return side + mmd_name[1:]
+    return None
+
+
+def name_conflicts(bones: Iterable[tuple[str, str]]) -> list[NameConflict]:
+    """MMD names shared by more than one bone, from (Blender name, MMD name) pairs in rig order."""
+    by_name: dict[str, list[str]] = {}
+    for bone, mmd_name in bones:
+        by_name.setdefault(mmd_name, []).append(bone)
+    conflicts = []
+    for mmd_name, owners in by_name.items():
+        if len(owners) < 2:
+            continue
+        hints = tuple((bone, hint) for bone in owners if (hint := side_hint(bone, mmd_name)))
+        conflicts.append(NameConflict(mmd_name, tuple(owners), hints))
+    return conflicts
+
+
+def describe_conflict(conflict: NameConflict) -> str:
+    """One line for a panel, dialog or report."""
+    text = (f"{conflict.name} is shared by {', '.join(conflict.bones)}: saved from {conflict.saved}, "
+            f"{', '.join(conflict.left_out)} left out.")
+    for bone, hint in conflict.hints:
+        side = "right" if hint[0] == "右" else "left"
+        text += f" {bone} is a {side}-side bone: rename it to {hint}?"
+    return text

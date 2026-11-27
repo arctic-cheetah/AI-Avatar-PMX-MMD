@@ -303,6 +303,34 @@ class PosesTest(unittest.TestCase):
         pose = poses.capture_pose(self.arm, selected_only=False, bake_mirrored_bones=True)
         self.assertEqual(pose.bones, ())
 
+    def test_save_still_writes_a_shared_mmd_name_and_reports_where_it_comes_from(self) -> None:
+        # #273: 腕.R carried 左腕 like 腕.L, and the export lost the right upper arm without a word.
+        self.arm.pose.bones["腕.R"].mmd_bone.name_j = "左腕"
+        self.arm.pose.bones["腕.R"].rotation_quaternion = Euler((0.3, 0.0, 0.2)).to_quaternion()
+        self.arm.pose.bones["腕.L"].rotation_quaternion = Euler((0.0, 0.4, 0.0)).to_quaternion()
+        [conflict] = poses.name_conflicts(self.arm)
+        self.assertEqual((conflict.name, conflict.bones, conflict.hints), ("左腕", ("腕.R", "腕.L"), (("腕.R", "右腕"),)))
+        out = self.dir / "shared.vpd"
+        result = poses.save_vpd(self.arm, out, selected_only=False)
+        self.assertEqual([c.name for c in result.conflicts], ["左腕"])
+        self.assertEqual([b.name for b in parse_vpd(out.read_bytes()).bones].count("左腕"), 1, "still saved, not refused")
+
+    def test_a_clean_rig_reports_no_conflicts(self) -> None:
+        self.assertEqual(poses.name_conflicts(self.arm), [])
+        self.assertEqual(poses.save_vpd(self.arm, self.dir / "clean.vpd", selected_only=False).conflicts, [])
+
+    def test_select_name_conflicts_selects_only_the_clashing_bones(self) -> None:
+        self.arm.pose.bones["腕.R"].mmd_bone.name_j = "左腕"
+        for bone in self.arm.data.bones:
+            bone.select = bone.name == "センター"
+        bpy.ops.object.mode_set(mode="POSE")
+        try:
+            self.assertEqual(bpy.ops.yidhari_poses.select_name_conflicts(), {"FINISHED"})
+            self.assertEqual(sorted(b.name for b in self.arm.data.bones if b.select), ["腕.L", "腕.R"])
+            self.assertIn(self.arm.data.bones.active.name, ("腕.L", "腕.R"))
+        finally:
+            bpy.ops.object.mode_set(mode="OBJECT")
+
 
 def main() -> int:
     yidhari_poses.register()

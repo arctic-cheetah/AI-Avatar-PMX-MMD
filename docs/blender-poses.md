@@ -190,6 +190,28 @@ rig and constraints editable. **Selected Bones Only** includes a mirrored
 destination only when it is selected. Bones with other active constraints
 use their stored channels so MMD grants and IK can still run in the renderer.
 
+#### Duplicate MMD names (#273)
+
+A VPD names bones by their MMD name (`mmd_bone.name_j`). When two rig bones
+share one, the file can hold only one of them. In November 2026, `腕.R` was
+named `左腕`, the same as `腕.L`. `yawn-v1.vpd` then held the left arm's
+rotation under `左腕` and no `右腕` at all.
+
+The add-on does not refuse such an export, but it shows the conflict:
+
+- **The Yidhari Poses tab** shows a warning box while a name is shared. It
+  lists the name, the Blender bones that share it, and a fix when a bone's
+  `.R`/`.L` side disagrees with its `右`/`左` prefix (`腕.R: 左腕 → 右腕?`).
+  **Select Conflicts** selects those bones and makes one active, so its
+  MMD name is in view under Bone Properties ▸ MMD Bone Tools.
+- **The Save as VPD dialog** shows the same box above its options before
+  you save.
+- **After saving,** a warning says which bone was saved under the shared
+  name and which were left out. The last bone in the rig's order wins.
+
+Fix the name in MMD Bone Tools and save again. The other side's bone is
+then exported under its own name.
+
 Each pose is an action marked as an asset, so it also appears in the Pose
 Library and the Asset Browser. The Pose Library's own apply only sets bones,
 so use **Apply** in the Yidhari Poses tab when a pose has morphs, such as a

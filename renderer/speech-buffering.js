@@ -1,7 +1,8 @@
 /**
  * Speech buffering (#278): when the bridge announces ready clips. The choice
  * is kept in localStorage and sent to the bridge whenever the page connects;
- * no stored choice (null) means the bridge's --speech-buffering launch flag.
+ * with no stored choice the page only asks which mode is in use. The mode is
+ * shared by every page, and the bridge tells them all about a change.
  * See docs/speech-buffering.md.
  */
 
@@ -17,6 +18,14 @@ function known(mode) {
 /** The renderer → bridge settings frame; null asks for the launch flag's mode. */
 export function settingsFrame(mode) {
   return JSON.stringify({ type: 'settings', speechBuffering: known(mode) });
+}
+
+/**
+ * The frame sent when the page connects: a stored mode is set, and no choice
+ * only asks which mode is in use, so it never resets another page's choice.
+ */
+export function connectFrame(mode) {
+  return known(mode) ? settingsFrame(mode) : JSON.stringify({ type: 'settings' });
 }
 
 /** The stored mode, or null when none (or an unknown one) is stored or storage throws. */

@@ -3,7 +3,7 @@ import { VoiceInput, voiceSupported } from './voice-input.js';
 import { renderMarkdown, plainText } from './markdown.js';
 import { ChatHistory } from './chat-history.js';
 import { ACTION_CATALOG, actionWordOf, parseActionRef } from './speech-actions.js';
-import { BUFFERING_MODES, settingsFrame } from './speech-buffering.js';
+import { BUFFERING_MODES, connectFrame, settingsFrame } from './speech-buffering.js';
 
 const CLIP_ID = /^[0-9a-f]{16}$/;
 const TURN_ID = /^[0-9a-f]{16}$/;
@@ -408,8 +408,8 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
       chatBar.hidden = false;
       setChatEnabled(true);
       chatInput.focus();
-      // Speech buffering (#278): this page's choice, or null for the bridge's launch flag.
-      socket.send(settingsFrame(speechBuffering()));
+      // Speech buffering (#278): this page's stored choice, or a query that changes nothing.
+      socket.send(connectFrame(speechBuffering()));
       // Page-open greeting (#72): once here, and the gate in main.js keeps it
       // to once per page load, so reconnects below never greet again.
       if (greeting && !greeted) {

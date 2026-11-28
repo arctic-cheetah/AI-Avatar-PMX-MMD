@@ -1,7 +1,7 @@
 """Bake the Goo shader inputs from Yidhari_V1.3_PMX.blend (#250, docs/goo-bake.md).
 
 Run inside Goo Engine 4.4.3:
-    blender -b assets/Blender/Yidhari_V1.3_PMX.blend --python tools/goo-bake/bake.py -- assets/private/goo
+    blender -b assets/Blender/Yidhari_V1.3_PMX.blend --python tools/goo-bake/bake.py -- assets/goo
 """
 
 from __future__ import annotations

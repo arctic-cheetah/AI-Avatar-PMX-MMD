@@ -13,7 +13,7 @@ import {
 } from "./goo-shader.js";
 
 export const GOO_SHADERS_KEY = "yidhari.gooShaders";
-export const GOO_ASSETS_URL = "/assets/private/goo";
+export const GOO_ASSETS_URL = "/assets/goo";
 /** localStorage keys of the live part switches (#254); each defaults to on. */
 export const GOO_PART_KEYS = Object.freeze({
   cel: "yidhari.gooParts.cel",

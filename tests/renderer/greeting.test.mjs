@@ -95,9 +95,8 @@ test('page open posts the greeting once in the chat log and asks the bridge to s
   // #129: the bridge speaks it, so it goes over the socket exactly once.
   assert.deepEqual(sent.filter((frame) => frame.type === 'greet'),
     [{ type: 'greet', text: 'Good morning! Ready for today?', mood: 'soft-smile', weight: 0.9 }]);
-  // #278: every connect also tells the bridge this page's speech buffering choice.
-  assert.deepEqual(sent.filter((frame) => frame.type === 'settings'),
-    [{ type: 'settings', speechBuffering: null }, { type: 'settings', speechBuffering: null }]);
+  // #278: every connect also asks the bridge for its speech buffering mode (nothing stored here).
+  assert.deepEqual(sent.filter((frame) => frame.type === 'settings'), [{ type: 'settings' }, { type: 'settings' }]);
 });
 
 test('blocked storage still keeps the once-per-session rule in memory', () => {

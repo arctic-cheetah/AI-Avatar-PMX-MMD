@@ -7,6 +7,7 @@ import {
   BUFFERING_MODES,
   bindBufferingSelect,
   bufferingLabel,
+  connectFrame,
   settingsFrame,
   storedBuffering,
 } from "../../renderer/speech-buffering.js";
@@ -34,6 +35,12 @@ test("a settings frame names a mode, or null for the launch flag's mode", () => 
   assert.deepEqual(JSON.parse(settingsFrame("full")), { type: "settings", speechBuffering: "full" });
   assert.deepEqual(JSON.parse(settingsFrame(null)), { type: "settings", speechBuffering: null });
   assert.deepEqual(JSON.parse(settingsFrame("turbo")), { type: "settings", speechBuffering: null });
+});
+
+test("on connect a stored mode is set, and no choice only asks (#279 review)", () => {
+  assert.deepEqual(JSON.parse(connectFrame("full")), { type: "settings", speechBuffering: "full" });
+  assert.deepEqual(JSON.parse(connectFrame(null)), { type: "settings" });
+  assert.deepEqual(JSON.parse(connectFrame("turbo")), { type: "settings" });
 });
 
 test("only a known stored mode is used", () => {

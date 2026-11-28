@@ -54,6 +54,16 @@
         Saved in this browser; applies to chat, samples and agent speech. Lower the boost if the voice sounds compressed.</p>
       <label class="check"><input id="greeting-toggle" type="checkbox" checked>Time-of-day greeting on page open · 挨拶</label>
       <p class="note">She greets you aloud whenever you open the page, for the local time of day. No LLM, nothing leaves this machine. Untick to switch it off.</p>
+      <div class="slider-row" title="When she starts speaking. On a slower CPU, waiting stops her pausing between sentences.">
+        <label for="speech-buffering">Speech buffering · 準備</label>
+        <select id="speech-buffering" aria-describedby="speech-buffering-status">
+          <option value="">Bridge default</option>
+          <option value="stream">Stream</option>
+          <option value="full">Wait for full reply</option>
+          <option value="adaptive">Adaptive</option>
+        </select>
+      </div>
+      <p id="speech-buffering-status" class="note" role="status">Stream speaks each sentence when it is ready. Wait for full reply holds them until all are ready. Adaptive waits just long enough to avoid pauses.</p>
       <button id="speech-replay" type="button" aria-describedby="speech-replay-status" disabled>↻ Replay last speech</button>
       <p id="speech-replay-status" class="note" role="status">No speech to replay yet.</p>
       <div id="chat-box">

@@ -73,6 +73,7 @@ import { PhysicsLayer } from "./physics-layer.js";
 import { ACTION_CATALOG, actionDelay, bindSpeechActionsSetting, parseActionRef, poseSpeechSettings, speechActionBlocked, speechMayPlayPose } from "./speech-actions.js";
 import { TENTACLE_ACTIONS, TENTACLE_WAVE_KEY, TentacleWave, bindTentacleHeight, bindTentacleSize, tailChains, tentacleBlocks } from "./tentacle-motion.js";
 import { bindStoredToggle } from "./stored-toggle.js";
+import { bindBufferingSelect, bufferingLabel, storedBuffering } from "./speech-buffering.js";
 import {
   HAIR_FOLLOW, RIGID_STRANDS, blendWeights, pinTargets, pinnedBones, sameMotionAs, stiffStrands,
 } from "./weight-pins.js";
@@ -2271,7 +2272,18 @@ function onModelLoaded(loaded, data) {
   const transcript = document.querySelector('#bridge-transcript');
   // Page-open greeting (#72): claimed once per page load here, shown on first connect.
   const greetingGate = bindGreetingToggle(new GreetingGate(), document.querySelector('#greeting-toggle'));
+  // Speech buffering (#278): sent on every connect; changes apply from the next reply.
+  let speechBuffering = storedBuffering();
+  const bufferingStatus = document.querySelector('#speech-buffering-status');
+  bindBufferingSelect(document.querySelector('#speech-buffering'), (mode) => {
+    speechBuffering = mode;
+    bridgeControls?.setSpeechBuffering(mode);
+  });
   bridgeControls = connectBridge({
+    speechBuffering: () => speechBuffering,
+    onSettings: ({ speechBuffering: mode }) => {
+      if (bufferingStatus) bufferingStatus.textContent = `Bridge is using: ${bufferingLabel(mode)}. Changes apply from the next reply.`;
+    },
     catalog: EXPRESSION_CATALOG,
     // ?bridge=off (#215): a test page that leaves agent speech with the live avatar.
     bridge: bridgeEnabled(location.search),

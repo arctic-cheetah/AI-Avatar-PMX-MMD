@@ -26,6 +26,7 @@ from pathlib import Path
 from controller.kokoro_worker import AWW_WORD, MAX_EMPHASIS, MAX_SPANS, WORD_EDGES as AWW_EDGES
 from controller.prosody import Prosody, combine, prosody_for, punctuation_prosody
 from controller.speech_align import align
+from controller.speech_buffer import BUFFERING_MODES, DEFAULT_MAX_HOLD, SynthesisRate
 from controller.speech_trim import FRAGMENT_TAIL_KEEP, MAX_TAIL_KEEP, apply_gain, ending, trim_clip
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -162,8 +163,13 @@ class ApplioSettings:
     question_rise_bend: float = 9.0  # semitones a question's last word rises (peak at 70 %)
     interjection_hold: float = 0.0  # seconds an "aww" is held; 0 keeps Kokoro's ~0.36 s (#84)
     exclaim_gain: float = 3.0  # dB louder for a clip ending in !, with punctuation_cadence
+    # When ready clips are announced (#278): stream, full or adaptive; the renderer may change it.
+    speech_buffering: str = "stream"
+    speech_max_hold: float = DEFAULT_MAX_HOLD  # seconds a reply's clips may be held
 
     def __post_init__(self) -> None:
+        if self.speech_buffering not in BUFFERING_MODES:
+            raise ValueError(f"unknown speech buffering mode: {self.speech_buffering!r}")
         self.applio_dir = Path(self.applio_dir).expanduser()
         if self.kokoro_python is not None:
             self.kokoro_python = Path(self.kokoro_python).expanduser()
@@ -666,6 +672,8 @@ class ApplioWorker:
         self.pending: dict[str, asyncio.Future] = {}
         self.starting = asyncio.Lock()
         self.ready: dict = {}
+        # Measured synthesis throughput, kept between replies for adaptive buffering (#279).
+        self.synthesis_rate = SynthesisRate()
 
     @staticmethod
     def applio_command(settings: ApplioSettings) -> list[str]:

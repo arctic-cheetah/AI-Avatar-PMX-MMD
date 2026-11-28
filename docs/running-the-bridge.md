@@ -154,6 +154,9 @@ any chat bubble can be replayed. `--replay-cap-mb` (default 500) caps that
 folder; the oldest whole turns are deleted first (see
 [Replay any spoken bubble](agent-voice.md#replay-any-spoken-bubble)). The
 renderer plays clips in order and applies each mood when its clip starts.
+On a slower CPU, `--speech-buffering full` or `adaptive` (or the **Speech
+buffering** menu in the Chat panel) holds clips so she does not pause
+between sentences; see [Speech buffering](speech-buffering.md).
 
 ### Optional spoken thinking filler
 

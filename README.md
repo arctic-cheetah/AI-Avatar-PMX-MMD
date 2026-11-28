@@ -19,6 +19,7 @@ A local virtual avatar for **Yidhari**: a PMX model in the browser that talks wi
 - 🤔 **Thinking face:** while the model reasons, she looks thoughtful, with an eyes-up gesture and a thought bubble.
 - 💭 **Optional spoken filler:** `--thinking-filler` prepares one “Hmm…” clip at startup and plays it once before the real answer.
 - 🎙️ **Voice:** each sentence is synthesised locally with Kokoro TTS (`--tts kokoro`), then converted to Yidhari's voice with an Applio RVC model. Edge TTS is still available with `--tts edge`.
+- ⏳ **Speech buffering:** on slower CPUs she can wait until her reply is ready (or until enough of it is ready) before speaking, so she does not pause between sentences. Choose *Stream*, *Wait for full reply* or *Adaptive* in the Chat panel, or start with `--speech-buffering` — see [docs/speech-buffering.md](docs/speech-buffering.md).
 - 👄 **Lip sync:** Rhubarb Lip Sync times mouth shapes from the final audio, and the renderer plays them on the audio clock.
 - 👀 **Idle life and tuning:** automatic blinking, plus wink controls and a morph test bench for tuning expressions.
 - 🌊 **Slow sway:** her upper body drifts on gentle sine waves with a breathing motion, and settles back to still when toggled off — see [docs/body-sway.md](docs/body-sway.md).

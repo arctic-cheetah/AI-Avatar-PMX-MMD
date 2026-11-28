@@ -22,6 +22,7 @@ if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from controller.actions import MAX_ACTIONS, default_actions, resolve_action  # noqa: E402
+from controller.speech_buffer import BUFFERING_MODES, DEFAULT_MAX_HOLD, SpeechHold  # noqa: E402
 from controller.replay_store import (  # noqa: E402
     DEFAULT_CAP_MB,
     MB,
@@ -605,14 +606,21 @@ async def speak_segments(queue, send, worker, run=None, turn=None):
     cancellation the remaining work is cancelled and the worker drops the run.
     With a ``turn`` ID (#152), clips go into that turn's folder, each announced
     clip is added to its manifest, and older turns are pruned to the replay cap.
+    The worker's ``speech_buffering`` setting, read when the reply starts,
+    decides when ready clips are announced (#278, docs/speech-buffering.md).
     Returns the number of clips announced.
     """
     from controller import speech
 
+    settings = getattr(worker, "settings", None)
     directory = None
     if turn is not None:
-        cap_mb = getattr(getattr(worker, "settings", None), "replay_cap_mb", DEFAULT_CAP_MB)
+        cap_mb = getattr(settings, "replay_cap_mb", DEFAULT_CAP_MB)
         directory = await asyncio.to_thread(open_turn, turn, cap_mb * MB)
+    hold = SpeechHold(
+        getattr(settings, "speech_buffering", "stream"),
+        getattr(settings, "speech_max_hold", DEFAULT_MAX_HOLD),
+    )
 
     def synthesise(segment):
         if directory is None:
@@ -621,11 +629,22 @@ async def speak_segments(queue, send, worker, run=None, turn=None):
 
     started = time.perf_counter()
     slots = asyncio.Semaphore(MAX_IN_FLIGHT)
+    waiting = asyncio.Queue()  # every sentence received so far, so the hold knows what is left
     ordered = asyncio.Queue()
+    known = {"chars": 0, "done": False}
+
+    async def receive():
+        try:
+            while (segment := await queue.get()) is not None:
+                known["chars"] += len(segment.text)
+                waiting.put_nowait(segment)
+            known["done"] = True
+        finally:
+            waiting.put_nowait(None)
 
     async def submit():
         try:
-            while (segment := await queue.get()) is not None:
+            while (segment := await waiting.get()) is not None:
                 await slots.acquire()
                 ordered.put_nowait(
                     (segment, asyncio.create_task(synthesise(segment)))
@@ -634,16 +653,48 @@ async def speak_segments(queue, send, worker, run=None, turn=None):
             # Always end the ordered stream, so a submit failure surfaces instead of hanging.
             ordered.put_nowait(None)
 
+    spoken = 0
+
+    async def announce(event):
+        nonlocal spoken
+        if directory is not None:
+            await asyncio.to_thread(record_clip, directory, event)
+            event["turn"] = turn
+        await send(event)
+        spoken += 1
+
+    async def release():
+        for event in hold.take():
+            await announce(event)
+
+    receiver = asyncio.create_task(receive())
     submitter = asyncio.create_task(submit())
     first = True
-    spoken = 0
+    thinking = False
     try:
-        while (item := await ordered.get()) is not None:
+        while True:
+            if hold.held:
+                # Clips are held while more text may come: the maximum hold still applies.
+                try:
+                    item = await asyncio.wait_for(ordered.get(), hold.time_left())
+                except TimeoutError:
+                    await release()
+                    continue
+            else:
+                item = await ordered.get()
+            if item is None:
+                break
             segment, task = item
+            if not hold.released:
+                # Wait for this clip, but release what is held when the maximum hold ends.
+                await asyncio.wait({task}, timeout=hold.time_left())
+                if not task.done():
+                    await release()
             try:
                 clip_id, timings = await task
             except Exception:
                 LOG.exception("Speech failed for: %s", segment.text)
+                hold.skip(len(segment.text))
                 await send(
                     {
                         "type": "notice",
@@ -669,11 +720,18 @@ async def speak_segments(queue, send, worker, run=None, turn=None):
                 event["action"] = segment.action
                 if segment.action_word:
                     event["actionWord"] = segment.action_word
-            if directory is not None:
-                await asyncio.to_thread(record_clip, directory, event)
-                event["turn"] = turn
-            await send(event)
-            spoken += 1
+            if hold.released:
+                hold.add(event, 0.0, len(segment.text))
+                await announce(event)
+                continue
+            hold.add(event, float(timings.get("audioSeconds", 0.0)), len(segment.text))
+            if hold.due(known["chars"] - hold.done_chars, known["done"]):
+                await release()
+            elif not thinking:
+                # The silence while clips are held should look intentional.
+                thinking = True
+                await send({"type": "expression", "name": THINKING, "weight": THINKING_WEIGHT})
+        await release()
         await submitter
         return spoken
     except asyncio.CancelledError:
@@ -681,8 +739,9 @@ async def speak_segments(queue, send, worker, run=None, turn=None):
             worker.cancel(run)
         raise
     finally:
+        receiver.cancel()
         submitter.cancel()
-        leftovers = [submitter]
+        leftovers = [receiver, submitter]
         while not ordered.empty():
             item = ordered.get_nowait()
             if item is not None:
@@ -928,8 +987,22 @@ async def handle_connection(socket, args, catalog):
                     "reset",
                     "answer",
                     "greet",
+                    "settings",
                 ):
                     raise ValueError("Unknown request")
+                if request["type"] == "settings":
+                    # Speech buffering (#278): a mode, or null for the launch flag's mode.
+                    mode = request.get("speechBuffering")
+                    if speech_settings is None:
+                        continue
+                    if mode is None:
+                        mode = getattr(args, "speech_buffering", "stream")
+                    if mode not in BUFFERING_MODES:
+                        raise ValueError("Invalid speech buffering")
+                    speech_settings.speech_buffering = mode
+                    LOG.info("Speech buffering: %s", mode)
+                    await send({"type": "settings", "speechBuffering": mode})
+                    continue
                 if request["type"] == "greet":
                     # Page-open greeting (#129): a fixed phrase, spoken without the LLM.
                     segments = greeting_segments(request, catalog)
@@ -1406,6 +1479,19 @@ def build_parser():
         help="RVC device: auto (GPU if Applio's PyTorch sees one), gpu (stop if none) or cpu (hide the GPU).",
     )
     parser.add_argument(
+        "--speech-buffering",
+        choices=BUFFERING_MODES,
+        default="stream",
+        help="When ready clips are spoken (#278): stream each one, wait for the full reply, "
+        "or adaptive (wait just long enough to avoid gaps). The Chat panel can change it.",
+    )
+    parser.add_argument(
+        "--speech-max-hold",
+        type=float,
+        default=DEFAULT_MAX_HOLD,
+        help="Longest a reply's clips are held before she starts speaking anyway (seconds).",
+    )
+    parser.add_argument(
         "--agent",
         action="store_true",
         help="Let a coding agent speak through Yidhari via controller/mcp_server.py (owner-only Unix socket).",
@@ -1467,6 +1553,8 @@ def speech_settings(args):
         rvc_threads=args.rvc_threads,
         rvc_device=args.rvc_device,
         replay_cap_mb=getattr(args, "replay_cap_mb", DEFAULT_CAP_MB),
+        speech_buffering=getattr(args, "speech_buffering", "stream"),
+        speech_max_hold=getattr(args, "speech_max_hold", DEFAULT_MAX_HOLD),
         **({"pth": args.pth.expanduser().resolve()} if args.pth else {}),
         **({"index": args.index.expanduser().resolve()} if args.index else {}),
     )

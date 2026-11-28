@@ -4,13 +4,17 @@ The three.js port of Dillongoo's Goo shaders (#249) needs data that only exists
 in Blender: the game textures, which game material each PMX material uses, the
 shader's settings, and the `Col` vertex colours. `tools/goo-bake/bake.py`
 reads these from `assets/Blender/Yidhari_V1.3_PMX.blend` and writes them to
-`assets/private/goo/`. `renderer/serve.py` already serves that folder on
+`assets/goo/`. `renderer/serve.py` already serves that folder on
 localhost, and `renderer/goo-assets.js` checks the files against the PMX before
 the renderer uses them. For how the V1.3 file was made, see
 [Goo shaders on the PMX](goo-shaders-on-pmx.md).
 
-> 🛡️ The output contains game textures from a CC BY-NC-ND 4.0 reference. It
-> stays in the gitignored `assets/private/`. Re-bake it locally; never commit it.
+> 🛡️ The output contains game textures from a CC BY-NC-ND 4.0 reference. Since
+> #280 it is committed in `assets/goo/` (about 17 MB, plain git) so every
+> checkout of this private repository has the Goo look. Keep the repository
+> private and never upload or share the textures elsewhere. Re-bake and commit
+> the folder again whenever the V1.3 file changes. The PMX model and the rest
+> of `assets/private/` stay gitignored.
 
 ## Run it
 
@@ -20,7 +24,7 @@ Run it with Goo Engine 4.4.3 so the `ZZZB` node groups load as saved.
 
 ```bash
 ~/build_linux_goo44/bin/blender -b -y --disable-autoexec \
-  assets/Blender/Yidhari_V1.3_PMX.blend --python tools/goo-bake/bake.py -- assets/private/goo
+  assets/Blender/Yidhari_V1.3_PMX.blend --python tools/goo-bake/bake.py -- assets/goo
 ```
 
 Then check the result against the PMX the renderer loads:
@@ -29,8 +33,9 @@ Then check the result against the PMX the renderer loads:
 node --test tests/renderer/goo-assets.test.mjs
 ```
 
-The last test, "the private bake lines up with the private PMX", runs only when
-`yidhari-mmd/伊德海莉.pmx` and `assets/private/goo/manifest.json` exist. Point
+One test checks that every file and texture the material map names is in
+`assets/goo/`. The last test, "the private bake lines up with the private PMX",
+runs only when `yidhari-mmd/伊德海莉.pmx` and `assets/goo/manifest.json` exist. Point
 it elsewhere with `YIDHARI_PMX` and `GOO_ASSETS_DIR`. Re-bake whenever the V1.3
 file changes; the manifest records the source file's SHA-256 so a stale bake
 can be spotted.
@@ -84,7 +89,7 @@ switched on.
 Switching it on (`renderer/goo-material.js`):
 
 1. Fetches `manifest.json`, `material-map.json`, `params.json`, `scene.json` and `col.bin`
-   from `/assets/private/goo/` once.
+   from `/assets/goo/` once.
 2. Checks them against the loaded PMX with `validateGooAssets()`, then loads
    every texture the materials use (`loadGooTextures()`) and **waits** for
    them, so the swap never shows untextured frames and a broken image is

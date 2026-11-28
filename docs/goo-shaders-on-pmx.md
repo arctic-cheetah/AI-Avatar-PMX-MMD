@@ -10,9 +10,11 @@ with the reference shaders in Goo Engine 4.4.3. Side by side, it matches the
 reference closely (face, bust and full body).
 
 > 🛡️ The reference is CC BY-NC-ND 4.0 and the PMX licence forbids commercial
-> use. The `.blend`, the packed game textures and the comparison grids stay in
-> the gitignored `assets/private/`. Never commit, upload or share them. This doc
-> holds only notes and node names.
+> use. The comparison grids stay in the gitignored `assets/private/`. The
+> baked textures the renderer uses are committed in `assets/goo/` (#280, see
+> [Baking the Goo shader inputs](goo-bake.md)) only because this repository is
+> private. Never upload or share them elsewhere. This doc holds only notes and
+> node names.
 
 ## Toolchain
 

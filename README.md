@@ -46,6 +46,7 @@ AI-Avatar-PMX-MMD/
 ├── tests/                      # ✅ Python checks and renderer JavaScript tests
 ├── tools/                      # 🛠️ Latency reports, model probes and morph comparison grids
 ├── models/                     # 🧠 Local speech/model files (gitignored)
+├── assets/goo/                 # 🎨 Baked Goo shader textures and inputs (docs/goo-bake.md)
 ├── assets/private/             # 🔒 Private clips, comparison grids and other local artifacts
 ├── yidhari-mmd/                # 👩 Private PMX model pack (gitignored)
 ├── requirements*.txt           # 📦 Python dependencies for the optional runtime components
@@ -414,6 +415,7 @@ avatar-yidhari/
   docs/                # 📚 architecture notes and guides
   models/kokoro/       # 🔒 gitignored: downloaded Kokoro model and voices
   models/whisper/      # 🔒 gitignored: downloaded Whisper STT models
+  assets/goo/          # 🎨 baked Goo shader textures and inputs (private repo only)
   assets/private/      # 🔒 gitignored: speech samples and replayable turns
   yidhari-mmd/         # 🔒 gitignored: local PMX model pack
 ```

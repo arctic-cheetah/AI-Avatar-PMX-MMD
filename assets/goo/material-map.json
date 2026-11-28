@@ -1,0 +1,370 @@
+{
+  "materials": [
+    {
+      "colorSpaces": {
+        "diffuse": "sRGB",
+        "faceLightmap": "Non-Color"
+      },
+      "game": "Yidhari Face",
+      "hidden": false,
+      "params": "Yidhari Face",
+      "pmx": "颜",
+      "shader": "zzzb",
+      "textures": {
+        "diffuse": "Yidhari_Face_D.png",
+        "faceLightmap": "Female_Face_Lightmap.png"
+      }
+    },
+    {
+      "colorSpaces": {
+        "diffuse": "sRGB",
+        "faceLightmap": "Non-Color"
+      },
+      "game": "Yidhari Face",
+      "hidden": false,
+      "params": "Yidhari Face",
+      "pmx": "颜2",
+      "shader": "zzzb",
+      "textures": {
+        "diffuse": "Yidhari_Face_D.png",
+        "faceLightmap": "Female_Face_Lightmap.png"
+      }
+    },
+    {
+      "colorSpaces": {
+        "diffuse": "sRGB",
+        "faceLightmap": "Non-Color"
+      },
+      "game": "Yidhari Face",
+      "hidden": false,
+      "params": "Yidhari Face",
+      "pmx": "口线",
+      "shader": "zzzb",
+      "textures": {
+        "diffuse": "Yidhari_Face_D.png",
+        "faceLightmap": "Female_Face_Lightmap.png"
+      }
+    },
+    {
+      "colorSpaces": {
+        "diffuse": "sRGB",
+        "faceLightmap": "Non-Color"
+      },
+      "game": "Yidhari Face",
+      "hidden": false,
+      "params": "Yidhari Face",
+      "pmx": "口舌",
+      "shader": "zzzb",
+      "textures": {
+        "diffuse": "Yidhari_Face_D.png",
+        "faceLightmap": "Female_Face_Lightmap.png"
+      }
+    },
+    {
+      "colorSpaces": {
+        "diffuse": "sRGB",
+        "faceLightmap": "Non-Color"
+      },
+      "game": "Yidhari Face",
+      "hidden": false,
+      "params": "Yidhari Face",
+      "pmx": "齿",
+      "shader": "zzzb",
+      "textures": {
+        "diffuse": "Yidhari_Face_D.png",
+        "faceLightmap": "Female_Face_Lightmap.png"
+      }
+    },
+    {
+      "colorSpaces": {
+        "diffuse": "sRGB",
+        "faceLightmap": "Non-Color"
+      },
+      "game": "Yidhari Eyes",
+      "hidden": false,
+      "params": "Yidhari Eyes",
+      "pmx": "睫眉",
+      "shader": "zzzb",
+      "textures": {
+        "diffuse": "Yidhari_Face_D.png",
+        "faceLightmap": "Female_Face_Lightmap.png"
+      }
+    },
+    {
+      "colorSpaces": {
+        "diffuse": "sRGB",
+        "faceLightmap": "Non-Color"
+      },
+      "game": "Yidhari Eyes",
+      "hidden": false,
+      "params": "Yidhari Eyes",
+      "pmx": "目",
+      "shader": "zzzb",
+      "textures": {
+        "diffuse": "Yidhari_Face_D.png",
+        "faceLightmap": "Female_Face_Lightmap.png"
+      }
+    },
+    {
+      "colorSpaces": {
+        "diffuse": "sRGB",
+        "faceLightmap": "Non-Color"
+      },
+      "game": "Yidhari Eyes",
+      "hidden": false,
+      "params": "Yidhari Eyes",
+      "pmx": "目光",
+      "shader": "zzzb",
+      "textures": {
+        "diffuse": "Yidhari_Face_D.png",
+        "faceLightmap": "Female_Face_Lightmap.png"
+      }
+    },
+    {
+      "color": [
+        0.456662,
+        0.581318,
+        0.677386,
+        1.0
+      ],
+      "game": "Eye Shadow",
+      "hidden": false,
+      "pmx": "目影",
+      "shader": "transparent",
+      "textures": {}
+    },
+    {
+      "colorSpaces": {
+        "a": "Non-Color",
+        "diffuse": "sRGB",
+        "m": "Non-Color",
+        "matcap2": "sRGB",
+        "matcap3": "sRGB",
+        "normal": "Non-Color"
+      },
+      "game": "Yidhari MAT 1",
+      "hidden": false,
+      "params": "Yidhari MAT 1",
+      "pmx": "体",
+      "shader": "zzzb",
+      "textures": {
+        "a": "Yidhari_Body_Map1_A.png",
+        "diffuse": "Yidhari_Body_Map1_D.png",
+        "m": "Yidhari_Body_Map1_M.png",
+        "matcap2": "Eff_Matcap_116.png",
+        "matcap3": "Eff_Matcap_115.png",
+        "normal": "Yidhari_Body_Map1_N.png"
+      }
+    },
+    {
+      "colorSpaces": {
+        "a": "Non-Color",
+        "diffuse": "sRGB",
+        "m": "Non-Color",
+        "matcap2": "sRGB",
+        "matcap3": "sRGB",
+        "normal": "Non-Color"
+      },
+      "game": "Yidhari MAT 1",
+      "hidden": false,
+      "params": "Yidhari MAT 1",
+      "pmx": "体2",
+      "shader": "zzzb",
+      "textures": {
+        "a": "Yidhari_Body_Map1_A.png",
+        "diffuse": "Yidhari_Body_Map1_D.png",
+        "m": "Yidhari_Body_Map1_M.png",
+        "matcap2": "Eff_Matcap_116.png",
+        "matcap3": "Eff_Matcap_115.png",
+        "normal": "Yidhari_Body_Map1_N.png"
+      }
+    },
+    {
+      "colorSpaces": {
+        "a": "Non-Color",
+        "diffuse": "sRGB",
+        "m": "Non-Color",
+        "matcap2": "sRGB",
+        "matcap3": "sRGB",
+        "normal": "Non-Color"
+      },
+      "game": "Yidhari MAT 1",
+      "hidden": false,
+      "params": "Yidhari MAT 1",
+      "pmx": "肌",
+      "shader": "zzzb",
+      "textures": {
+        "a": "Yidhari_Body_Map1_A.png",
+        "diffuse": "Yidhari_Body_Map1_D.png",
+        "m": "Yidhari_Body_Map1_M.png",
+        "matcap2": "Eff_Matcap_116.png",
+        "matcap3": "Eff_Matcap_115.png",
+        "normal": "Yidhari_Body_Map1_N.png"
+      }
+    },
+    {
+      "colorSpaces": {
+        "a": "Non-Color",
+        "diffuse": "sRGB",
+        "m": "Non-Color",
+        "matcap2": "sRGB",
+        "matcap3": "sRGB",
+        "normal": "Non-Color"
+      },
+      "game": "Yidhari MAT 1",
+      "hidden": false,
+      "params": "Yidhari MAT 1",
+      "pmx": "袜",
+      "shader": "zzzb",
+      "textures": {
+        "a": "Yidhari_Body_Map1_A.png",
+        "diffuse": "Yidhari_Body_Map1_D.png",
+        "m": "Yidhari_Body_Map1_M.png",
+        "matcap2": "Eff_Matcap_116.png",
+        "matcap3": "Eff_Matcap_115.png",
+        "normal": "Yidhari_Body_Map1_N.png"
+      }
+    },
+    {
+      "colorSpaces": {
+        "a": "Non-Color",
+        "diffuse": "sRGB",
+        "m": "Non-Color",
+        "matcap2": "sRGB",
+        "matcap3": "sRGB",
+        "normal": "Non-Color"
+      },
+      "game": "Yidhari MAT 1",
+      "hidden": false,
+      "params": "Yidhari MAT 1",
+      "pmx": "肌2",
+      "shader": "zzzb",
+      "textures": {
+        "a": "Yidhari_Body_Map1_A.png",
+        "diffuse": "Yidhari_Body_Map1_D.png",
+        "m": "Yidhari_Body_Map1_M.png",
+        "matcap2": "Eff_Matcap_116.png",
+        "matcap3": "Eff_Matcap_115.png",
+        "normal": "Yidhari_Body_Map1_N.png"
+      }
+    },
+    {
+      "colorSpaces": {
+        "a": "Non-Color",
+        "diffuse": "sRGB",
+        "m": "Non-Color",
+        "matcap2": "sRGB",
+        "matcap3": "sRGB",
+        "normal": "Non-Color"
+      },
+      "game": "Yidhari MAT 1",
+      "hidden": false,
+      "params": "Yidhari MAT 1",
+      "pmx": "饰",
+      "shader": "zzzb",
+      "textures": {
+        "a": "Yidhari_Body_Map1_A.png",
+        "diffuse": "Yidhari_Body_Map1_D.png",
+        "m": "Yidhari_Body_Map1_M.png",
+        "matcap2": "Eff_Matcap_116.png",
+        "matcap3": "Eff_Matcap_115.png",
+        "normal": "Yidhari_Body_Map1_N.png"
+      }
+    },
+    {
+      "colorSpaces": {
+        "a": "Non-Color",
+        "diffuse": "sRGB",
+        "m": "Non-Color",
+        "matcap2": "sRGB",
+        "matcap3": "sRGB",
+        "normal": "Non-Color"
+      },
+      "game": "Yidhari MAT 1",
+      "hidden": false,
+      "params": "Yidhari MAT 1",
+      "pmx": "饰2",
+      "shader": "zzzb",
+      "textures": {
+        "a": "Yidhari_Body_Map1_A.png",
+        "diffuse": "Yidhari_Body_Map1_D.png",
+        "m": "Yidhari_Body_Map1_M.png",
+        "matcap2": "Eff_Matcap_116.png",
+        "matcap3": "Eff_Matcap_115.png",
+        "normal": "Yidhari_Body_Map1_N.png"
+      }
+    },
+    {
+      "colorSpaces": {
+        "a": "Non-Color",
+        "diffuse": "sRGB",
+        "m": "sRGB",
+        "matcap2": "sRGB",
+        "matcap3": "sRGB",
+        "normal": "Non-Color"
+      },
+      "game": "Yidhari MAT 2",
+      "hidden": false,
+      "params": "Yidhari MAT 2",
+      "pmx": "帽",
+      "shader": "zzzb",
+      "textures": {
+        "a": "Yidhari_Body_Map2_A.png",
+        "diffuse": "Yidhari_Body_Map2_D.png",
+        "m": "Yidhari_Body_Map2_M.png",
+        "matcap2": "Eff_Matcap_116.png",
+        "matcap3": "Eff_Matcap_115.png",
+        "normal": "Yidhari_Body_Map2_N.png"
+      }
+    },
+    {
+      "colorSpaces": {
+        "a": "Non-Color",
+        "diffuse": "sRGB",
+        "m": "sRGB",
+        "normal": "Non-Color"
+      },
+      "game": "Yidhari Hair",
+      "hidden": false,
+      "params": "Yidhari Hair",
+      "pmx": "髮",
+      "shader": "zzzb",
+      "textures": {
+        "a": "Yidhari_Body_Map2_A.png",
+        "diffuse": "Yidhari_Body_Map2_D.png",
+        "m": "Yidhari_Body_Map2_M.png",
+        "normal": "Yidhari_Body_Map2_N.png"
+      }
+    },
+    {
+      "colorSpaces": {
+        "a": "Non-Color",
+        "diffuse": "sRGB",
+        "m": "Non-Color",
+        "matcap2": "sRGB",
+        "matcap3": "sRGB",
+        "normal": "Non-Color"
+      },
+      "game": "Yidhari Tentacles",
+      "hidden": false,
+      "params": "Yidhari Tentacles",
+      "pmx": "尾",
+      "shader": "zzzb",
+      "textures": {
+        "a": "Yidhari_Tail_Map1_A.png",
+        "diffuse": "Yidhari_Tail_Map1_D.png",
+        "m": "Yidhari_Tail_Map1_M.png",
+        "matcap2": "Eff_Matcap_116.png",
+        "matcap3": "Eff_Matcap_115.png",
+        "normal": "Yidhari_Tail_Map1_N.png"
+      }
+    },
+    {
+      "game": null,
+      "hidden": true,
+      "pmx": "髮+",
+      "shader": null,
+      "textures": {}
+    }
+  ]
+}

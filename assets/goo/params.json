@@ -1,0 +1,1597 @@
+{
+  "Yidhari Eyes": {
+    "Color Attribute Alpha": {
+      "attribute": "Col"
+    },
+    "Color Attribute Color": {
+      "attribute": "Col"
+    },
+    "Diffuse Map Alpha": {
+      "texture": "Yidhari_Face_D.png"
+    },
+    "Diffuse Map Color": {
+      "texture": "Yidhari_Face_D.png"
+    },
+    "Enable Alpha Usage": 0.0,
+    "Enable Cast Shadows": 1.0,
+    "Enable Detail Map Usage": 0.0,
+    "Enable Environment Map Influence": 0.0,
+    "Enable Face Shading": 1.0,
+    "Enable Hair Highlight Mask": 1.0,
+    "Enable MatCap Effect": 0.0,
+    "Enable Rim Lighting": 0.0,
+    "Environment Map Color": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "Face Lightmap Alpha [Vector]": {
+      "texture": "Female_Face_Lightmap.png"
+    },
+    "Face Lightmap Color [Vector]": {
+      "texture": "Female_Face_Lightmap.png"
+    },
+    "Face Lightmap Color [noVector]": {
+      "texture": "Female_Face_Lightmap.png"
+    },
+    "Face Seethrough Rate": 0.15,
+    "Hair Highlight Color Multiplier": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Hair Highlight Intensity": 0.75,
+    "Hair Highlight Spread Power": 2.5,
+    "Local Indirect Color": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "Local Indirect Color2": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "Local Indirect Color3": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "Local Indirect Color4": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "Local Indirect Color5": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "MatCap Addition Factor": 1.0,
+    "MatCap Multiplier Factor": 1.0,
+    "Matcap Textures": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Multiplier/Addition Statements": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Normal Map Color": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Normal Map Strength": 1.0,
+    "Outline Color": [
+      1.0,
+      0.5,
+      0.5,
+      1.0
+    ],
+    "Outline Color2": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Outline Color3": [
+      0.195829,
+      0.131845,
+      0.13736,
+      1.0
+    ],
+    "Outline Color4": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Outline Color5": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Rim Light Additional Color": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "Rim Light Color Multiplier": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "SSS Effect Strength": 1.0,
+    "Shadow Color": [
+      0.878431,
+      0.8,
+      0.8,
+      1.0
+    ],
+    "Shadow Color Multiplier": [
+      0.615589,
+      0.620286,
+      0.657323,
+      1.0
+    ],
+    "Shadow Color2": [
+      0.94489,
+      0.790414,
+      0.785761,
+      1.0
+    ],
+    "Shadow Color3": [
+      0.901569,
+      0.912353,
+      0.94902,
+      1.0
+    ],
+    "Shadow Color4": [
+      0.8,
+      0.739036,
+      0.623529,
+      1.0
+    ],
+    "Shadow Color5": [
+      0.728907,
+      0.73738,
+      0.792453,
+      1.0
+    ],
+    "Shadow Fade Strength": 0.0,
+    "Shadow Position": 0.0,
+    "Shadow Softness": 0.25,
+    "Shadow Transition Color": [
+      0.793782,
+      0.749156,
+      0.730186,
+      1.0
+    ],
+    "Shallow Color": [
+      0.92,
+      0.8832,
+      0.8832,
+      1.0
+    ],
+    "Shallow Color2": [
+      1.0,
+      0.864121,
+      0.852946,
+      1.0
+    ],
+    "Shallow Color3": [
+      0.980387,
+      0.826238,
+      0.782215,
+      1.0
+    ],
+    "Shallow Color4": [
+      0.886792,
+      0.847527,
+      0.75712,
+      1.0
+    ],
+    "Shallow Color5": [
+      0.832814,
+      0.836657,
+      0.896226,
+      1.0
+    ],
+    "Sun Light Color": [
+      1.196425,
+      1.155712,
+      1.077855,
+      1.0
+    ],
+    "_A Map Color": [
+      0.8,
+      0.8,
+      0.8,
+      1.0
+    ],
+    "_M Map Color": [
+      0.8,
+      0.8,
+      0.8,
+      1.0
+    ],
+    "matID1": 1.0,
+    "matID2": 2.0,
+    "matID3": 3.0,
+    "matID4": 4.0,
+    "matID5": 5.0
+  },
+  "Yidhari Face": {
+    "Color Attribute Alpha": {
+      "attribute": "Col"
+    },
+    "Color Attribute Color": {
+      "attribute": "Col"
+    },
+    "Diffuse Map Alpha": {
+      "texture": "Yidhari_Face_D.png"
+    },
+    "Diffuse Map Color": {
+      "texture": "Yidhari_Face_D.png"
+    },
+    "Enable Alpha Usage": 0.0,
+    "Enable Cast Shadows": 1.0,
+    "Enable Detail Map Usage": 0.0,
+    "Enable Environment Map Influence": 0.0,
+    "Enable Face Shading": 1.0,
+    "Enable Hair Highlight Mask": 1.0,
+    "Enable MatCap Effect": 0.0,
+    "Enable Rim Lighting": 0.0,
+    "Environment Map Color": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "Face Lightmap Alpha [Vector]": {
+      "texture": "Female_Face_Lightmap.png"
+    },
+    "Face Lightmap Color [Vector]": {
+      "texture": "Female_Face_Lightmap.png"
+    },
+    "Face Lightmap Color [noVector]": {
+      "texture": "Female_Face_Lightmap.png"
+    },
+    "Face Seethrough Rate": 0.15,
+    "Hair Highlight Color Multiplier": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Hair Highlight Intensity": 0.75,
+    "Hair Highlight Spread Power": 2.5,
+    "Local Indirect Color": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "Local Indirect Color2": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "Local Indirect Color3": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "Local Indirect Color4": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "Local Indirect Color5": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "MatCap Addition Factor": 1.0,
+    "MatCap Multiplier Factor": 1.0,
+    "Matcap Textures": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Multiplier/Addition Statements": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Normal Map Color": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Normal Map Strength": 1.0,
+    "Outline Color": [
+      1.0,
+      0.5,
+      0.5,
+      1.0
+    ],
+    "Outline Color2": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Outline Color3": [
+      0.195829,
+      0.131845,
+      0.13736,
+      1.0
+    ],
+    "Outline Color4": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Outline Color5": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Rim Light Additional Color": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "Rim Light Color Multiplier": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "SSS Effect Strength": 1.0,
+    "Shadow Color": [
+      0.878431,
+      0.8,
+      0.8,
+      1.0
+    ],
+    "Shadow Color Multiplier": [
+      0.615589,
+      0.620286,
+      0.657323,
+      1.0
+    ],
+    "Shadow Color2": [
+      0.94489,
+      0.790414,
+      0.785761,
+      1.0
+    ],
+    "Shadow Color3": [
+      0.901569,
+      0.912353,
+      0.94902,
+      1.0
+    ],
+    "Shadow Color4": [
+      0.8,
+      0.739036,
+      0.623529,
+      1.0
+    ],
+    "Shadow Color5": [
+      0.728907,
+      0.73738,
+      0.792453,
+      1.0
+    ],
+    "Shadow Fade Strength": 0.0,
+    "Shadow Position": 0.0,
+    "Shadow Softness": 0.25,
+    "Shadow Transition Color": [
+      0.793782,
+      0.749156,
+      0.730186,
+      1.0
+    ],
+    "Shallow Color": [
+      0.92,
+      0.8832,
+      0.8832,
+      1.0
+    ],
+    "Shallow Color2": [
+      1.0,
+      0.864121,
+      0.852946,
+      1.0
+    ],
+    "Shallow Color3": [
+      0.980387,
+      0.826238,
+      0.782215,
+      1.0
+    ],
+    "Shallow Color4": [
+      0.886792,
+      0.847527,
+      0.75712,
+      1.0
+    ],
+    "Shallow Color5": [
+      0.832814,
+      0.836657,
+      0.896226,
+      1.0
+    ],
+    "Sun Light Color": [
+      1.196425,
+      1.155712,
+      1.077855,
+      1.0
+    ],
+    "_A Map Color": [
+      0.8,
+      0.8,
+      0.8,
+      1.0
+    ],
+    "_M Map Color": [
+      0.8,
+      0.8,
+      0.8,
+      1.0
+    ],
+    "matID1": 1.0,
+    "matID2": 2.0,
+    "matID3": 3.0,
+    "matID4": 4.0,
+    "matID5": 5.0
+  },
+  "Yidhari Hair": {
+    "Color Attribute Alpha": 0.0,
+    "Color Attribute Color": {
+      "attribute": "Col"
+    },
+    "Diffuse Map Alpha": {
+      "texture": "Yidhari_Body_Map2_D.png"
+    },
+    "Diffuse Map Color": {
+      "texture": "Yidhari_Body_Map2_D.png"
+    },
+    "Enable Alpha Usage": 0.0,
+    "Enable Cast Shadows": 1.0,
+    "Enable Detail Map Usage": 0.0,
+    "Enable Environment Map Influence": 0.0,
+    "Enable Face Shading": 0.0,
+    "Enable Hair Highlight Mask": 1.0,
+    "Enable MatCap Effect": 0.0,
+    "Enable Rim Lighting": 1.0,
+    "Environment Map Color": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "Face Lightmap Alpha [Vector]": 1.0,
+    "Face Lightmap Color [Vector]": [
+      0.692,
+      0.683,
+      0.85,
+      1.0
+    ],
+    "Face Lightmap Color [noVector]": [
+      0.692,
+      0.683,
+      0.85,
+      1.0
+    ],
+    "Face Seethrough Rate": 0.15,
+    "Hair Highlight Color Multiplier": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Hair Highlight Intensity": 0.75,
+    "Hair Highlight Spread Power": 2.5,
+    "Local Indirect Color": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "Local Indirect Color2": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "Local Indirect Color3": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "Local Indirect Color4": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "Local Indirect Color5": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "MatCap Addition Factor": 1.0,
+    "MatCap Multiplier Factor": 1.0,
+    "Matcap Textures": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Multiplier/Addition Statements": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Normal Map Color": {
+      "texture": "Yidhari_Body_Map2_N.png"
+    },
+    "Normal Map Strength": 1.0,
+    "Outline Color": [
+      1.0,
+      0.5,
+      0.5,
+      1.0
+    ],
+    "Outline Color2": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Outline Color3": [
+      0.195829,
+      0.131845,
+      0.13736,
+      1.0
+    ],
+    "Outline Color4": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Outline Color5": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Rim Light Additional Color": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "Rim Light Color Multiplier": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "SSS Effect Strength": 1.0,
+    "Shadow Color": [
+      0.878431,
+      0.8,
+      0.8,
+      1.0
+    ],
+    "Shadow Color Multiplier": [
+      0.615589,
+      0.620286,
+      0.657323,
+      1.0
+    ],
+    "Shadow Color2": [
+      0.94489,
+      0.790414,
+      0.785761,
+      1.0
+    ],
+    "Shadow Color3": [
+      0.901569,
+      0.912353,
+      0.94902,
+      1.0
+    ],
+    "Shadow Color4": [
+      0.8,
+      0.739036,
+      0.623529,
+      1.0
+    ],
+    "Shadow Color5": [
+      0.728907,
+      0.73738,
+      0.792453,
+      1.0
+    ],
+    "Shadow Fade Strength": 0.0,
+    "Shadow Position": 0.0,
+    "Shadow Softness": 0.25,
+    "Shadow Transition Color": [
+      0.793782,
+      0.749156,
+      0.730186,
+      1.0
+    ],
+    "Shallow Color": [
+      0.92,
+      0.8832,
+      0.8832,
+      1.0
+    ],
+    "Shallow Color2": [
+      1.0,
+      0.864121,
+      0.852946,
+      1.0
+    ],
+    "Shallow Color3": [
+      0.980387,
+      0.826238,
+      0.782215,
+      1.0
+    ],
+    "Shallow Color4": [
+      0.886792,
+      0.847527,
+      0.75712,
+      1.0
+    ],
+    "Shallow Color5": [
+      0.832814,
+      0.836657,
+      0.896226,
+      1.0
+    ],
+    "Sun Light Color": [
+      1.196425,
+      1.155712,
+      1.077855,
+      1.0
+    ],
+    "_A Map Color": {
+      "texture": "Yidhari_Body_Map2_A.png"
+    },
+    "_M Map Color": {
+      "texture": "Yidhari_Body_Map2_M.png"
+    },
+    "matID1": 1.0,
+    "matID2": 2.0,
+    "matID3": 3.0,
+    "matID4": 4.0,
+    "matID5": 5.0
+  },
+  "Yidhari MAT 1": {
+    "Color Attribute Alpha": {
+      "attribute": "Col"
+    },
+    "Color Attribute Color": {
+      "attribute": "Col"
+    },
+    "Diffuse Map Alpha": {
+      "texture": "Yidhari_Body_Map1_D.png"
+    },
+    "Diffuse Map Color": {
+      "texture": "Yidhari_Body_Map1_D.png"
+    },
+    "Enable Alpha Usage": 0.0,
+    "Enable Cast Shadows": 1.0,
+    "Enable Detail Map Usage": 0.0,
+    "Enable Environment Map Influence": 0.0,
+    "Enable Face Shading": 0.0,
+    "Enable Hair Highlight Mask": 0.0,
+    "Enable MatCap Effect": 1.0,
+    "Enable Rim Lighting": 1.0,
+    "Environment Map Color": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "Face Lightmap Alpha [Vector]": 1.0,
+    "Face Lightmap Color [Vector]": [
+      0.692,
+      0.683,
+      0.85,
+      1.0
+    ],
+    "Face Lightmap Color [noVector]": [
+      0.692,
+      0.683,
+      0.85,
+      1.0
+    ],
+    "Face Seethrough Rate": 0.15,
+    "Hair Highlight Color Multiplier": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Hair Highlight Intensity": 0.75,
+    "Hair Highlight Spread Power": 2.5,
+    "Local Indirect Color": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "Local Indirect Color2": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "Local Indirect Color3": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "Local Indirect Color4": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "Local Indirect Color5": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "MatCap Addition Factor": 1.0,
+    "MatCap Multiplier Factor": 1.0,
+    "Matcap Textures": {
+      "computed": "ShaderNodeMix"
+    },
+    "Multiplier/Addition Statements": {
+      "computed": "ShaderNodeMix"
+    },
+    "Normal Map Color": {
+      "texture": "Yidhari_Body_Map1_N.png"
+    },
+    "Normal Map Strength": 1.0,
+    "Outline Color": [
+      1.0,
+      0.5,
+      0.5,
+      1.0
+    ],
+    "Outline Color2": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Outline Color3": [
+      0.195829,
+      0.131845,
+      0.13736,
+      1.0
+    ],
+    "Outline Color4": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Outline Color5": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Rim Light Additional Color": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "Rim Light Color Multiplier": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "SSS Effect Strength": 1.0,
+    "Shadow Color": [
+      0.878431,
+      0.8,
+      0.8,
+      1.0
+    ],
+    "Shadow Color Multiplier": [
+      0.615589,
+      0.620286,
+      0.657323,
+      1.0
+    ],
+    "Shadow Color2": [
+      0.94489,
+      0.790414,
+      0.785761,
+      1.0
+    ],
+    "Shadow Color3": [
+      0.901569,
+      0.912353,
+      0.94902,
+      1.0
+    ],
+    "Shadow Color4": [
+      0.8,
+      0.739036,
+      0.623529,
+      1.0
+    ],
+    "Shadow Color5": [
+      0.728907,
+      0.73738,
+      0.792453,
+      1.0
+    ],
+    "Shadow Fade Strength": 0.0,
+    "Shadow Position": 0.0,
+    "Shadow Softness": 0.25,
+    "Shadow Transition Color": [
+      0.793782,
+      0.749156,
+      0.730186,
+      1.0
+    ],
+    "Shallow Color": [
+      0.92,
+      0.8832,
+      0.8832,
+      1.0
+    ],
+    "Shallow Color2": [
+      1.0,
+      0.864121,
+      0.852946,
+      1.0
+    ],
+    "Shallow Color3": [
+      0.980387,
+      0.826238,
+      0.782215,
+      1.0
+    ],
+    "Shallow Color4": [
+      0.886792,
+      0.847527,
+      0.75712,
+      1.0
+    ],
+    "Shallow Color5": [
+      0.832814,
+      0.836657,
+      0.896226,
+      1.0
+    ],
+    "Sun Light Color": [
+      1.196425,
+      1.155712,
+      1.077855,
+      1.0
+    ],
+    "_A Map Color": {
+      "texture": "Yidhari_Body_Map1_A.png"
+    },
+    "_M Map Color": {
+      "texture": "Yidhari_Body_Map1_M.png"
+    },
+    "_matcaps": {
+      "MatCap Color Tint": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "MatCap Color Tint2": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "MatCap Color Tint3": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "MatCap Color Tint4": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "MatCap Color Tint5": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "MatCap Map Color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "MatCap Map Color2": {
+        "texture": "Eff_Matcap_116.png"
+      },
+      "MatCap Map Color3": {
+        "texture": "Eff_Matcap_115.png"
+      },
+      "MatCap Map Color4": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "MatCap Map Color5": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "MatCap Multiplier/Addition": 0.0,
+      "MatCap Multiplier/Addition2": 1.0,
+      "MatCap Multiplier/Addition3": 1.0,
+      "MatCap Multiplier/Addition4": 0.0,
+      "MatCap Multiplier/Addition5": 0.0,
+      "_M Map Color": {
+        "texture": "Yidhari_Body_Map1_M.png"
+      },
+      "matID1": 1.0,
+      "matID2": 2.0,
+      "matID3": 3.0,
+      "matID4": 4.0,
+      "matID5": 5.0
+    },
+    "matID1": 1.0,
+    "matID2": 2.0,
+    "matID3": 3.0,
+    "matID4": 4.0,
+    "matID5": 5.0
+  },
+  "Yidhari MAT 2": {
+    "Color Attribute Alpha": {
+      "attribute": "Col"
+    },
+    "Color Attribute Color": {
+      "attribute": "Col"
+    },
+    "Diffuse Map Alpha": {
+      "texture": "Yidhari_Body_Map2_D.png"
+    },
+    "Diffuse Map Color": {
+      "texture": "Yidhari_Body_Map2_D.png"
+    },
+    "Enable Alpha Usage": 0.0,
+    "Enable Cast Shadows": 1.0,
+    "Enable Detail Map Usage": 0.0,
+    "Enable Environment Map Influence": 0.0,
+    "Enable Face Shading": 0.0,
+    "Enable Hair Highlight Mask": 0.0,
+    "Enable MatCap Effect": 1.0,
+    "Enable Rim Lighting": 1.0,
+    "Environment Map Color": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "Face Lightmap Alpha [Vector]": 1.0,
+    "Face Lightmap Color [Vector]": [
+      0.692,
+      0.683,
+      0.85,
+      1.0
+    ],
+    "Face Lightmap Color [noVector]": [
+      0.692,
+      0.683,
+      0.85,
+      1.0
+    ],
+    "Face Seethrough Rate": 0.15,
+    "Hair Highlight Color Multiplier": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Hair Highlight Intensity": 0.75,
+    "Hair Highlight Spread Power": 2.5,
+    "Local Indirect Color": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "Local Indirect Color2": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "Local Indirect Color3": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "Local Indirect Color4": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "Local Indirect Color5": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "MatCap Addition Factor": 1.0,
+    "MatCap Multiplier Factor": 1.0,
+    "Matcap Textures": {
+      "computed": "ShaderNodeMix"
+    },
+    "Multiplier/Addition Statements": {
+      "computed": "ShaderNodeMix"
+    },
+    "Normal Map Color": {
+      "texture": "Yidhari_Body_Map2_N.png"
+    },
+    "Normal Map Strength": 1.0,
+    "Outline Color": [
+      1.0,
+      0.5,
+      0.5,
+      1.0
+    ],
+    "Outline Color2": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Outline Color3": [
+      0.195829,
+      0.131845,
+      0.13736,
+      1.0
+    ],
+    "Outline Color4": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Outline Color5": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Rim Light Additional Color": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "Rim Light Color Multiplier": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "SSS Effect Strength": 1.0,
+    "Shadow Color": [
+      0.878431,
+      0.8,
+      0.8,
+      1.0
+    ],
+    "Shadow Color Multiplier": [
+      0.615589,
+      0.620286,
+      0.657323,
+      1.0
+    ],
+    "Shadow Color2": [
+      0.94489,
+      0.790414,
+      0.785761,
+      1.0
+    ],
+    "Shadow Color3": [
+      0.901569,
+      0.912353,
+      0.94902,
+      1.0
+    ],
+    "Shadow Color4": [
+      0.8,
+      0.739036,
+      0.623529,
+      1.0
+    ],
+    "Shadow Color5": [
+      0.728907,
+      0.73738,
+      0.792453,
+      1.0
+    ],
+    "Shadow Fade Strength": 0.0,
+    "Shadow Position": 0.0,
+    "Shadow Softness": 0.25,
+    "Shadow Transition Color": [
+      0.793782,
+      0.749156,
+      0.730186,
+      1.0
+    ],
+    "Shallow Color": [
+      0.92,
+      0.8832,
+      0.8832,
+      1.0
+    ],
+    "Shallow Color2": [
+      1.0,
+      0.864121,
+      0.852946,
+      1.0
+    ],
+    "Shallow Color3": [
+      0.980387,
+      0.826238,
+      0.782215,
+      1.0
+    ],
+    "Shallow Color4": [
+      0.886792,
+      0.847527,
+      0.75712,
+      1.0
+    ],
+    "Shallow Color5": [
+      0.832814,
+      0.836657,
+      0.896226,
+      1.0
+    ],
+    "Sun Light Color": [
+      1.196425,
+      1.155712,
+      1.077855,
+      1.0
+    ],
+    "_A Map Color": {
+      "texture": "Yidhari_Body_Map2_A.png"
+    },
+    "_M Map Color": {
+      "texture": "Yidhari_Body_Map2_M.png"
+    },
+    "_matcaps": {
+      "MatCap Color Tint": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "MatCap Color Tint2": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "MatCap Color Tint3": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "MatCap Color Tint4": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "MatCap Color Tint5": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "MatCap Map Color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "MatCap Map Color2": {
+        "texture": "Eff_Matcap_116.png"
+      },
+      "MatCap Map Color3": {
+        "texture": "Eff_Matcap_115.png"
+      },
+      "MatCap Map Color4": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "MatCap Map Color5": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "MatCap Multiplier/Addition": 0.0,
+      "MatCap Multiplier/Addition2": 1.0,
+      "MatCap Multiplier/Addition3": 1.0,
+      "MatCap Multiplier/Addition4": 0.0,
+      "MatCap Multiplier/Addition5": 0.0,
+      "_M Map Color": {
+        "texture": "Yidhari_Body_Map2_M.png"
+      },
+      "matID1": 1.0,
+      "matID2": 2.0,
+      "matID3": 3.0,
+      "matID4": 4.0,
+      "matID5": 5.0
+    },
+    "matID1": 1.0,
+    "matID2": 2.0,
+    "matID3": 3.0,
+    "matID4": 4.0,
+    "matID5": 5.0
+  },
+  "Yidhari Tentacles": {
+    "Color Attribute Alpha": {
+      "attribute": "Col"
+    },
+    "Color Attribute Color": {
+      "attribute": "Col"
+    },
+    "Diffuse Map Alpha": {
+      "texture": "Yidhari_Tail_Map1_D.png"
+    },
+    "Diffuse Map Color": {
+      "texture": "Yidhari_Tail_Map1_D.png"
+    },
+    "Enable Alpha Usage": 0.0,
+    "Enable Cast Shadows": 1.0,
+    "Enable Detail Map Usage": 0.0,
+    "Enable Environment Map Influence": 0.0,
+    "Enable Face Shading": 0.0,
+    "Enable Hair Highlight Mask": 0.0,
+    "Enable MatCap Effect": 1.0,
+    "Enable Rim Lighting": 1.0,
+    "Environment Map Color": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "Face Lightmap Alpha [Vector]": 1.0,
+    "Face Lightmap Color [Vector]": [
+      0.692,
+      0.683,
+      0.85,
+      1.0
+    ],
+    "Face Lightmap Color [noVector]": [
+      0.692,
+      0.683,
+      0.85,
+      1.0
+    ],
+    "Face Seethrough Rate": 0.15,
+    "Hair Highlight Color Multiplier": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Hair Highlight Intensity": 0.75,
+    "Hair Highlight Spread Power": 2.5,
+    "Local Indirect Color": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "Local Indirect Color2": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "Local Indirect Color3": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "Local Indirect Color4": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "Local Indirect Color5": [
+      1.0,
+      0.3,
+      0.2,
+      1.0
+    ],
+    "MatCap Addition Factor": 1.0,
+    "MatCap Multiplier Factor": 1.0,
+    "Matcap Textures": {
+      "computed": "ShaderNodeMix"
+    },
+    "Multiplier/Addition Statements": {
+      "computed": "ShaderNodeMix"
+    },
+    "Normal Map Color": {
+      "texture": "Yidhari_Tail_Map1_N.png"
+    },
+    "Normal Map Strength": 1.0,
+    "Outline Color": [
+      1.0,
+      0.5,
+      0.5,
+      1.0
+    ],
+    "Outline Color2": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Outline Color3": [
+      0.195829,
+      0.131845,
+      0.13736,
+      1.0
+    ],
+    "Outline Color4": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Outline Color5": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Rim Light Additional Color": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "Rim Light Color Multiplier": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "SSS Effect Strength": 1.0,
+    "Shadow Color": [
+      0.878431,
+      0.8,
+      0.8,
+      1.0
+    ],
+    "Shadow Color Multiplier": [
+      0.615589,
+      0.620286,
+      0.657323,
+      1.0
+    ],
+    "Shadow Color2": [
+      0.94489,
+      0.790414,
+      0.785761,
+      1.0
+    ],
+    "Shadow Color3": [
+      0.901569,
+      0.912353,
+      0.94902,
+      1.0
+    ],
+    "Shadow Color4": [
+      0.8,
+      0.739036,
+      0.623529,
+      1.0
+    ],
+    "Shadow Color5": [
+      0.728907,
+      0.73738,
+      0.792453,
+      1.0
+    ],
+    "Shadow Fade Strength": 0.0,
+    "Shadow Position": 0.0,
+    "Shadow Softness": 0.25,
+    "Shadow Transition Color": [
+      0.793782,
+      0.749156,
+      0.730186,
+      1.0
+    ],
+    "Shallow Color": [
+      0.92,
+      0.8832,
+      0.8832,
+      1.0
+    ],
+    "Shallow Color2": [
+      1.0,
+      0.864121,
+      0.852946,
+      1.0
+    ],
+    "Shallow Color3": [
+      0.980387,
+      0.826238,
+      0.782215,
+      1.0
+    ],
+    "Shallow Color4": [
+      0.886792,
+      0.847527,
+      0.75712,
+      1.0
+    ],
+    "Shallow Color5": [
+      0.832814,
+      0.836657,
+      0.896226,
+      1.0
+    ],
+    "Sun Light Color": [
+      1.196425,
+      1.155712,
+      1.077855,
+      1.0
+    ],
+    "_A Map Color": {
+      "texture": "Yidhari_Tail_Map1_A.png"
+    },
+    "_M Map Color": {
+      "texture": "Yidhari_Tail_Map1_M.png"
+    },
+    "_matcaps": {
+      "MatCap Color Tint": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "MatCap Color Tint2": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "MatCap Color Tint3": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "MatCap Color Tint4": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "MatCap Color Tint5": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "MatCap Map Color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "MatCap Map Color2": {
+        "texture": "Eff_Matcap_116.png"
+      },
+      "MatCap Map Color3": {
+        "texture": "Eff_Matcap_115.png"
+      },
+      "MatCap Map Color4": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "MatCap Map Color5": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "MatCap Multiplier/Addition": 0.0,
+      "MatCap Multiplier/Addition2": 1.0,
+      "MatCap Multiplier/Addition3": 1.0,
+      "MatCap Multiplier/Addition4": 0.0,
+      "MatCap Multiplier/Addition5": 0.0,
+      "_M Map Color": {
+        "texture": "Yidhari_Tail_Map1_M.png"
+      },
+      "matID1": 1.0,
+      "matID2": 2.0,
+      "matID3": 3.0,
+      "matID4": 4.0,
+      "matID5": 5.0
+    },
+    "matID1": 1.0,
+    "matID2": 2.0,
+    "matID3": 3.0,
+    "matID4": 4.0,
+    "matID5": 5.0
+  }
+}

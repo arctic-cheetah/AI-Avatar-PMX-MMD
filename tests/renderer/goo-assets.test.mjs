@@ -152,7 +152,19 @@ test("decodeCol returns RGBA8 per vertex and refuses a wrong length", () => {
 // Real-model check: skipped unless the private PMX and a bake are present.
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const PMX_PATH = process.env.YIDHARI_PMX ?? `${ROOT}yidhari-mmd/伊德海莉.pmx`;
-const GOO_DIR = process.env.GOO_ASSETS_DIR ?? `${ROOT}assets/private/goo`;
+const GOO_DIR = process.env.GOO_ASSETS_DIR ?? `${ROOT}assets/goo`;
+
+// The bake is committed (#280), so a fresh checkout must have every file it names.
+test("the committed bake in assets/goo has every texture its material map names", () => {
+  const dir = `${ROOT}assets/goo`;
+  for (const name of ["manifest.json", "material-map.json", "params.json", "scene.json", "col.bin"]) {
+    assert.ok(existsSync(`${dir}/${name}`), `assets/goo/${name} is missing`);
+  }
+  const map = JSON.parse(readFileSync(`${dir}/material-map.json`, "utf8"));
+  const names = new Set(map.materials.flatMap((m) => Object.values(m.textures ?? {})));
+  assert.ok(names.size > 0, "material map names no textures");
+  for (const name of names) assert.ok(existsSync(`${dir}/textures/${name}`), `assets/goo/textures/${name} is missing`);
+});
 const haveReal = existsSync(PMX_PATH) && existsSync(`${GOO_DIR}/manifest.json`);
 
 test("the private bake lines up with the private PMX", { skip: !haveReal && "private PMX or bake not present" }, () => {

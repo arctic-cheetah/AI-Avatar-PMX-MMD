@@ -1,0 +1,314 @@
+{
+  "blender": "4.4.3 Goo Engine",
+  "colSpace": "sRGB",
+  "files": {
+    "col.bin": "43806680f7c66c36f0af25214f21d47012d3e2abe598e5836d440b522015ec11",
+    "material-map.json": "12b896b2e3345cf328761b9d98c0ac38ff70388291bd4ba17b15b86ad1732a12",
+    "params.json": "3d092a1c4b0bc112b512516fc158016fa66b6d149b332946e33be2abc52a88f0",
+    "scene.json": "9d5f48e89629d46fb85d54266f4467fe5a32664d7a61433bdbd5319c81624340",
+    "textures/Eff_Matcap_115.png": "9f29dda4e34d2fda304642f6d8407da26dc91a7c32c052c8052a26a79f1c8d1e",
+    "textures/Eff_Matcap_116.png": "2c9e5b21cbe55d04a7c28871a1fe035fe1c289a573eccd5a6fa8be5aed058bba",
+    "textures/Female_Face_Lightmap.png": "88ea7bb0ac06294157ec2a60b8cdb0bca692614580072aaac49ddaedd87862cb",
+    "textures/Yidhari_Body_Map1_A.png": "510cd4823ff1281232b6287b05183d27289504fdc45724202b2654bfc06932bc",
+    "textures/Yidhari_Body_Map1_D.png": "c1eb1a9667618cfd4791f1639dbc40168900d912aa08c710298e01402bcea1b5",
+    "textures/Yidhari_Body_Map1_M.png": "bf5b3bee6f77ceaf6ca5b223d34debaf948e09e4db852f4640bc91413310d853",
+    "textures/Yidhari_Body_Map1_N.png": "b84017288587cd4a71c5cf519c511d0cefd92bda3bf1b291fffa77f843df6555",
+    "textures/Yidhari_Body_Map2_A.png": "4de98fbd2706e628a8e888339264bcb6ab37a8a3fdcf8ffb835b67ddc0d5f756",
+    "textures/Yidhari_Body_Map2_D.png": "544c5b56c5e80fae9975f6e6f6e412a15359a736248578587794672be1647da9",
+    "textures/Yidhari_Body_Map2_M.png": "fe4cdbd39eec8040f3c6adc0c10a6b8e17311c6a9b956c156afb456181ea2aa2",
+    "textures/Yidhari_Body_Map2_N.png": "a6062f3ecaf532af9f93dc7c5db054f999d6ed57c155f2d53e528ffc9758df82",
+    "textures/Yidhari_Face_D.png": "368fb3e5146dd0bd76e0f3ad6f93e5e3078ab9e77c901a36c1000c7422b0d617",
+    "textures/Yidhari_Tail_Map1_A.png": "a1c4edbbdf63b9bad84573d4a112e2bd575c47935cb8b3d269e8de73fcd90883",
+    "textures/Yidhari_Tail_Map1_D.png": "0635340779c244f52340e5f40911e2cf780b0069cde3a29452bafe27ddc86fc8",
+    "textures/Yidhari_Tail_Map1_M.png": "74d28e4b56e120172085cf772fc796a9feb63e807e4dbbc9f1ca1f39b62456c4",
+    "textures/Yidhari_Tail_Map1_N.png": "a36d486619f82e81ddc7c5eb3dbd3e42c9bc35d604e723d5e102f2b7ac28ba1c"
+  },
+  "pmx": {
+    "materials": [
+      "颜",
+      "颜2",
+      "口线",
+      "口舌",
+      "齿",
+      "睫眉",
+      "目",
+      "目光",
+      "目影",
+      "体",
+      "体2",
+      "肌",
+      "袜",
+      "肌2",
+      "饰",
+      "饰2",
+      "帽",
+      "髮",
+      "尾",
+      "髮+"
+    ],
+    "samples": [
+      {
+        "index": 0,
+        "position": [
+          -0.2787,
+          20.19,
+          0.4603
+        ]
+      },
+      {
+        "index": 1266,
+        "position": [
+          0.0973,
+          19.2833,
+          0.0453
+        ]
+      },
+      {
+        "index": 2532,
+        "position": [
+          0.5493,
+          19.8727,
+          0.0907
+        ]
+      },
+      {
+        "index": 3798,
+        "position": [
+          1.8169,
+          13.4287,
+          0.0535
+        ]
+      },
+      {
+        "index": 5065,
+        "position": [
+          2.5948,
+          17.2609,
+          -0.8675
+        ]
+      },
+      {
+        "index": 6331,
+        "position": [
+          0.4938,
+          18.2628,
+          0.0987
+        ]
+      },
+      {
+        "index": 7597,
+        "position": [
+          0.0198,
+          15.3659,
+          1.1046
+        ]
+      },
+      {
+        "index": 8863,
+        "position": [
+          -4.9865,
+          15.279,
+          -0.4194
+        ]
+      },
+      {
+        "index": 10129,
+        "position": [
+          3.4114,
+          15.3954,
+          -0.3901
+        ]
+      },
+      {
+        "index": 11395,
+        "position": [
+          -4.5428,
+          16.3639,
+          -1.1611
+        ]
+      },
+      {
+        "index": 12661,
+        "position": [
+          -1.1924,
+          1.1278,
+          0.8023
+        ]
+      },
+      {
+        "index": 13927,
+        "position": [
+          1.1172,
+          0.5806,
+          0.1401
+        ]
+      },
+      {
+        "index": 15194,
+        "position": [
+          -0.9831,
+          0.9212,
+          0.6866
+        ]
+      },
+      {
+        "index": 16460,
+        "position": [
+          0.7917,
+          16.1439,
+          1.6299
+        ]
+      },
+      {
+        "index": 17726,
+        "position": [
+          -0.145,
+          11.2653,
+          -0.0968
+        ]
+      },
+      {
+        "index": 18992,
+        "position": [
+          6.8976,
+          13.2221,
+          -0.9829
+        ]
+      },
+      {
+        "index": 20258,
+        "position": [
+          -7.1738,
+          13.1737,
+          -0.7975
+        ]
+      },
+      {
+        "index": 21524,
+        "position": [
+          0.4233,
+          17.4924,
+          1.3086
+        ]
+      },
+      {
+        "index": 22790,
+        "position": [
+          -1.6859,
+          7.4379,
+          0.1748
+        ]
+      },
+      {
+        "index": 24056,
+        "position": [
+          -0.1635,
+          14.384,
+          1.1288
+        ]
+      },
+      {
+        "index": 25323,
+        "position": [
+          -1.2683,
+          13.5392,
+          0.8039
+        ]
+      },
+      {
+        "index": 26589,
+        "position": [
+          -0.525,
+          18.3381,
+          -2.3154
+        ]
+      },
+      {
+        "index": 27855,
+        "position": [
+          0.8008,
+          21.2892,
+          0.139
+        ]
+      },
+      {
+        "index": 29121,
+        "position": [
+          0.3098,
+          18.7061,
+          -1.2386
+        ]
+      },
+      {
+        "index": 30387,
+        "position": [
+          1.1797,
+          20.6376,
+          -0.7835
+        ]
+      },
+      {
+        "index": 31653,
+        "position": [
+          -0.8532,
+          19.4807,
+          -1.0875
+        ]
+      },
+      {
+        "index": 32919,
+        "position": [
+          3.5706,
+          14.937,
+          -16.5401
+        ]
+      },
+      {
+        "index": 34185,
+        "position": [
+          -0.6545,
+          20.8408,
+          0.4025
+        ]
+      },
+      {
+        "index": 35452,
+        "position": [
+          -0.4642,
+          19.2887,
+          0.2339
+        ]
+      },
+      {
+        "index": 36718,
+        "position": [
+          0.7405,
+          18.9165,
+          -1.1627
+        ]
+      },
+      {
+        "index": 37984,
+        "position": [
+          0.2163,
+          20.2274,
+          0.6878
+        ]
+      },
+      {
+        "index": 39250,
+        "position": [
+          0.8563,
+          19.4656,
+          0.1508
+        ]
+      }
+    ],
+    "vertexCount": 39251
+  },
+  "source": {
+    "file": "Yidhari_V1.3_PMX.blend",
+    "sha256": "ba5f6d99e047e201a8c49eaa5a16bf5248ff6d21605ddab02cde9874efef28c8"
+  },
+  "version": 1
+}

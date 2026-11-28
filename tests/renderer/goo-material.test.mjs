@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import {
-  GOO_SHADERS_KEY, bindGooShadersToggle, createGooMaterials, loadGooAssets, loadGooTextures,
+  GOO_ASSETS_URL, GOO_SHADERS_KEY, bindGooShadersToggle, createGooMaterials, loadGooAssets, loadGooTextures,
 } from "../../renderer/goo-material.js";
 
 const MANIFEST = {
@@ -82,18 +82,22 @@ const textures = () => ({
     .map((f) => [f, Object.assign(new THREE.Texture(), { url: `/goo/textures/${f}` })])),
 });
 
+test("the bake is served from the committed assets/goo folder (#280)", () => {
+  assert.equal(GOO_ASSETS_URL, "/assets/goo");
+});
+
 test("loadGooAssets fetches the bake from its folder", async () => {
   const { fetch, calls } = fakeFetch();
-  const assets = await loadGooAssets("/assets/private/goo", { fetch });
+  const assets = await loadGooAssets("/assets/goo", { fetch });
   assert.deepEqual(assets.manifest, MANIFEST);
   assert.deepEqual(assets.materialMap, MATERIAL_MAP);
   assert.deepEqual(assets.params, PARAMS);
   assert.deepEqual([...assets.colBytes], [...COL]);
   assert.deepEqual(assets.scene, SCENE);
   assert.deepEqual(calls.sort(), [
-    "/assets/private/goo/col.bin", "/assets/private/goo/manifest.json",
-    "/assets/private/goo/material-map.json", "/assets/private/goo/params.json",
-    "/assets/private/goo/scene.json",
+    "/assets/goo/col.bin", "/assets/goo/manifest.json",
+    "/assets/goo/material-map.json", "/assets/goo/params.json",
+    "/assets/goo/scene.json",
   ]);
 });
 

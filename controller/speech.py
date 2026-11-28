@@ -26,7 +26,7 @@ from pathlib import Path
 from controller.kokoro_worker import AWW_WORD, MAX_EMPHASIS, MAX_SPANS, WORD_EDGES as AWW_EDGES
 from controller.prosody import Prosody, combine, prosody_for, punctuation_prosody
 from controller.speech_align import align
-from controller.speech_buffer import BUFFERING_MODES, DEFAULT_MAX_HOLD
+from controller.speech_buffer import BUFFERING_MODES, DEFAULT_MAX_HOLD, SynthesisRate
 from controller.speech_trim import FRAGMENT_TAIL_KEEP, MAX_TAIL_KEEP, apply_gain, ending, trim_clip
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -672,6 +672,8 @@ class ApplioWorker:
         self.pending: dict[str, asyncio.Future] = {}
         self.starting = asyncio.Lock()
         self.ready: dict = {}
+        # Measured synthesis throughput, kept between replies for adaptive buffering (#279).
+        self.synthesis_rate = SynthesisRate()
 
     @staticmethod
     def applio_command(settings: ApplioSettings) -> list[str]:

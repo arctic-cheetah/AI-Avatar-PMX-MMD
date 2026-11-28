@@ -22,7 +22,7 @@ if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from controller.actions import MAX_ACTIONS, default_actions, resolve_action  # noqa: E402
-from controller.speech_buffer import BUFFERING_MODES, DEFAULT_MAX_HOLD, SpeechHold  # noqa: E402
+from controller.speech_buffer import BUFFERING_MODES, DEFAULT_MAX_HOLD, SpeechHold, SynthesisRate  # noqa: E402
 from controller.replay_store import (  # noqa: E402
     DEFAULT_CAP_MB,
     MB,
@@ -617,9 +617,18 @@ async def speak_segments(queue, send, worker, run=None, turn=None):
     if turn is not None:
         cap_mb = getattr(settings, "replay_cap_mb", DEFAULT_CAP_MB)
         directory = await asyncio.to_thread(open_turn, turn, cap_mb * MB)
+    rate = getattr(worker, "synthesis_rate", None)
+    if rate is None:
+        # Kept on the worker so later replies start with a measured rate (#279 review).
+        rate = SynthesisRate()
+        try:
+            worker.synthesis_rate = rate
+        except AttributeError:
+            pass
     hold = SpeechHold(
         getattr(settings, "speech_buffering", "stream"),
         getattr(settings, "speech_max_hold", DEFAULT_MAX_HOLD),
+        rate=rate,
     )
 
     def synthesise(segment):
@@ -632,6 +641,7 @@ async def speak_segments(queue, send, worker, run=None, turn=None):
     waiting = asyncio.Queue()  # every sentence received so far, so the hold knows what is left
     ordered = asyncio.Queue()
     known = {"chars": 0, "done": False}
+    finished = {}  # task -> when it finished, for the throughput samples
 
     async def receive():
         try:
@@ -646,9 +656,10 @@ async def speak_segments(queue, send, worker, run=None, turn=None):
         try:
             while (segment := await waiting.get()) is not None:
                 await slots.acquire()
-                ordered.put_nowait(
-                    (segment, asyncio.create_task(synthesise(segment)))
-                )
+                submitted = time.monotonic()
+                task = asyncio.create_task(synthesise(segment))
+                task.add_done_callback(lambda done: finished.__setitem__(done, time.monotonic()))
+                ordered.put_nowait((segment, task, submitted))
         finally:
             # Always end the ordered stream, so a submit failure surfaces instead of hanging.
             ordered.put_nowait(None)
@@ -671,6 +682,7 @@ async def speak_segments(queue, send, worker, run=None, turn=None):
     submitter = asyncio.create_task(submit())
     first = True
     thinking = False
+    previous = None  # when the last good clip finished; None skips the next sample
     try:
         while True:
             if hold.held:
@@ -684,7 +696,7 @@ async def speak_segments(queue, send, worker, run=None, turn=None):
                 item = await ordered.get()
             if item is None:
                 break
-            segment, task = item
+            segment, task, submitted = item
             if not hold.released:
                 # Wait for this clip, but release what is held when the maximum hold ends.
                 await asyncio.wait({task}, timeout=hold.time_left())
@@ -695,6 +707,7 @@ async def speak_segments(queue, send, worker, run=None, turn=None):
             except Exception:
                 LOG.exception("Speech failed for: %s", segment.text)
                 hold.skip(len(segment.text))
+                previous = None
                 await send(
                     {
                         "type": "notice",
@@ -707,6 +720,12 @@ async def speak_segments(queue, send, worker, run=None, turn=None):
             if first:
                 timings["firstClipSeconds"] = round(time.perf_counter() - started, 2)
                 first = False
+            done_at = finished.pop(task, time.monotonic())
+            if previous is not None and submitted <= previous:
+                # Queued before the clip ahead finished, so the gap is synthesis alone,
+                # not waiting for the LLM. The reply's first clip (warm-up) is never sampled.
+                rate.sample(done_at - previous, len(segment.text))
+            previous = done_at
             LOG.info("Speech %s %s: %s", clip_id, timings, segment.text)
             event = {
                 "type": "speak",
@@ -802,6 +821,9 @@ async def handle_connection(socket, args, catalog):
 
     async def send(event):
         await socket.send(json.dumps(event, ensure_ascii=False, allow_nan=False))
+
+    # Every connected page, so a speech buffering change reaches them all (#279 review).
+    pages = vars(args).setdefault("connected_pages", set())
 
     # Agent voice (#27): this renderer's speech lane, shared by chat and agent.
     router = getattr(args, "agent_router", None)
@@ -976,6 +998,7 @@ async def handle_connection(socket, args, catalog):
     task = None
     greeting = None
     greeted = False
+    pages.add(send)
     try:
         async for raw in socket:
             try:
@@ -991,17 +1014,27 @@ async def handle_connection(socket, args, catalog):
                 ):
                     raise ValueError("Unknown request")
                 if request["type"] == "settings":
-                    # Speech buffering (#278): a mode, or null for the launch flag's mode.
-                    mode = request.get("speechBuffering")
+                    # Speech buffering (#278): a mode, null for the launch flag's mode,
+                    # or no key to ask which mode is in use.
                     if speech_settings is None:
                         continue
+                    if "speechBuffering" not in request:
+                        await send({"type": "settings", "speechBuffering": speech_settings.speech_buffering})
+                        continue
+                    mode = request["speechBuffering"]
                     if mode is None:
                         mode = getattr(args, "speech_buffering", "stream")
                     if mode not in BUFFERING_MODES:
                         raise ValueError("Invalid speech buffering")
                     speech_settings.speech_buffering = mode
                     LOG.info("Speech buffering: %s", mode)
-                    await send({"type": "settings", "speechBuffering": mode})
+                    # One voice, one mode: every page hears the change (#279 review).
+                    reply = {"type": "settings", "speechBuffering": mode}
+                    for page in list(pages):
+                        try:
+                            await page(reply)
+                        except ConnectionClosed:
+                            pass
                     continue
                 if request["type"] == "greet":
                     # Page-open greeting (#129): a fixed phrase, spoken without the LLM.
@@ -1078,6 +1111,7 @@ async def handle_connection(socket, args, catalog):
     except ConnectionClosed:
         pass
     finally:
+        pages.discard(send)
         for pending in (task, greeting):
             if pending is not None:
                 pending.cancel()

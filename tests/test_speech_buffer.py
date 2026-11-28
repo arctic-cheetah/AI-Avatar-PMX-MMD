@@ -138,6 +138,24 @@ class BufferedSpeakingTests(unittest.IsolatedAsyncioTestCase):
         self.assertLess(log.index(("sent", "one")), log.index(("ready", "two")))
         self.assertGreater(log.index(("sent", "two")), log.index(("ready", "two")))
 
+    async def test_max_hold_applies_while_the_reply_text_is_still_coming(self):
+        sent = []
+
+        async def fake_synthesise(segment, worker, run=None):
+            return "0" * 16, {"audioSeconds": 1.0}
+
+        async def send(event):
+            sent.append(event)
+
+        queue = asyncio.Queue()
+        queue.put_nowait(Segment("one"))  # the reply is never finished
+        with patch("controller.speech.synthesise", fake_synthesise):
+            task = asyncio.create_task(speak_segments(queue, send, FakeWorker("full", max_hold=0.05), "run-1"))
+            await asyncio.sleep(0.2)
+            self.assertIn("one", [event.get("text") for event in sent])
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
     async def test_mode_is_read_when_each_reply_starts(self):
         worker = FakeWorker("stream")
         worker.settings.speech_buffering = "full"

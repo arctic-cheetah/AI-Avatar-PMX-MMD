@@ -3,6 +3,7 @@ import { VoiceInput, voiceSupported } from './voice-input.js';
 import { renderMarkdown, plainText } from './markdown.js';
 import { ChatHistory } from './chat-history.js';
 import { ACTION_CATALOG, actionWordOf, parseActionRef } from './speech-actions.js';
+import { BUFFERING_MODES, settingsFrame } from './speech-buffering.js';
 
 const CLIP_ID = /^[0-9a-f]{16}$/;
 const TURN_ID = /^[0-9a-f]{16}$/;
@@ -105,7 +106,7 @@ export function agentEvent(event, catalog) {
  * and the chat stays disabled; the restored log is still shown.
  */
 export function connectBridge({ catalog, onStart, onFinish, onExpression, onText, onSpeak, onFiller, onReset, onAgentSay, onAgentMood, onAction, onTurn, greeting = null, onGreeting,
-  onActivity, onAskChange, onReplayTurn, history = new ChatHistory(), win = globalThis, bridge = true }) {
+  onActivity, onAskChange, onReplayTurn, onSettings, speechBuffering = () => null, history = new ChatHistory(), win = globalThis, bridge = true }) {
   const button = document.querySelector('#bridge-start');
   const status = document.querySelector('#bridge-status');
   const chatBar = document.querySelector('#chat-bar');
@@ -407,6 +408,8 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
       chatBar.hidden = false;
       setChatEnabled(true);
       chatInput.focus();
+      // Speech buffering (#278): this page's choice, or null for the bridge's launch flag.
+      socket.send(settingsFrame(speechBuffering()));
       // Page-open greeting (#72): once here, and the gate in main.js keeps it
       // to once per page load, so reconnects below never greet again.
       if (greeting && !greeted) {
@@ -517,6 +520,10 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
             if (typeof event.text !== 'string') throw new Error('Invalid error');
             finishReply({ interrupted: true }); busy = false; onFinish(); button.disabled = false; setChatEnabled(true);
             status.textContent = event.text; break;
+          case 'settings':
+            // The speech buffering mode the bridge is now using (#278).
+            if (!BUFFERING_MODES.includes(event.speechBuffering)) throw new Error('Invalid settings');
+            onSettings?.({ speechBuffering: event.speechBuffering }); break;
           case 'reset':
             // The bridge has forgotten every turn; clear what the user sees to match.
             busy = false; reply = null; replySource = ''; replyTurn = null; greetingLine = null; turns.clear();
@@ -625,6 +632,10 @@ export function connectBridge({ catalog, onStart, onFinish, onExpression, onText
     status.textContent = 'Bridge off (test page)';
   }
   return {
+    /** Send a new speech buffering choice (#278); it applies from the next reply. */
+    setSpeechBuffering(mode) {
+      if (socket?.readyState === WebSocket.OPEN) socket.send(settingsFrame(mode));
+    },
     /** Enable the replay buttons only while speech is idle and no reply is streaming. */
     setReplayEnabled(enabled) {
       replayEnabled = Boolean(enabled);
